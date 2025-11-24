@@ -1,0 +1,61 @@
+"""
+Application configuration settings.
+"""
+
+import os
+from typing import Optional
+
+
+class Settings:
+    """Application settings."""
+    
+    # API Configuration
+    API_TITLE: str = "Polymarket Analytics Platform"
+    API_VERSION: str = "1.0.0"
+    API_DESCRIPTION: str = "API for fetching trader data and computing performance scores from Polymarket"
+    
+    # Server Configuration
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8000"))
+    RELOAD: bool = os.getenv("RELOAD", "false").lower() == "true"
+    
+    # Polymarket API Credentials
+    POLYMARKET_API_KEY: str = os.getenv(
+        "POLYMARKET_API_KEY",
+        "019a95c4-7769-7e71-8671-6d9d3b8e2d37"
+    )
+    POLYMARKET_SECRET: str = os.getenv(
+        "POLYMARKET_SECRET",
+        "625QbjLXrtnhSbTaUsyHu92vTWwVjtjHu_u_gtovU_o="
+    )
+    POLYMARKET_PASSPHRASE: str = os.getenv(
+        "POLYMARKET_PASSPHRASE",
+        "75ceae086387dcb1232c9e7979ca4d84001dddc99446be89c283a35d5950723f"
+    )
+    
+    # Dome API credentials (for fetching trader data from Dome instead of Polymarket)
+    DOME_API_KEY: str = os.getenv(
+        "DOME_API_KEY",
+        "4d8e5410-e3bf-4abf-838b-0d3b0312bdd9"
+    )
+    
+    # API URLs - Try alternative endpoints
+    POLYMARKET_BASE_URL: str = os.getenv("POLYMARKET_BASE_URL", "https://clob.polymarket.com")
+    POLYMARKET_API_URL: str = os.getenv("POLYMARKET_API_URL", "https://api.polymarket.com")
+    # Public Polymarket data API (used for trades instead of direct CLOB calls)
+    POLYMARKET_DATA_API_URL: str = os.getenv("POLYMARKET_DATA_API_URL", "https://data-api.polymarket.com")
+    # Dome API base URL (used for market research / wallet analytics)
+    DOME_API_URL: str = os.getenv("DOME_API_URL", "https://api.domeapi.io/v1")
+    
+    # Validation
+    TARGET_WALLET: str = os.getenv(
+        "TARGET_WALLET",
+        "0x56687bf447db6ffa42ffe2204a05edaa20f55839"
+    )
+    
+    # Testing/Development limits
+    MARKETS_FETCH_LIMIT: int = int(os.getenv("MARKETS_FETCH_LIMIT", "50"))  # Limit to 50 for testing
+
+
+settings = Settings()
+
