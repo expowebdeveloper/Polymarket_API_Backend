@@ -104,10 +104,24 @@ async def get_trader(
                 detail=f"No trades found for trader {wallet}"
             )
         
-        return TraderDetail(**trader_data)
+        # Validate and return the data
+        try:
+            return TraderDetail(**trader_data)
+        except Exception as validation_error:
+            # If validation fails, log the error and return a more helpful message
+            print(f"⚠ Validation error for trader {wallet}: {validation_error}")
+            print(f"  Trader data keys: {list(trader_data.keys())}")
+            print(f"  Trader data: {trader_data}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Data validation error: {str(validation_error)}. Trader data may be incomplete."
+            )
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        print(f"✗ Error fetching trader data for {wallet}: {e}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching trader data: {str(e)}"

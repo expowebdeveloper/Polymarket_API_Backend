@@ -4,12 +4,24 @@ Application configuration settings.
 
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Settings:
     """Application settings."""
     
     # API Configuration
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:password@localhost:5432/polymarket"
+    )
+
+    class Config:
+        env_file = ".env"
+        
     API_TITLE: str = "Polymarket Analytics Platform"
     API_VERSION: str = "1.0.0"
     API_DESCRIPTION: str = "API for fetching trader data and computing performance scores from Polymarket"

@@ -13,6 +13,10 @@ from app.services.data_fetcher import (
 )
 from app.services.scoring_engine import calculate_metrics
 
+# Simple in-memory cache to store orders by wallet address
+# This avoids re-fetching when we already have the data from market extraction
+_trader_orders_cache: Dict[str, List[Dict]] = {}
+
 
 def extract_traders_from_markets(markets: List[Dict], limit: Optional[int] = None) -> List[str]:
     """
@@ -136,6 +140,12 @@ def extract_traders_from_markets(markets: List[Dict], limit: Optional[int] = Non
                         if address.startswith("0x") and len(address) == 42:
                             traders.add(address)
                             traders_found_in_market += 1
+                            
+                            # Cache this order for the trader to avoid re-fetching
+                            if address not in _trader_orders_cache:
+                                _trader_orders_cache[address] = []
+                            _trader_orders_cache[address].append(order)
+                            
                             if limit and len(traders) >= limit:
                                 break
                 
@@ -199,7 +209,15 @@ def get_trader_basic_info(wallet_address: str, markets: List[Dict]) -> Dict:
     timestamps = []
     
     for trade in trades:
-        market_id = trade.get("market_id") or trade.get("market") or trade.get("marketId")
+        # Extract market identifier - handle Dome order field variations
+        market_id = (
+            trade.get("market_id") or 
+            trade.get("market") or 
+            trade.get("marketId") or
+            trade.get("market_slug") or
+            trade.get("marketSlug") or
+            trade.get("slug")
+        )
         if market_id:
             positions.add(market_id)
         
@@ -236,18 +254,52 @@ def get_trader_detail(wallet_address: str) -> Dict:
     """
     Get detailed trader information including full analytics.
     """
-    markets = fetch_resolved_markets()
+    # Fetch trades first to know which markets we need
     trades = fetch_trades_for_wallet(wallet_address)
+    
+    # Extract unique market slugs from trades
+    market_slugs_from_trades = set()
+    for trade in trades:
+        market_id = (
+            trade.get("market_id") or 
+            trade.get("market") or 
+            trade.get("marketId") or
+            trade.get("market_slug") or
+            trade.get("marketSlug") or
+            trade.get("slug")
+        )
+        if market_id:
+            market_slugs_from_trades.add(market_id)
+    
+    # Fetch resolved markets (these have resolution data)
+    markets = fetch_resolved_markets(limit=200)  # Fetch more markets for better matching
+    
+    # For markets in trades that aren't in resolved markets, try to fetch from Dome
+    # This helps get resolution data for markets that might be resolved but not in our list
+    from app.services.data_fetcher import fetch_market_by_slug_from_dome
+    markets_found = {m.get("slug") or m.get("market_id") or m.get("id"): m for m in markets}
+    
+    # Try to fetch missing markets from Dome (limit to avoid too many API calls)
+    for slug in list(market_slugs_from_trades)[:10]:  # Limit to 10 to avoid rate limits
+        if slug not in markets_found:
+            dome_market = fetch_market_by_slug_from_dome(slug)
+            if dome_market:
+                markets.append(dome_market)
+                markets_found[slug] = dome_market
+    
     metrics = calculate_metrics(wallet_address, trades, markets)
+
+    # Derive total trades from raw trades list so it reflects what Dome returned
+    total_trades = len(trades) if trades else 0
     
     # Add trade date information
     timestamps = []
-    for trade in trades:
+    for trade in trades or []:
         timestamp_str = (
-            trade.get("timestamp") or 
-            trade.get("createdAt") or 
-            trade.get("created_at") or 
-            trade.get("time")
+            trade.get("timestamp")
+            or trade.get("createdAt")
+            or trade.get("created_at")
+            or trade.get("time")
         )
         if timestamp_str:
             try:
@@ -256,16 +308,27 @@ def get_trader_detail(wallet_address: str) -> Dict:
                 else:
                     ts_str = str(timestamp_str).replace("Z", "+00:00")
                     timestamps.append(datetime.fromisoformat(ts_str))
-            except:
+            except Exception:
+                # Ignore malformed timestamps, they just won't affect first/last trade dates
                 pass
     
     first_trade = min(timestamps) if timestamps else None
     last_trade = max(timestamps) if timestamps else None
     
+    # Shape the response to match TraderDetail schema exactly
     return {
-        **metrics,
+        "wallet_address": wallet_address,
+        "total_trades": total_trades,
+        "total_positions": metrics.get("total_positions", 0),
+        "active_positions": metrics.get("active_positions", 0),
+        "total_wins": metrics.get("total_wins", 0.0),
+        "total_losses": metrics.get("total_losses", 0.0),
+        "win_rate_percent": metrics.get("win_rate_percent", 0.0),
+        "pnl": metrics.get("pnl", 0.0),
+        "final_score": metrics.get("final_score", 0.0),
         "first_trade_date": first_trade.isoformat() if first_trade else None,
-        "last_trade_date": last_trade.isoformat() if last_trade else None
+        "last_trade_date": last_trade.isoformat() if last_trade else None,
+        "categories": metrics.get("categories", {}),
     }
 
 

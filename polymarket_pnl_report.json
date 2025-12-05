@@ -1,0 +1,4014 @@
+{
+  "total_trades": 500,
+  "buy_trades_count": 403,
+  "sell_trades_count": 97,
+  "total_buy_cost": 45470.4,
+  "total_sell_revenue": 32411.39,
+  "total_fees": 0,
+  "realized_pnl": -13059.01,
+  "roi_percent": -28.72,
+  "buy_trades": [
+    {
+      "size": 15.0,
+      "price": 0.99,
+      "usdc_value": 14.85,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 15.0,
+      "price": 0.99,
+      "usdc_value": 14.85,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 1.733465,
+      "price": 0.9979999596184521,
+      "usdc_value": 1.7299980000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 89.254714,
+      "price": 0.9929999999775923,
+      "usdc_value": 88.62993100000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 50.5,
+      "price": 0.92,
+      "usdc_value": 46.46,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 14.285713,
+      "price": 0.6929999923699993,
+      "usdc_value": 9.899999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.92,
+      "usdc_value": 4.6000000000000005,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.12,
+      "usdc_value": 6.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 31.0,
+      "price": 0.99,
+      "usdc_value": 30.69,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.76,
+      "usdc_value": 2.2800000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 11.904756,
+      "price": 0.8399999966399984,
+      "usdc_value": 9.999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 1.886791,
+      "price": 0.5299998780999061,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "BUY"
+    },
+    {
+      "size": 43.215042,
+      "price": 0.9256033813411543,
+      "usdc_value": 39.99998899999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 2.753422,
+      "price": 0.7299999782089341,
+      "usdc_value": 2.009998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.984,
+      "usdc_value": 9.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 3.448274,
+      "price": 0.289999866599928,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 15.95,
+      "price": 0.9,
+      "usdc_value": 14.355,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 62.0,
+      "price": 0.99,
+      "usdc_value": 61.38,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 200.0,
+      "price": 0.99,
+      "usdc_value": 198.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 3789.0,
+      "price": 0.989,
+      "usdc_value": 3747.321,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "BUY"
+    },
+    {
+      "size": 20.04,
+      "price": 0.998,
+      "usdc_value": 19.99992,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 125.0,
+      "price": 0.99,
+      "usdc_value": 123.75,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 8.0,
+      "price": 0.35,
+      "usdc_value": 2.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 2.1978,
+      "price": 0.91,
+      "usdc_value": 1.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 222.0,
+      "price": 0.006,
+      "usdc_value": 1.332,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 8.7912,
+      "price": 0.91,
+      "usdc_value": 7.999992,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "BUY"
+    },
+    {
+      "size": 259.18,
+      "price": 0.38,
+      "usdc_value": 98.4884,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "BUY"
+    },
+    {
+      "size": 2.712,
+      "price": 0.999,
+      "usdc_value": 2.7092880000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "BUY"
+    },
+    {
+      "size": 11.11111,
+      "price": 0.7199999819999982,
+      "usdc_value": 7.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "BUY"
+    },
+    {
+      "size": 1626.076,
+      "price": 0.999,
+      "usdc_value": 1624.449924,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "BUY"
+    },
+    {
+      "size": 1.597545,
+      "price": 0.9889999968701977,
+      "usdc_value": 1.579972,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 1.718906,
+      "price": 0.9889999802199771,
+      "usdc_value": 1.6999980000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 503.506664,
+      "price": 0.75,
+      "usdc_value": 377.629998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.998,
+      "usdc_value": 19.96,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.91,
+      "usdc_value": 4.55,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 199.0,
+      "price": 0.5,
+      "usdc_value": 99.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 5.263156,
+      "price": 0.18999987839995622,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 8.73,
+      "price": 0.3,
+      "usdc_value": 2.619,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 290.0,
+      "price": 0.08924655172413794,
+      "usdc_value": 25.881500000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 2.295181,
+      "price": 0.9889999960787407,
+      "usdc_value": 2.269934,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 40.04,
+      "price": 0.999,
+      "usdc_value": 39.99996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 250.0,
+      "price": 0.99,
+      "usdc_value": 247.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 5.035142,
+      "price": 0.9929999988083752,
+      "usdc_value": 4.999896,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 3.443175,
+      "price": 0.88,
+      "usdc_value": 3.0299940000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 6.0,
+      "price": 0.64,
+      "usdc_value": 3.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 3791.0,
+      "price": 0.989,
+      "usdc_value": 3749.299,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.29,
+      "usdc_value": 14.499999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 1.176466,
+      "price": 0.8499999149996685,
+      "usdc_value": 0.9999960000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.82,
+      "usdc_value": 16.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.993,
+      "usdc_value": 99.3,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 1.006035,
+      "price": 0.9939992147390498,
+      "usdc_value": 0.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.99,
+      "usdc_value": 495.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 1001.001,
+      "price": 0.999,
+      "usdc_value": 999.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 115.702478,
+      "price": 0.9679999939154285,
+      "usdc_value": 111.99999799999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:09",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 472.4,
+      "price": 0.010584250635055038,
+      "usdc_value": 5.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 17.0,
+      "price": 0.66,
+      "usdc_value": 11.22,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 86.0,
+      "price": 0.9,
+      "usdc_value": 77.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 1.785713,
+      "price": 0.559999843199887,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.006,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "BUY"
+    },
+    {
+      "size": 17.46,
+      "price": 0.3,
+      "usdc_value": 5.238,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 16.830768,
+      "price": 0.12893048017773165,
+      "usdc_value": 2.1699990000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 11.0,
+      "price": 0.24,
+      "usdc_value": 2.6399999999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.76,
+      "usdc_value": 38.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.78,
+      "usdc_value": 31.200000000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 16.436,
+      "price": 0.999,
+      "usdc_value": 16.419564,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "BUY"
+    },
+    {
+      "size": 200.0,
+      "price": 0.998,
+      "usdc_value": 199.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:03",
+      "side": "BUY"
+    },
+    {
+      "size": 760.0,
+      "price": 0.75,
+      "usdc_value": 570.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:03",
+      "side": "BUY"
+    },
+    {
+      "size": 9.090908,
+      "price": 0.10999990319998838,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:03",
+      "side": "BUY"
+    },
+    {
+      "size": 8.988763,
+      "price": 0.8899999922124991,
+      "usdc_value": 7.999999000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:03",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.025,
+      "usdc_value": 1.25,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:03",
+      "side": "BUY"
+    },
+    {
+      "size": 193.0,
+      "price": 0.005,
+      "usdc_value": 0.965,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "BUY"
+    },
+    {
+      "size": 23.52941,
+      "price": 0.5099999957499997,
+      "usdc_value": 11.999998999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.997,
+      "usdc_value": 4.985,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "BUY"
+    },
+    {
+      "size": 1.51515,
+      "price": 0.66,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "BUY"
+    },
+    {
+      "size": 1000.0,
+      "price": 0.32,
+      "usdc_value": 320.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "BUY"
+    },
+    {
+      "size": 14.285713,
+      "price": 0.06999993629999426,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "BUY"
+    },
+    {
+      "size": 399.0,
+      "price": 0.5,
+      "usdc_value": 199.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.89,
+      "usdc_value": 8.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 399.0,
+      "price": 0.5,
+      "usdc_value": 199.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 5.05,
+      "price": 0.71,
+      "usdc_value": 3.5854999999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 164.0,
+      "price": 0.86,
+      "usdc_value": 141.04,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 16.666665,
+      "price": 0.1199999519999952,
+      "usdc_value": 1.9999989999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.89,
+      "usdc_value": 17.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 40.04,
+      "price": 0.999,
+      "usdc_value": 39.99996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 30.0,
+      "price": 0.984,
+      "usdc_value": 29.52,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 101.0,
+      "price": 0.5,
+      "usdc_value": 50.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:57",
+      "side": "BUY"
+    },
+    {
+      "size": 1.7,
+      "price": 0.89,
+      "usdc_value": 1.513,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 2.068242,
+      "price": 0.9669999932309662,
+      "usdc_value": 1.9999900000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 1.25,
+      "price": 0.8,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 275.69,
+      "price": 0.996,
+      "usdc_value": 274.58724,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 22.727271,
+      "price": 0.04399995934399691,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 3431.8,
+      "price": 0.5,
+      "usdc_value": 1715.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 8.230768,
+      "price": 0.12999989794390998,
+      "usdc_value": 1.069999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.88,
+      "usdc_value": 17.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.88,
+      "usdc_value": 4.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "BUY"
+    },
+    {
+      "size": 1.02564,
+      "price": 0.975,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 101.0,
+      "price": 0.5,
+      "usdc_value": 50.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 7.462684,
+      "price": 0.669999962479987,
+      "usdc_value": 4.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 5.176466,
+      "price": 0.849999980681801,
+      "usdc_value": 4.399996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 5.176466,
+      "price": 0.849999980681801,
+      "usdc_value": 4.399996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.989,
+      "usdc_value": 8.901,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:53",
+      "side": "BUY"
+    },
+    {
+      "size": 2.016292,
+      "price": 0.9819996310058265,
+      "usdc_value": 1.979998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.006,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 1.004,
+      "price": 0.996,
+      "usdc_value": 0.999984,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 2.652,
+      "price": 0.999,
+      "usdc_value": 2.6493480000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 5.065,
+      "price": 0.999,
+      "usdc_value": 5.059935,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.5,
+      "usdc_value": 250.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 1.408448,
+      "price": 0.7099999431998909,
+      "usdc_value": 0.9999979999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.5,
+      "usdc_value": 250.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 5.05,
+      "price": 0.57,
+      "usdc_value": 2.8785,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.84,
+      "usdc_value": 16.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 75.740739,
+      "price": 0.2640586725724976,
+      "usdc_value": 19.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "BUY"
+    },
+    {
+      "size": 1.35135,
+      "price": 0.74,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 71.42857,
+      "price": 0.014000000280000006,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 8.0,
+      "price": 0.25,
+      "usdc_value": 2.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 75.0,
+      "price": 0.04,
+      "usdc_value": 3.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 6.952375,
+      "price": 0.84,
+      "usdc_value": 5.839995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.031,
+      "usdc_value": 15.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.995,
+      "usdc_value": 39.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.86,
+      "usdc_value": 17.2,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.88,
+      "usdc_value": 52.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 55.0,
+      "price": 0.26,
+      "usdc_value": 14.3,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.993,
+      "usdc_value": 59.58,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.035478,
+      "price": 0.9281767286505234,
+      "usdc_value": 37.159999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.972,
+      "usdc_value": 38.879999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.998,
+      "usdc_value": 39.92,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.9,
+      "usdc_value": 54.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.998,
+      "usdc_value": 59.88,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.89,
+      "usdc_value": 35.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 1274.14756,
+      "price": 0.946130589458571,
+      "usdc_value": 1205.509982,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 320.98306,
+      "price": 0.0467314349860083,
+      "usdc_value": 14.999999000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.999,
+      "usdc_value": 39.96,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.999,
+      "usdc_value": 39.96,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.972,
+      "usdc_value": 58.32,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 36.0,
+      "price": 0.88,
+      "usdc_value": 31.68,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.995,
+      "usdc_value": 39.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.86,
+      "usdc_value": 51.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.85,
+      "usdc_value": 51.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.998,
+      "usdc_value": 39.92,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.992,
+      "usdc_value": 59.519999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.997,
+      "usdc_value": 59.82,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.996,
+      "usdc_value": 59.76,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.988,
+      "usdc_value": 59.28,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.996,
+      "usdc_value": 39.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.9,
+      "usdc_value": 36.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.997,
+      "usdc_value": 39.88,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 9.016665,
+      "price": 0.6,
+      "usdc_value": 5.409999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.989,
+      "usdc_value": 59.339999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.998,
+      "usdc_value": 59.88,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.88,
+      "usdc_value": 52.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.995,
+      "usdc_value": 59.7,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.996,
+      "usdc_value": 39.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.85,
+      "usdc_value": 34.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.95,
+      "usdc_value": 38.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 76.923075,
+      "price": 0.12999999024999975,
+      "usdc_value": 9.999998999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 6.84337,
+      "price": 0.8299999853873165,
+      "usdc_value": 5.679997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.989,
+      "usdc_value": 39.56,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.927,
+      "usdc_value": 55.620000000000005,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 1389.0,
+      "price": 0.5591360691144709,
+      "usdc_value": 776.6400000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.996,
+      "usdc_value": 59.76,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.95,
+      "usdc_value": 57.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.995,
+      "usdc_value": 59.7,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.17,
+      "usdc_value": 0.34,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.86,
+      "usdc_value": 34.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.997,
+      "usdc_value": 39.88,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.89,
+      "usdc_value": 53.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.999,
+      "usdc_value": 39.96,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.88,
+      "usdc_value": 35.2,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.988,
+      "usdc_value": 39.519999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.993,
+      "usdc_value": 39.72,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.997,
+      "usdc_value": 59.82,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.992,
+      "usdc_value": 39.68,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "BUY"
+    },
+    {
+      "size": 33.263156,
+      "price": 0.7539873245942147,
+      "usdc_value": 25.079998000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 1.449274,
+      "price": 0.6899999585999611,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 18.818,
+      "price": 0.999,
+      "usdc_value": 18.799182000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 10010.01,
+      "price": 0.999,
+      "usdc_value": 9999.99999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 1.98,
+      "price": 0.996,
+      "usdc_value": 1.97208,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.85,
+      "usdc_value": 85.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 100.3,
+      "price": 0.997,
+      "usdc_value": 99.9991,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 7.692305,
+      "price": 0.6499999674999887,
+      "usdc_value": 4.999998000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.11,
+      "usdc_value": 1.1,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:43",
+      "side": "BUY"
+    },
+    {
+      "size": 336.17,
+      "price": 0.53,
+      "usdc_value": 178.17010000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:43",
+      "side": "BUY"
+    },
+    {
+      "size": 7.71,
+      "price": 0.16,
+      "usdc_value": 1.2336,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:43",
+      "side": "BUY"
+    },
+    {
+      "size": 7.71,
+      "price": 0.85,
+      "usdc_value": 6.5535,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 70.139528,
+      "price": 0.8554376641941475,
+      "usdc_value": 59.999994,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 72.142856,
+      "price": 0.02772277271640036,
+      "usdc_value": 1.9999999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 5.115088,
+      "price": 0.3909999202359764,
+      "usdc_value": 1.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 7.71,
+      "price": 0.8570298313878081,
+      "usdc_value": 6.6077,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 17.588234,
+      "price": 0.3399999681605328,
+      "usdc_value": 5.979999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 8.166,
+      "price": 0.998,
+      "usdc_value": 8.149668,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 1.002,
+      "price": 0.998,
+      "usdc_value": 0.999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 1.408448,
+      "price": 0.7099999431998909,
+      "usdc_value": 0.9999979999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.997,
+      "usdc_value": 19.94,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 1.2987,
+      "price": 0.77,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.84,
+      "usdc_value": 4.2,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.993,
+      "usdc_value": 19.86,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 19.0,
+      "price": 0.28,
+      "usdc_value": 5.32,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.999,
+      "usdc_value": 19.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:41",
+      "side": "BUY"
+    },
+    {
+      "size": 16.129031,
+      "price": 0.619999986359999,
+      "usdc_value": 9.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 2.941175,
+      "price": 0.68,
+      "usdc_value": 1.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 6294.8,
+      "price": 0.5,
+      "usdc_value": 3147.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.51,
+      "usdc_value": 5.1,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 12.71,
+      "price": 0.18,
+      "usdc_value": 2.2878000000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 4.0,
+      "price": 0.25,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 12.71,
+      "price": 0.17213217938630998,
+      "usdc_value": 2.1878,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 6.25,
+      "price": 0.16,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 1450.0,
+      "price": 0.84,
+      "usdc_value": 1218.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 46.976743,
+      "price": 0.8599999791386134,
+      "usdc_value": 40.399998000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 2.808981,
+      "price": 0.8899999679599114,
+      "usdc_value": 2.499993,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "BUY"
+    },
+    {
+      "size": 1.612902,
+      "price": 0.6199998511998869,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.8,
+      "usdc_value": 48.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 8.23,
+      "price": 0.69,
+      "usdc_value": 5.6787,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 5.319147,
+      "price": 0.46999998307999385,
+      "usdc_value": 2.4999990000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 1.81818,
+      "price": 0.55,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 2.112,
+      "price": 0.999,
+      "usdc_value": 2.109888,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 7.692306,
+      "price": 0.6499998829999742,
+      "usdc_value": 4.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "BUY"
+    },
+    {
+      "size": 2.016125,
+      "price": 0.992,
+      "usdc_value": 1.999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.79,
+      "usdc_value": 31.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 36.231883,
+      "price": 0.1380000040296001,
+      "usdc_value": 5.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 22.202,
+      "price": 0.999,
+      "usdc_value": 22.179798,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.861,
+      "usdc_value": 8.61,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.006,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.79,
+      "usdc_value": 2.37,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.86,
+      "usdc_value": 7.74,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 1.960783,
+      "price": 0.5099998316998873,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 4.544,
+      "price": 0.999,
+      "usdc_value": 4.5394559999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 1.162785,
+      "price": 0.8599999139995786,
+      "usdc_value": 0.999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "BUY"
+    },
+    {
+      "size": 499848.2,
+      "price": 0.003,
+      "usdc_value": 1499.5446000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.79,
+      "usdc_value": 7.11,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.86,
+      "usdc_value": 7.74,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 33.0,
+      "price": 0.78,
+      "usdc_value": 25.740000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.79,
+      "usdc_value": 7.11,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 6.0,
+      "price": 0.86,
+      "usdc_value": 5.16,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.855,
+      "usdc_value": 17.1,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.984,
+      "usdc_value": 9.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 15.395,
+      "price": 0.999,
+      "usdc_value": 15.379605,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.86,
+      "usdc_value": 7.74,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 6.0,
+      "price": 0.78,
+      "usdc_value": 4.68,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.86,
+      "usdc_value": 2.58,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 35.0,
+      "price": 0.31,
+      "usdc_value": 10.85,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 1.162789,
+      "price": 0.859999535599322,
+      "usdc_value": 0.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.71,
+      "usdc_value": 28.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "BUY"
+    },
+    {
+      "size": 1.289339,
+      "price": 0.9849992903340394,
+      "usdc_value": 1.2699980000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "BUY"
+    },
+    {
+      "size": 4.032257,
+      "price": 0.6199999156799777,
+      "usdc_value": 2.4999990000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.71,
+      "usdc_value": 28.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "BUY"
+    },
+    {
+      "size": 7.751936,
+      "price": 0.12899990402397543,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "BUY"
+    },
+    {
+      "size": 124.815788,
+      "price": 0.3733501966914634,
+      "usdc_value": 46.599999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "BUY"
+    },
+    {
+      "size": 8.064515,
+      "price": 0.6199999627999948,
+      "usdc_value": 4.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.984,
+      "usdc_value": 9.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "BUY"
+    },
+    {
+      "size": 33.0,
+      "price": 0.998,
+      "usdc_value": 32.934,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.2,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:27",
+      "side": "BUY"
+    },
+    {
+      "size": 4.484,
+      "price": 0.999,
+      "usdc_value": 4.479516,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:27",
+      "side": "BUY"
+    },
+    {
+      "size": 1.492536,
+      "price": 0.6699999195999292,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:27",
+      "side": "BUY"
+    },
+    {
+      "size": 30.07,
+      "price": 0.997,
+      "usdc_value": 29.97979,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:27",
+      "side": "BUY"
+    },
+    {
+      "size": 2.642,
+      "price": 0.999,
+      "usdc_value": 2.639358,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:27",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.14,
+      "usdc_value": 14.000000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 18.557,
+      "price": 0.998,
+      "usdc_value": 18.519886,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.14,
+      "usdc_value": 0.7000000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.7,
+      "usdc_value": 7.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.7,
+      "usdc_value": 2.0999999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.1284,
+      "usdc_value": 12.839999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 2.026341,
+      "price": 0.9869997201852995,
+      "usdc_value": 1.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "BUY"
+    },
+    {
+      "size": 17.0,
+      "price": 0.12,
+      "usdc_value": 2.04,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 200.0,
+      "price": 0.997,
+      "usdc_value": 199.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 2.008031,
+      "price": 0.9959995637517548,
+      "usdc_value": 1.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 19.17,
+      "price": 0.19,
+      "usdc_value": 3.6423000000000005,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 7.0,
+      "price": 0.15,
+      "usdc_value": 1.05,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 1.42857,
+      "price": 0.7,
+      "usdc_value": 0.9999989999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 476.190475,
+      "price": 0.0210000000525,
+      "usdc_value": 10.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "BUY"
+    },
+    {
+      "size": 883.42,
+      "price": 0.029,
+      "usdc_value": 25.61918,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:21",
+      "side": "BUY"
+    },
+    {
+      "size": 6067.8,
+      "price": 0.5,
+      "usdc_value": 3033.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:21",
+      "side": "BUY"
+    },
+    {
+      "size": 3.921567,
+      "price": 0.509999956649982,
+      "usdc_value": 1.9999989999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:21",
+      "side": "BUY"
+    },
+    {
+      "size": 503.0,
+      "price": 0.5,
+      "usdc_value": 251.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.006,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 225.12222,
+      "price": 0.8884062976990899,
+      "usdc_value": 199.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 193.548386,
+      "price": 0.30999999659,
+      "usdc_value": 59.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.87,
+      "usdc_value": 8.7,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 250.0,
+      "price": 0.02,
+      "usdc_value": 5.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "BUY"
+    },
+    {
+      "size": 2.083332,
+      "price": 0.47999982719988943,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 6.95,
+      "price": 0.47,
+      "usdc_value": 3.2664999999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 2000.0,
+      "price": 0.015,
+      "usdc_value": 30.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 7.0,
+      "price": 0.12,
+      "usdc_value": 0.84,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 250.0,
+      "price": 0.8,
+      "usdc_value": 200.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.99,
+      "usdc_value": 9.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.5,
+      "usdc_value": 250.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "BUY"
+    },
+    {
+      "size": 1.861,
+      "price": 0.999,
+      "usdc_value": 1.8591389999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.88,
+      "usdc_value": 52.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 20.04,
+      "price": 0.998,
+      "usdc_value": 19.99992,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 13.042552,
+      "price": 0.469999966264271,
+      "usdc_value": 6.129999000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.88,
+      "usdc_value": 2.64,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.13,
+      "usdc_value": 1.17,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 1.12359,
+      "price": 0.8899999109995639,
+      "usdc_value": 0.9999950000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 70.0,
+      "price": 0.042,
+      "usdc_value": 2.9400000000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.5394,
+      "usdc_value": 53.94,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.88,
+      "usdc_value": 7.92,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 1.42857,
+      "price": 0.76999936999937,
+      "usdc_value": 1.099998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.88,
+      "usdc_value": 1.76,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 3.048777,
+      "price": 0.8199999540799474,
+      "usdc_value": 2.4999969999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.88,
+      "usdc_value": 7.92,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 500.0,
+      "price": 0.5,
+      "usdc_value": 250.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 48.0,
+      "price": 0.52,
+      "usdc_value": 24.96,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 28.0,
+      "price": 0.47,
+      "usdc_value": 13.16,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.88,
+      "usdc_value": 35.2,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 15.0,
+      "price": 0.36,
+      "usdc_value": 5.3999999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.87,
+      "usdc_value": 1.74,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 7.51,
+      "price": 0.991,
+      "usdc_value": 7.44241,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 14.142856,
+      "price": 0.7699999915151509,
+      "usdc_value": 10.889999000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 99.0,
+      "price": 0.49,
+      "usdc_value": 48.51,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.28,
+      "usdc_value": 14.000000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "BUY"
+    },
+    {
+      "size": 250.0,
+      "price": 0.36226704,
+      "usdc_value": 90.56676,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "BUY"
+    },
+    {
+      "size": 39.215685,
+      "price": 0.5099999910749997,
+      "usdc_value": 19.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "BUY"
+    },
+    {
+      "size": 1.66,
+      "price": 0.58,
+      "usdc_value": 0.9627999999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "BUY"
+    },
+    {
+      "size": 2.006,
+      "price": 0.997,
+      "usdc_value": 1.9999819999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.5,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "BUY"
+    },
+    {
+      "size": 2.337207,
+      "price": 0.8599999914427776,
+      "usdc_value": 2.009998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "BUY"
+    },
+    {
+      "size": 2.219511,
+      "price": 0.8199999909890061,
+      "usdc_value": 1.8199989999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "BUY"
+    },
+    {
+      "size": 6.25,
+      "price": 0.16,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "BUY"
+    },
+    {
+      "size": 71.252746,
+      "price": 0.9099999879302897,
+      "usdc_value": 64.839998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "BUY"
+    },
+    {
+      "size": 23.809522,
+      "price": 0.04199996119199705,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 1.154731,
+      "price": 0.8659999601638824,
+      "usdc_value": 0.999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 60.0,
+      "price": 0.72,
+      "usdc_value": 43.199999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 3.239,
+      "price": 0.9971540598950294,
+      "usdc_value": 3.229782,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 18.0,
+      "price": 0.86,
+      "usdc_value": 15.48,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 333.333333,
+      "price": 0.003000000003,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "BUY"
+    },
+    {
+      "size": 50.0,
+      "price": 0.16,
+      "usdc_value": 8.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 116.642221,
+      "price": 0.17840880276105167,
+      "usdc_value": 20.809999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 6.0,
+      "price": 0.17,
+      "usdc_value": 1.02,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 17.247,
+      "price": 0.999,
+      "usdc_value": 17.229753,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 1.28205,
+      "price": 0.78,
+      "usdc_value": 0.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 1.5,
+      "price": 0.85,
+      "usdc_value": 1.275,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 94.094,
+      "price": 0.999,
+      "usdc_value": 93.999906,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 20.0,
+      "price": 0.974,
+      "usdc_value": 19.48,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 2000.0,
+      "price": 0.001,
+      "usdc_value": 2.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 21.276583,
+      "price": 0.9399999990599994,
+      "usdc_value": 19.999988,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 14.44,
+      "price": 0.138,
+      "usdc_value": 1.99272,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 511.0,
+      "price": 0.5,
+      "usdc_value": 255.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 98.039214,
+      "price": 0.509999998572,
+      "usdc_value": 49.999998999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 7.0,
+      "price": 0.85,
+      "usdc_value": 5.95,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "BUY"
+    },
+    {
+      "size": 1.573603,
+      "price": 0.9849993931124941,
+      "usdc_value": 1.549998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 48.0,
+      "price": 0.57,
+      "usdc_value": 27.36,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.57,
+      "usdc_value": 1.14,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 285.714284,
+      "price": 0.3499999986,
+      "usdc_value": 99.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 7.95,
+      "price": 0.16,
+      "usdc_value": 1.272,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 1.001,
+      "price": 0.999,
+      "usdc_value": 0.9999989999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.006,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "BUY"
+    },
+    {
+      "size": 1010.0,
+      "price": 0.5,
+      "usdc_value": 505.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "BUY"
+    },
+    {
+      "size": 15.0,
+      "price": 0.16,
+      "usdc_value": 2.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.316,
+      "usdc_value": 1.58,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.685,
+      "usdc_value": 3.4250000000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.02,
+      "usdc_value": 2.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "BUY"
+    },
+    {
+      "size": 3.0,
+      "price": 0.34,
+      "usdc_value": 1.02,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.34,
+      "usdc_value": 3.4000000000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "BUY"
+    },
+    {
+      "size": 303.0,
+      "price": 0.59,
+      "usdc_value": 178.76999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.85,
+      "usdc_value": 7.6499999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.85,
+      "usdc_value": 7.6499999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "BUY"
+    },
+    {
+      "size": 100.0,
+      "price": 0.999,
+      "usdc_value": 99.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:57",
+      "side": "BUY"
+    },
+    {
+      "size": 1.85185,
+      "price": 0.54,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:57",
+      "side": "BUY"
+    },
+    {
+      "size": 1.388887,
+      "price": 0.7199995391993733,
+      "usdc_value": 0.9999979999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:57",
+      "side": "BUY"
+    },
+    {
+      "size": 19.230768,
+      "price": 0.25999996463999775,
+      "usdc_value": 4.999999000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 1.3325,
+      "price": 0.998,
+      "usdc_value": 1.329835,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 2.777776,
+      "price": 0.7199997407998341,
+      "usdc_value": 1.9999979999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 2000.0,
+      "price": 0.001,
+      "usdc_value": 2.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 160.0,
+      "price": 0.5,
+      "usdc_value": 80.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 340.0,
+      "price": 0.003,
+      "usdc_value": 1.02,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "BUY"
+    },
+    {
+      "size": 125.0,
+      "price": 0.16,
+      "usdc_value": 20.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 11.0,
+      "price": 0.68,
+      "usdc_value": 7.48,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 29.0,
+      "price": 0.75,
+      "usdc_value": 21.75,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 3.448274,
+      "price": 0.8699998897999405,
+      "usdc_value": 2.999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 17.08,
+      "price": 0.9341451990632319,
+      "usdc_value": 15.9552,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 19.607842,
+      "price": 0.5099999785799988,
+      "usdc_value": 9.999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 1.049316,
+      "price": 0.9529998589557388,
+      "usdc_value": 0.9999979999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.85,
+      "usdc_value": 8.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.29,
+      "usdc_value": 2.9,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 3.035712,
+      "price": 0.8399999736470389,
+      "usdc_value": 2.549998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 5.0,
+      "price": 0.998,
+      "usdc_value": 4.99,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 2.9855,
+      "price": 0.998,
+      "usdc_value": 2.979529,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 2.0,
+      "price": 0.57,
+      "usdc_value": 1.14,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:53",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.84,
+      "usdc_value": 8.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 0.92,
+      "price": 0.84,
+      "usdc_value": 0.7728,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.7,
+      "usdc_value": 28.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.84,
+      "usdc_value": 7.56,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.84,
+      "usdc_value": 7.56,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 1.681,
+      "price": 0.999,
+      "usdc_value": 1.679319,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 12.0,
+      "price": 0.2,
+      "usdc_value": 2.4000000000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.84,
+      "usdc_value": 7.56,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 1.960783,
+      "price": 0.5099998316998873,
+      "usdc_value": 0.9999990000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 85.0,
+      "price": 0.27,
+      "usdc_value": 22.950000000000003,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 9.0,
+      "price": 0.84,
+      "usdc_value": 7.56,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "BUY"
+    },
+    {
+      "size": 10.0,
+      "price": 0.34,
+      "usdc_value": 3.4000000000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "BUY"
+    },
+    {
+      "size": 1.726906,
+      "price": 0.9959997822695619,
+      "usdc_value": 1.7199980000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "BUY"
+    },
+    {
+      "size": 40.0,
+      "price": 0.67,
+      "usdc_value": 26.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "BUY"
+    },
+    {
+      "size": 32.44,
+      "price": 0.36,
+      "usdc_value": 11.678399999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "BUY"
+    }
+  ],
+  "sell_trades": [
+    {
+      "size": 15.0,
+      "price": 0.24,
+      "usdc_value": 3.5999999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.91,
+      "usdc_value": 9.1,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:19",
+      "side": "SELL"
+    },
+    {
+      "size": 22.0,
+      "price": 0.65,
+      "usdc_value": 14.3,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "SELL"
+    },
+    {
+      "size": 8.73,
+      "price": 0.71,
+      "usdc_value": 6.1983,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "SELL"
+    },
+    {
+      "size": 22.0,
+      "price": 0.25,
+      "usdc_value": 5.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "SELL"
+    },
+    {
+      "size": 370.0,
+      "price": 0.007,
+      "usdc_value": 2.59,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:17",
+      "side": "SELL"
+    },
+    {
+      "size": 63.69,
+      "price": 0.973,
+      "usdc_value": 61.970369999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.999,
+      "usdc_value": 4.995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "SELL"
+    },
+    {
+      "size": 50.0,
+      "price": 0.01,
+      "usdc_value": 0.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:15",
+      "side": "SELL"
+    },
+    {
+      "size": 30000.0,
+      "price": 0.997,
+      "usdc_value": 29910.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "SELL"
+    },
+    {
+      "size": 11.01,
+      "price": 0.998,
+      "usdc_value": 10.98798,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:13",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.93,
+      "usdc_value": 4.65,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.9,
+      "usdc_value": 9.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.999,
+      "usdc_value": 4.995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.998,
+      "usdc_value": 0.998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "SELL"
+    },
+    {
+      "size": 8.73,
+      "price": 0.71,
+      "usdc_value": 6.1983,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:11",
+      "side": "SELL"
+    },
+    {
+      "size": 111.0,
+      "price": 0.99,
+      "usdc_value": 109.89,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:07",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.984,
+      "usdc_value": 0.984,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "SELL"
+    },
+    {
+      "size": 100.0,
+      "price": 0.998,
+      "usdc_value": 99.8,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "SELL"
+    },
+    {
+      "size": 14.08,
+      "price": 0.8,
+      "usdc_value": 11.264000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "SELL"
+    },
+    {
+      "size": 164.85,
+      "price": 0.007,
+      "usdc_value": 1.15395,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "SELL"
+    },
+    {
+      "size": 44.0,
+      "price": 0.23,
+      "usdc_value": 10.120000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:05",
+      "side": "SELL"
+    },
+    {
+      "size": 36.07,
+      "price": 0.1,
+      "usdc_value": 3.607,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.999,
+      "usdc_value": 4.995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "SELL"
+    },
+    {
+      "size": 1.3,
+      "price": 0.8,
+      "usdc_value": 1.04,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:24:01",
+      "side": "SELL"
+    },
+    {
+      "size": 46.0,
+      "price": 0.391,
+      "usdc_value": 17.986,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "SELL"
+    },
+    {
+      "size": 0.14,
+      "price": 0.391,
+      "usdc_value": 0.054740000000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "SELL"
+    },
+    {
+      "size": 53.86,
+      "price": 0.609,
+      "usdc_value": 32.80074,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:59",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.983,
+      "usdc_value": 9.83,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "SELL"
+    },
+    {
+      "size": 0.22,
+      "price": 0.68,
+      "usdc_value": 0.1496,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "SELL"
+    },
+    {
+      "size": 20.0,
+      "price": 0.28,
+      "usdc_value": 5.6000000000000005,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:55",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.983,
+      "usdc_value": 9.83,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:51",
+      "side": "SELL"
+    },
+    {
+      "size": 8.33,
+      "price": 0.1,
+      "usdc_value": 0.8330000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "SELL"
+    },
+    {
+      "size": 13350.18,
+      "price": 0.025,
+      "usdc_value": 333.7545,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:49",
+      "side": "SELL"
+    },
+    {
+      "size": 8.15,
+      "price": 0.17,
+      "usdc_value": 1.3855000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:47",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.83,
+      "usdc_value": 8.299999999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:45",
+      "side": "SELL"
+    },
+    {
+      "size": 559.71,
+      "price": 0.8224655625234496,
+      "usdc_value": 460.3422,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.971,
+      "usdc_value": 4.8549999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:39",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.66,
+      "usdc_value": 6.6000000000000005,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "SELL"
+    },
+    {
+      "size": 1.35,
+      "price": 0.83,
+      "usdc_value": 1.1205,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:37",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.13,
+      "usdc_value": 0.13,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "SELL"
+    },
+    {
+      "size": 46.0,
+      "price": 0.14,
+      "usdc_value": 6.44,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.85,
+      "usdc_value": 8.5,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "SELL"
+    },
+    {
+      "size": 11.11,
+      "price": 0.999,
+      "usdc_value": 11.098889999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:35",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.13,
+      "usdc_value": 0.13,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:33",
+      "side": "SELL"
+    },
+    {
+      "size": 12.0,
+      "price": 0.85,
+      "usdc_value": 10.2,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "SELL"
+    },
+    {
+      "size": 1.25,
+      "price": 0.22,
+      "usdc_value": 0.275,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "SELL"
+    },
+    {
+      "size": 25.05,
+      "price": 0.997,
+      "usdc_value": 24.97485,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.86,
+      "usdc_value": 8.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:31",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.69,
+      "usdc_value": 6.8999999999999995,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "SELL"
+    },
+    {
+      "size": 1.25,
+      "price": 0.18,
+      "usdc_value": 0.22499999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:29",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.01,
+      "usdc_value": 0.01,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "SELL"
+    },
+    {
+      "size": 21.86,
+      "price": 0.49,
+      "usdc_value": 10.7114,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.944,
+      "usdc_value": 4.72,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "SELL"
+    },
+    {
+      "size": 51.58,
+      "price": 0.023,
+      "usdc_value": 1.18634,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "SELL"
+    },
+    {
+      "size": 20.0,
+      "price": 0.68,
+      "usdc_value": 13.600000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:25",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.86,
+      "usdc_value": 8.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 60.0,
+      "price": 0.01,
+      "usdc_value": 0.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 33.0,
+      "price": 0.81,
+      "usdc_value": 26.73,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 33.0,
+      "price": 0.81,
+      "usdc_value": 26.73,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 43.47,
+      "price": 0.01101610305958132,
+      "usdc_value": 0.47886999999999996,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 50.0,
+      "price": 0.86,
+      "usdc_value": 43.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:23",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.053,
+      "usdc_value": 0.265,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.01,
+      "usdc_value": 0.01,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:19",
+      "side": "SELL"
+    },
+    {
+      "size": 344.05,
+      "price": 0.07,
+      "usdc_value": 24.083500000000004,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "SELL"
+    },
+    {
+      "size": 70.34,
+      "price": 0.994,
+      "usdc_value": 69.91796000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:17",
+      "side": "SELL"
+    },
+    {
+      "size": 10.9,
+      "price": 0.01,
+      "usdc_value": 0.109,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:15",
+      "side": "SELL"
+    },
+    {
+      "size": 25.4,
+      "price": 0.983,
+      "usdc_value": 24.9682,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.98,
+      "usdc_value": 0.98,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "SELL"
+    },
+    {
+      "size": 100.0,
+      "price": 0.01,
+      "usdc_value": 1.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:13",
+      "side": "SELL"
+    },
+    {
+      "size": 1.04,
+      "price": 0.15,
+      "usdc_value": 0.156,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:11",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.84,
+      "usdc_value": 8.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "SELL"
+    },
+    {
+      "size": 117.64,
+      "price": 0.49,
+      "usdc_value": 57.6436,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.84,
+      "usdc_value": 8.4,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:09",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.01,
+      "usdc_value": 0.01,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "SELL"
+    },
+    {
+      "size": 2.04,
+      "price": 0.66,
+      "usdc_value": 1.3464,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:07",
+      "side": "SELL"
+    },
+    {
+      "size": 0.81,
+      "price": 0.007,
+      "usdc_value": 0.0056700000000000006,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "SELL"
+    },
+    {
+      "size": 9.0,
+      "price": 0.8322777777777778,
+      "usdc_value": 7.4905,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "SELL"
+    },
+    {
+      "size": 27.27,
+      "price": 0.003,
+      "usdc_value": 0.08181,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.983,
+      "usdc_value": 9.83,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:05",
+      "side": "SELL"
+    },
+    {
+      "size": 111.0,
+      "price": 0.99,
+      "usdc_value": 109.89,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "SELL"
+    },
+    {
+      "size": 20.0,
+      "price": 0.85,
+      "usdc_value": 17.0,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "SELL"
+    },
+    {
+      "size": 8.34,
+      "price": 0.14,
+      "usdc_value": 1.1676000000000002,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:03",
+      "side": "SELL"
+    },
+    {
+      "size": 132.11,
+      "price": 0.4715138899402013,
+      "usdc_value": 62.291700000000006,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:23:01",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.983,
+      "usdc_value": 9.83,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:59",
+      "side": "SELL"
+    },
+    {
+      "size": 5.0,
+      "price": 0.61,
+      "usdc_value": 3.05,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:57",
+      "side": "SELL"
+    },
+    {
+      "size": 71.06,
+      "price": 0.984,
+      "usdc_value": 69.92304,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:57",
+      "side": "SELL"
+    },
+    {
+      "size": 10.0,
+      "price": 0.16,
+      "usdc_value": 1.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:55",
+      "side": "SELL"
+    },
+    {
+      "size": 15.0,
+      "price": 0.64,
+      "usdc_value": 9.6,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 70.0,
+      "price": 0.16,
+      "usdc_value": 11.200000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 70.0,
+      "price": 0.16,
+      "usdc_value": 11.200000000000001,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 500.01,
+      "price": 0.94,
+      "usdc_value": 470.00939999999997,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 15.0,
+      "price": 0.25,
+      "usdc_value": 3.75,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 1.02,
+      "price": 0.18,
+      "usdc_value": 0.18359999999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:51",
+      "side": "SELL"
+    },
+    {
+      "size": 15.0,
+      "price": 0.12,
+      "usdc_value": 1.7999999999999998,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "SELL"
+    },
+    {
+      "size": 20.0,
+      "price": 0.415,
+      "usdc_value": 8.299999999999999,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "SELL"
+    },
+    {
+      "size": 1.0,
+      "price": 0.18,
+      "usdc_value": 0.18,
+      "fee": 0,
+      "timestamp": "2025-11-27 13:22:49",
+      "side": "SELL"
+    }
+  ]
+}
