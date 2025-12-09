@@ -212,112 +212,16 @@ def fetch_trades_for_wallet(wallet_address: str) -> List[Dict]:
     except:
         pass  # If cache not available, continue with API call
     
-    trades: List[Dict] = []
-    base_url = settings.DOME_API_URL.rstrip("/")
-    api_key = settings.DOME_API_KEY
-    
-    # Dome free tier: 1 QPS / 10 requests per 10 seconds – keep it to a single call
-    try:
-        url = f"{base_url}/polymarket/orders"
-        
-        # Try multiple parameter name variations - Dome API might use different field names
-        # Also try without limit first to see if that's the issue
-        params_candidates = [
-            {"user": wallet_address, "limit": 100},
-            {"address": wallet_address, "limit": 100},
-            {"wallet": wallet_address, "limit": 100},
-            {"wallet_address": wallet_address, "limit": 100},
-            {"trader": wallet_address, "limit": 100},
-            {"account": wallet_address, "limit": 100},
-            {"user": wallet_address},  # Try without limit
-            {"address": wallet_address},  # Try without limit
-        ]
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        last_error = None
-        response = None
-        successful_params = None
-        
-        for params in params_candidates:
-            try:
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    # Check if we got actual orders
-                    if isinstance(data, dict):
-                        orders = data.get("orders", []) or data.get("data", []) or []
-                    elif isinstance(data, list):
-                        orders = data
-                    else:
-                        orders = []
-                    
-                    if orders:
-                        successful_params = params
-                        break
-                    # If no orders but 200 status, continue trying other params
-                else:
-                    last_error = f"Status {response.status_code}"
-            except requests.exceptions.RequestException as e:
-                last_error = str(e)
-                continue
-        
-        if not response or response.status_code != 200:
-            print(f"✗ Error fetching trades from Dome for wallet {wallet_address}: {last_error}")
-            return []
-        
-        data = response.json()
-        
-        # Dome orders endpoint returns { orders: [...], pagination: {...} }
-        if isinstance(data, dict):
-            trades = data.get("orders", []) or data.get("data", []) or []
-        elif isinstance(data, list):
-            trades = data
-        else:
-            trades = []
-        
-        if trades:
-            if successful_params:
-                print(f"✓ Fetched {len(trades)} trades (orders) for wallet {wallet_address} from Dome using params: {successful_params}")
-            else:
-                print(f"✓ Fetched {len(trades)} trades (orders) for wallet {wallet_address} from Dome")
-        else:
-            # Debug: show what we got back
-            print(f"⚠ Warning: No trades found for wallet {wallet_address} from Dome")
-            print(f"  Response preview: {str(data)[:300]}")
-            # Try to understand the response structure
-            if isinstance(data, dict):
-                print(f"  Response keys: {list(data.keys())}")
-                if "pagination" in data:
-                    print(f"  Pagination: {data['pagination']}")
-    
-    except requests.exceptions.RequestException as e:
-        print(f"✗ Error fetching trades for wallet {wallet_address} from Dome: {e}")
-    except Exception as e:
-        print(f"✗ Unexpected error fetching trades for wallet {wallet_address} from Dome: {e}")
-    
-    if not trades:
-        print(f"\n⚠ WARNING: Could not fetch trades for wallet {wallet_address} from Dome\n")
-    else:
-        print(f"✓ Successfully fetched {len(trades)} total trades for wallet {wallet_address} from Dome")
-    return trades
+    # Use Polymarket Data API instead of Dome
+    return fetch_user_trades(wallet_address)
 
 
 def fetch_wallet_performance_dome(wallet_address: str) -> Optional[Dict]:
     """
     Fallback: Fetch wallet performance from Dome API.
-    Free tier: 1 QPS
+    DEPRECATED: Returning None to enforce using Polymarket values only.
     """
-    try:
-        url = f"{settings.DOME_API_URL}/wallets/{wallet_address}/performance"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching from Dome API: {e}")
-        return None
+    return None
 
 
 def get_market_by_id(market_id: str, markets: List[Dict]) -> Optional[Dict]:
@@ -407,37 +311,8 @@ def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
 def fetch_market_by_slug_from_dome(market_slug: str) -> Optional[Dict]:
     """
     Fetch market data from Dome API for a specific market slug.
-    This helps get market resolution data for markets not in the resolved markets list.
+    DEPRECATED: Returning None.
     """
-    try:
-        base_url = settings.DOME_API_URL.rstrip("/")
-        api_key = settings.DOME_API_KEY
-        
-        # Try different Dome API endpoints for market data
-        endpoints = [
-            f"{base_url}/polymarket/markets/{market_slug}",
-            f"{base_url}/polymarket/markets?slug={market_slug}",
-        ]
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        for url in endpoints:
-            try:
-                response = requests.get(url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    # Handle different response formats
-                    if isinstance(data, dict):
-                        return data.get("market") or data.get("data") or data
-                    elif isinstance(data, list) and len(data) > 0:
-                        return data[0]
-            except:
-                continue
-    except Exception as e:
-        pass  # Silently fail - we'll just use the markets we have
-    
     return None
 
 
@@ -485,18 +360,43 @@ def fetch_positions_for_wallet(
             params["sortDirection"] = sort_direction
         if size_threshold is not None:
             params["sizeThreshold"] = size_threshold
+            
+        # If limit is specified, just fetch that single page
         if limit is not None:
             params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
+            if offset is not None:
+                params["offset"] = offset
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            positions = response.json()
+            return positions if isinstance(positions, list) else []
+            
+        # If limit is None, fetch ALL data using pagination
+        all_positions = []
+        fetch_limit = 100  # Fetch in chunks of 100
+        current_offset = offset or 0
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        positions = response.json()
-        if isinstance(positions, list):
-            return positions
-        return []
+        while True:
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
+                
+            all_positions.extend(data)
+            
+            if len(data) < fetch_limit:
+                break
+                
+            current_offset += fetch_limit
+            
+        return all_positions
+
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error fetching positions from Polymarket API: {str(e)}")
     except Exception as e:
@@ -511,41 +411,9 @@ def fetch_orders_from_dome(
 ) -> Dict:
     """
     Fetch orders from Dome API.
-    
-    Args:
-        limit: Maximum number of orders to fetch (default: 100)
-        status: Order status filter (e.g., "closed", "open")
-        market_slug: Filter by market slug
-        user: Filter by wallet address
-    
-    Returns:
-        Dictionary with 'orders' list and 'pagination' info
+    DEPRECATED: Returning empty dict.
     """
-    try:
-        base_url = settings.DOME_API_URL.rstrip("/")
-        url = f"{base_url}/polymarket/orders"
-        
-        params = {"limit": limit}
-        if status:
-            params["status"] = status
-        if market_slug:
-            params["market_slug"] = market_slug
-        if user:
-            params["user"] = user
-        
-        headers = {
-            "Authorization": f"Bearer {settings.DOME_API_KEY}"
-        }
-        
-        response = requests.get(url, params=params, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        return data
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching orders from Dome API: {str(e)}")
-    except Exception as e:
-        raise Exception(f"Unexpected error fetching orders: {str(e)}")
+    return {"orders": [], "pagination": {}}
 
 
 def fetch_user_pnl(
@@ -615,12 +483,23 @@ def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> O
         raise Exception(f"Unexpected error fetching profile stats: {str(e)}")
 
 
-def fetch_user_activity(wallet_address: str) -> List[Dict]:
+
+
+
+def fetch_user_activity(
+    wallet_address: str, 
+    activity_type: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> List[Dict]:
     """
     Fetch user activity from Polymarket Data API.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
+        activity_type: Optional activity type filter (e.g., "REDEEM", "TRADE")
+        limit: Optional limit
+        offset: Optional offset
     
     Returns:
         List of activity dictionaries
@@ -628,6 +507,13 @@ def fetch_user_activity(wallet_address: str) -> List[Dict]:
     try:
         url = f"{settings.POLYMARKET_DATA_API_URL}/activity"
         params = {"user": wallet_address}
+        
+        if activity_type:
+            params["type"] = activity_type
+        if limit:
+            params["limit"] = limit
+        if offset:
+            params["offset"] = offset
         
         response = requests.get(url, params=params, timeout=30)
         response.raise_for_status()
@@ -668,3 +554,92 @@ def fetch_user_trades(wallet_address: str) -> List[Dict]:
     except Exception as e:
         raise Exception(f"Unexpected error fetching user trades: {str(e)}")
 
+
+def fetch_closed_positions(
+    wallet_address: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> List[Dict]:
+    """
+    Fetch closed positions for a wallet address from Polymarket Data API.
+    
+    Args:
+        wallet_address: Ethereum wallet address (0x...)
+        limit: Maximum number of positions to return
+        offset: Offset for pagination
+    
+    Returns:
+        List of closed position dictionaries
+    """
+    try:
+        url = f"{settings.POLYMARKET_DATA_API_URL}/closed-positions"
+        params = {"user": wallet_address}
+        
+        # If limit is specified, just fetch that single page
+        if limit is not None:
+            params["limit"] = limit
+            if offset is not None:
+                params["offset"] = offset
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            positions = response.json()
+            return positions if isinstance(positions, list) else []
+
+        # If limit is None, fetch ALL data using pagination
+        all_positions = []
+        fetch_limit = 100  # Fetch in chunks of 100
+        current_offset = offset or 0
+        
+        while True:
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
+                
+            all_positions.extend(data)
+            
+            if len(data) < fetch_limit:
+                break
+                
+            current_offset += fetch_limit
+            
+        return all_positions
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching closed positions from Polymarket API: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching closed positions: {str(e)}")
+
+
+def fetch_portfolio_value(wallet_address: str) -> float:
+    """
+    Fetch current portfolio value for a wallet address from Polymarket Data API.
+    
+    Args:
+        wallet_address: Ethereum wallet address (0x...)
+    
+    Returns:
+        Portfolio value as float, or 0.0 if not found
+    """
+    try:
+        url = f"{settings.POLYMARKET_DATA_API_URL}/value"
+        params = {"user": wallet_address}
+        
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        # API returns list of objects: [{"user": "...", "value": 0.041534}]
+        if isinstance(data, list) and len(data) > 0:
+            return float(data[0].get("value", 0.0))
+        return 0.0
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching portfolio value from Polymarket API: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching portfolio value: {str(e)}")

@@ -69,99 +69,10 @@ def extract_traders_from_markets(markets: List[Dict], limit: Optional[int] = Non
                 if limit and len(traders) >= limit:
                     break
     
-    # If we need more traders, try to extract from Dome orders instead of Polymarket trades
+    # If we need more traders, we previously tried to extract from Dome.
+    # Now limiting to only Polymarket data, so we stop here.
     if (not limit) or len(traders) < limit:
-        from app.core.config import settings as app_settings
-        import requests
-        
-        base_url = app_settings.DOME_API_URL.rstrip("/")
-        api_key = app_settings.DOME_API_KEY
-        headers = {"Authorization": f"Bearer {api_key}"}
-        
-        # Dome orders endpoint: we can either fetch globally or per-market.
-        # To keep Dome usage light, we:
-        #  - fetch orders per market slug (limited)
-        #  - stop once we have enough unique traders.
-        if limit:
-            max_markets_to_check = min(max(limit // 2, 20), len(markets))
-        else:
-            max_markets_to_check = min(50, len(markets))
-        
-        markets_to_check = markets[:max_markets_to_check]
-        print(f"Extracting traders from Dome orders for {len(markets_to_check)} markets (need {limit - len(traders) if limit else 'unlimited'} more)...")
-        
-        successful_markets = 0
-        failed_markets = 0
-        
-        for idx, market in enumerate(markets_to_check):
-            if limit and len(traders) >= limit:
-                break
-            
-            slug = market.get("slug") or market.get("market_id") or market.get("id")
-            if not slug:
-                failed_markets += 1
-                continue
-            
-            try:
-                url = f"{base_url}/polymarket/orders"
-                params = {
-                    "market_slug": slug,
-                    "limit": 100
-                }
-                
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-                if response.status_code != 200:
-                    failed_markets += 1
-                    if idx < 3:
-                        print(f"  Failed to fetch Dome orders for market {str(slug)[:20]}... (Status {response.status_code})")
-                    continue
-                
-                data = response.json()
-                orders = []
-                if isinstance(data, dict):
-                    orders = data.get("orders", []) or data.get("data", []) or []
-                elif isinstance(data, list):
-                    orders = data
-                
-                if not orders:
-                    failed_markets += 1
-                    continue
-                
-                traders_found_in_market = 0
-                for order in orders:
-                    # Dome orders: user field is the trader wallet
-                    address = (
-                        order.get("user")
-                        or order.get("address")
-                        or order.get("wallet")
-                    )
-                    if address and isinstance(address, str):
-                        address = address.strip()
-                        if address.startswith("0x") and len(address) == 42:
-                            traders.add(address)
-                            traders_found_in_market += 1
-                            
-                            # Cache this order for the trader to avoid re-fetching
-                            if address not in _trader_orders_cache:
-                                _trader_orders_cache[address] = []
-                            _trader_orders_cache[address].append(order)
-                            
-                            if limit and len(traders) >= limit:
-                                break
-                
-                if traders_found_in_market > 0:
-                    print(f"  Found {traders_found_in_market} traders in Dome orders for market {str(slug)[:20]}...")
-                    successful_markets += 1
-                else:
-                    failed_markets += 1
-            
-            except Exception as e:
-                failed_markets += 1
-                if idx < 3:
-                    print(f"  Error fetching Dome orders for market {str(slug)[:20]}... ({str(e)[:80]})")
-                continue
-        
-        print(f"Dome market extraction summary: {successful_markets} successful, {failed_markets} failed")
+        print(f"Extraction stopped. Found {len(traders)} traders from available markets.")
     
     trader_list = list(traders)
     

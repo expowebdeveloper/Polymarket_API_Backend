@@ -10,6 +10,7 @@ from app.services.pnl_calculator_service import calculate_user_pnl
 from app.db.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
+from app.services.polymarket_service import PolymarketService
 
 router = APIRouter(prefix="/pnl", tags=["User PnL"])
 
@@ -244,3 +245,29 @@ async def calculate_pnl_from_db_endpoint(
             detail=f"Error calculating PnL from database: {str(e)}"
         )
 
+
+@router.get(
+    "/portfolio",
+    summary="Get Portfolio Stats",
+    description="Get comprehensive portfolio statistics (PnL, Win Rate, ROI) using live data."
+)
+async def get_portfolio_stats(
+    user_address: str = Query(..., description="Wallet address (0x...)")
+):
+    """
+    Get portfolio statistics including PnL, Win Rate, and ROI.
+    This endpoint fetches live data from Polymarket APIs without relying on local database.
+    """
+    if not validate_wallet(user_address):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid wallet address format: {user_address}"
+        )
+    
+    try:
+        return PolymarketService.calculate_portfolio_stats(user_address)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating portfolio stats: {str(e)}"
+        )

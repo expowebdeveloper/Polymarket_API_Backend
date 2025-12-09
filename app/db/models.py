@@ -222,3 +222,32 @@ class AggregatedMetrics(Base):
     __table_args__ = (
         UniqueConstraint('trader_id', name='uq_aggregated_metrics_trader'),
     )
+
+
+class ClosedPosition(Base):
+    __tablename__ = "closed_positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    proxy_wallet = Column(String(42), nullable=False, index=True)
+    asset = Column(String, nullable=False, index=True)
+    condition_id = Column(String(66), nullable=False, index=True)
+    avg_price = Column(Numeric(10, 8), nullable=False)
+    total_bought = Column(Numeric(20, 8), nullable=False)
+    realized_pnl = Column(Numeric(20, 8), nullable=False)
+    cur_price = Column(Numeric(10, 8), nullable=False)
+    title = Column(Text)
+    slug = Column(String(255), index=True)
+    icon = Column(Text)
+    event_slug = Column(String(255))
+    outcome = Column(String(255))
+    outcome_index = Column(Integer)
+    opposite_outcome = Column(String(255))
+    opposite_asset = Column(String)
+    end_date = Column(String(50))
+    timestamp = Column(Integer, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint('proxy_wallet', 'asset', 'condition_id', 'timestamp', name='uq_closed_position_unique'),
+    )

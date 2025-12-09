@@ -523,3 +523,4 @@ async def process_and_insert_trade_data(
         logger.error(f"Error processing trade data for wallet {wallet_address}: {e}", exc_info=True)
         raise
 
+

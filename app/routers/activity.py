@@ -45,6 +45,20 @@ async def fetch_and_save_activity_endpoint(
         min_length=42,
         max_length=42
     ),
+    type: Optional[str] = Query(
+        None,
+        description="Filter by activity type (e.g., REDEEM, TRADE)"
+    ),
+    limit: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Maximum number of activities to fetch"
+    ),
+    offset: Optional[int] = Query(
+        None,
+        ge=0,
+        description="Offset for pagination"
+    ),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -58,6 +72,9 @@ async def fetch_and_save_activity_endpoint(
     
     Args:
         user: Wallet address (query parameter)
+        type: Activity type filter
+        limit: Limit results
+        offset: Offset results
         db: Database session (injected)
     
     Returns:
@@ -71,7 +88,9 @@ async def fetch_and_save_activity_endpoint(
     
     try:
         # Fetch activities from API and save to database
-        activities_data, saved_count = await fetch_and_save_activities(db, user)
+        activities_data, saved_count = await fetch_and_save_activities(
+            db, user, activity_type=type, limit=limit, offset=offset
+        )
         
         # Convert to response format
         activities_response = []

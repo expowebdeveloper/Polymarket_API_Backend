@@ -16,7 +16,7 @@ async def root():
         "version": settings.API_VERSION,
         "endpoints": {
             "/health": "Health check endpoint",
-            "/markets": "Get all resolved markets",
+            # "/markets": "Get all resolved markets",
             "/analytics?wallet=<address>": "Get analytics for a specific wallet",
             "/docs": "Swagger UI documentation",
             "/redoc": "ReDoc documentation"

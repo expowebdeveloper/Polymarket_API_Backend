@@ -42,3 +42,4 @@ class PerformanceAnalysisResult(BaseModel):
 class PredictiveAnalysisResult(BaseModel):
     recommendations: List[Recommendation]
 
+

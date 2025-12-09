@@ -4,7 +4,7 @@ FastAPI application main file.
 
 from fastapi import FastAPI
 from app.core.config import settings
-from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard
+from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions
 from app.db.session import init_db
 
 app = FastAPI(
@@ -22,8 +22,8 @@ async def startup_event():
 
 # Include routers
 app.include_router(general.router)
-app.include_router(markets.router)
-app.include_router(analytics.router)
+# app.include_router(markets.router)
+# app.include_router(analytics.router)
 app.include_router(traders.router)
 app.include_router(positions.router)
 app.include_router(orders.router)
@@ -32,4 +32,5 @@ app.include_router(profile_stats.router)
 app.include_router(activity.router)
 app.include_router(trades.router)
 app.include_router(leaderboard.router)
+app.include_router(closed_positions.router)
 
