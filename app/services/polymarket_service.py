@@ -1,20 +1,19 @@
 """
 Service for Polymarket data aggregation and calculation.
 """
-from typing import Dict, List, Optional
-from decimal import Decimal
-
+from typing import Dict, List, Optional, Any
 from app.services.data_fetcher import (
     fetch_positions_for_wallet,
     fetch_closed_positions,
-    fetch_portfolio_value
+    fetch_portfolio_value,
+    fetch_leaderboard_stats
 )
 
 class PolymarketService:
     @staticmethod
-    def calculate_portfolio_stats(user_address: str) -> Dict:
+    def calculate_portfolio_stats(user_address: str) -> Dict[str, Any]:
         """
-        Calculate comprehensive portfolio statistics for a user.
+        Calculate comprehensive portfolio statistics including PnL, Win Rates, and ROI.
         
         Args:
             user_address: Wallet address
@@ -23,69 +22,66 @@ class PolymarketService:
             Dictionary containing PnL, Win Rate, ROI, and other metrics
         """
         # Fetch data
-        open_positions = fetch_positions_for_wallet(user_address)
+        positions = fetch_positions_for_wallet(user_address)
         closed_positions = fetch_closed_positions(user_address)
         portfolio_value = fetch_portfolio_value(user_address)
+        leaderboard_stats = fetch_leaderboard_stats(user_address)
         
-        # Initialize metrics
-        realized_pnl = 0.0
-        unrealized_pnl = 0.0
-        invested_open = 0.0
-        invested_closed = 0.0
+        # Core Metrics from Leaderboard (Source of Truth for Profile Stats)
+        total_pnl = leaderboard_stats.get("pnl", 0.0)
+        total_investment = leaderboard_stats.get("volume", 0.0) # User defined "total stakes" as volume
+        
+        # Breakdown Metrics
+        unrealized_pnl = sum(float(p.get("cashPnl", 0.0)) for p in positions)
+        reailzed_pnl_sum = sum(float(c.get("realizedPnl", 0.0)) for c in closed_positions)
+        
+        # Win Rate Calculations
+        total_closed_count = len(closed_positions)
         wins = 0
-        total_closed = len(closed_positions)
+        winning_stakes = 0.0
+        total_stakes = 0.0
         
-        # Process Closed Positions
-        for pos in closed_positions:
-            r_pnl = float(pos.get("realizedPnl", 0.0))
-            realized_pnl += r_pnl
+        for c in closed_positions:
+            # Calculating Stake for Closed Position
+            # totalBought = size, avgPrice = entry price
+            size = float(c.get("totalBought", 0.0))
+            avg_price = float(c.get("avgPrice", 0.0))
+            stake = size * avg_price
             
-            # Count wins (profitable positions)
-            if r_pnl > 0:
+            total_stakes += stake
+            
+            # Check for Win
+            if float(c.get("realizedPnl", 0.0)) > 0:
                 wins += 1
-                
-            # Calculate investment for closed positions
-            # totalBought is typically the size (share count)
-            # avgPrice is the average buy price
-            # Investment = Size * AvgPrice
-            size = float(pos.get("totalBought", 0.0))
-            avg_price = float(pos.get("avgPrice", 0.0))
-            investment = size * avg_price
-            invested_closed += investment
-            
-        # Process Open Positions
-        for pos in open_positions:
-            # cashPnl is typically (CurrentValue - Cost)
-            cash_pnl = float(pos.get("cashPnl", 0.0))
-            unrealized_pnl += cash_pnl
-            
-            # initialValue is the cost basis
-            initial_value = float(pos.get("initialValue", 0.0))
-            invested_open += initial_value
-            
-        # Aggregate metrics
-        total_pnl = realized_pnl + unrealized_pnl
-        total_investment = invested_open + invested_closed
+                winning_stakes += stake
         
-        # Calculate derived metrics
-        win_rate = (wins / total_closed * 100) if total_closed > 0 else 0.0
+        # Standard Win Rate
+        win_rate = (wins / total_closed_count * 100) if total_closed_count > 0 else 0.0
+        
+        # Stake-Weighted Win Rate
+        # Formula: Sum(stakes of wins) / Sum(stakes of all trades)
+        stake_weighted_win_rate = (winning_stakes / total_stakes * 100) if total_stakes > 0 else 0.0
+        
+        # ROI Calculation
+        # ROI = Total PnL (Leaderboard) / Total Volume
         roi = (total_pnl / total_investment * 100) if total_investment > 0 else 0.0
         
         return {
             "user_address": user_address,
             "pnl_metrics": {
-                "realized_pnl": round(realized_pnl, 2),
+                "realized_pnl": round(reailzed_pnl_sum, 2),
                 "unrealized_pnl": round(unrealized_pnl, 2),
-                "total_pnl": round(total_pnl, 2)
+                "total_pnl": round(total_pnl, 2) # Sourced from Leaderboard
             },
             "performance_metrics": {
                 "win_rate": round(win_rate, 2),
+                "stake_weighted_win_rate": round(stake_weighted_win_rate, 2),
                 "roi": round(roi, 2),
                 "total_investment": round(total_investment, 2),
                 "portfolio_value": round(portfolio_value, 2)
             },
             "positions_summary": {
-                "open_positions_count": len(open_positions),
-                "closed_positions_count": total_closed
+                "open_positions_count": len(positions),
+                "closed_positions_count": total_closed_count
             }
         }

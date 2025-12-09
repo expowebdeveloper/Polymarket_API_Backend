@@ -588,7 +588,7 @@ def fetch_closed_positions(
 
         # If limit is None, fetch ALL data using pagination
         all_positions = []
-        fetch_limit = 100  # Fetch in chunks of 100
+        fetch_limit = 1000  # Fetch in chunks of 100
         current_offset = offset or 0
         
         while True:
@@ -604,10 +604,14 @@ def fetch_closed_positions(
                 
             all_positions.extend(data)
             
-            if len(data) < fetch_limit:
-                break
-                
-            current_offset += fetch_limit
+            # Increment offset by the number of received items
+            # Polymarket API might cap limit at 50 even if we ask for 100
+            # So we only stop if we get 0 items (handled above)
+            current_offset += len(data)
+            
+            # Safety break if we receive fewer items than a very small threshold
+            # e.g., if we get less than 1 item, which is covered by 'not data' check
+            # We remove the < fetch_limit check to support server-side limit capping
             
         return all_positions
 
@@ -643,3 +647,43 @@ def fetch_portfolio_value(wallet_address: str) -> float:
         raise Exception(f"Error fetching portfolio value from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching portfolio value: {str(e)}")
+
+
+def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
+    """
+    Fetch all-time stats (volume, pnl) for a user from the Leaderboard API.
+    
+    Args:
+        wallet_address: Ethereum wallet address (0x...)
+    
+    Returns:
+        Dictionary with "volume" and "pnl" keys
+    """
+    try:
+        url = "https://data-api.polymarket.com/v1/leaderboard"
+        params = {
+            "timePeriod": "all",
+            "orderBy": "VOL",
+            "limit": 1,
+            "offset": 0,
+            "category": "overall",
+            "user": wallet_address
+        }
+        
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        # Example: [{"user": "...", "vol": 12345.67, "pnl": -353.01...}]
+        stats = {"volume": 0.0, "pnl": 0.0}
+        if isinstance(data, list) and len(data) > 0:
+            item = data[0]
+            stats["volume"] = float(item.get("vol", 0.0))
+            stats["pnl"] = float(item.get("pnl", 0.0))
+            return stats
+        return stats
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching leaderboard stats: {str(e)}")
+
