@@ -484,8 +484,6 @@ def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> O
 
 
 
-
-
 def fetch_user_activity(
     wallet_address: str, 
     activity_type: Optional[str] = None,
