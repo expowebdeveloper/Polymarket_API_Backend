@@ -1,0 +1,306 @@
+"""
+Trader service for extracting and managing trader data.
+"""
+
+from typing import List, Dict, Set, Optional
+from collections import defaultdict
+from datetime import datetime
+
+from app.services.data_fetcher import (
+    fetch_resolved_markets,
+    fetch_trades_for_wallet,
+    get_market_by_id
+)
+from app.services.scoring_engine import calculate_metrics
+
+# Simple in-memory cache to store orders by wallet address
+# This avoids re-fetching when we already have the data from market extraction
+_trader_orders_cache: Dict[str, List[Dict]] = {}
+
+
+def extract_traders_from_markets(markets: List[Dict], limit: Optional[int] = None) -> List[str]:
+    """
+    Extract unique wallet addresses from markets by fetching trades.
+    Returns a list of unique trader wallet addresses.
+    
+    Args:
+        markets: List of market dictionaries
+        limit: Maximum number of traders to extract (for testing)
+    
+    Returns:
+        List of unique wallet addresses
+    """
+    traders: Set[str] = set()
+    
+    # Use a seed list of known traders for faster response
+    # In production, you might want to maintain a database of traders
+    from app.core.config import settings
+    
+    # Seed list - you can add more known traders here
+    # These are example addresses - in production, maintain a database
+    seed_traders = [
+        settings.TARGET_WALLET,
+        # Add more known active traders here if you have them
+        # "0x...",  # Example trader 1
+        # "0x...",  # Example trader 2
+    ]
+    
+    # Filter out invalid addresses
+    seed_traders = [t for t in seed_traders if t and t.startswith("0x") and len(t) == 42]
+    
+    # Add seed traders
+    for trader in seed_traders:
+        if trader and trader.startswith("0x") and len(trader) == 42:
+            traders.add(trader)
+            if limit and len(traders) >= limit:
+                break
+    
+    # First, try to extract traders from market data itself (if available)
+    # Some markets might have creator/owner fields
+    for market in markets:
+        if limit and len(traders) >= limit:
+            break
+        
+        # Check for creator/owner fields in market data
+        for field in ["creator", "owner", "author", "user", "trader"]:
+            address = market.get(field) or market.get(f"{field}_address") or market.get(f"{field}Address")
+            if address and isinstance(address, str) and address.startswith("0x") and len(address) == 42:
+                traders.add(address)
+                if limit and len(traders) >= limit:
+                    break
+    
+    # If we need more traders, we previously tried to extract from Dome.
+    # Now limiting to only Polymarket data, so we stop here.
+    if (not limit) or len(traders) < limit:
+        print(f"Extraction stopped. Found {len(traders)} traders from available markets.")
+    
+    trader_list = list(traders)
+    
+    # If we don't have enough traders and we have a limit, generate some sample traders for testing
+    if limit and len(trader_list) < limit:
+        needed = limit - len(trader_list)
+        print(f"Only found {len(trader_list)} traders. Generating {needed} sample traders for testing...")
+        
+        # Generate sample trader addresses (for testing purposes)
+        # In production, you'd want to maintain a database of known traders
+        import random
+        import string
+        
+        for i in range(needed):
+            # Generate a valid-looking Ethereum address (for testing)
+            # Format: 0x + 40 hex characters
+            hex_chars = '0123456789abcdef'
+            address = '0x' + ''.join(random.choice(hex_chars) for _ in range(40))
+            trader_list.append(address)
+        
+        print(f"Generated {needed} sample traders. Total: {len(trader_list)}")
+    
+    print(f"Extracted {len(trader_list)} unique traders")
+    return trader_list
+
+
+def get_trader_basic_info(wallet_address: str, markets: List[Dict]) -> Dict:
+    """
+    Get basic information about a trader without full analytics.
+    Faster than full analytics calculation.
+    """
+    trades = fetch_trades_for_wallet(wallet_address)
+    
+    if not trades:
+        return {
+            "wallet_address": wallet_address,
+            "total_trades": 0,
+            "total_positions": 0,
+            "first_trade_date": None,
+            "last_trade_date": None
+        }
+    
+    # Extract unique positions
+    positions = set()
+    timestamps = []
+    
+    for trade in trades:
+        # Extract market identifier - handle Dome order field variations
+        market_id = (
+            trade.get("market_id") or 
+            trade.get("market") or 
+            trade.get("marketId") or
+            trade.get("market_slug") or
+            trade.get("marketSlug") or
+            trade.get("slug")
+        )
+        if market_id:
+            positions.add(market_id)
+        
+        # Extract timestamp
+        timestamp_str = (
+            trade.get("timestamp") or 
+            trade.get("createdAt") or 
+            trade.get("created_at") or 
+            trade.get("time")
+        )
+        if timestamp_str:
+            try:
+                if isinstance(timestamp_str, (int, float)):
+                    timestamps.append(datetime.fromtimestamp(timestamp_str))
+                else:
+                    ts_str = str(timestamp_str).replace("Z", "+00:00")
+                    timestamps.append(datetime.fromisoformat(ts_str))
+            except:
+                pass
+    
+    first_trade = min(timestamps) if timestamps else None
+    last_trade = max(timestamps) if timestamps else None
+    
+    return {
+        "wallet_address": wallet_address,
+        "total_trades": len(trades),
+        "total_positions": len(positions),
+        "first_trade_date": first_trade.isoformat() if first_trade else None,
+        "last_trade_date": last_trade.isoformat() if last_trade else None
+    }
+
+
+def get_trader_detail(wallet_address: str) -> Dict:
+    """
+    Get detailed trader information including full analytics.
+    """
+    # Fetch trades first to know which markets we need
+    trades = fetch_trades_for_wallet(wallet_address)
+    
+    # Extract unique market slugs from trades
+    market_slugs_from_trades = set()
+    for trade in trades:
+        market_id = (
+            trade.get("market_id") or 
+            trade.get("market") or 
+            trade.get("marketId") or
+            trade.get("market_slug") or
+            trade.get("marketSlug") or
+            trade.get("slug")
+        )
+        if market_id:
+            market_slugs_from_trades.add(market_id)
+    
+    # Fetch resolved markets (these have resolution data)
+    markets = fetch_resolved_markets(limit=200)  # Fetch more markets for better matching
+    
+    # For markets in trades that aren't in resolved markets, try to fetch from Dome
+    # This helps get resolution data for markets that might be resolved but not in our list
+    from app.services.data_fetcher import fetch_market_by_slug_from_dome
+    markets_found = {m.get("slug") or m.get("market_id") or m.get("id"): m for m in markets}
+    
+    # Try to fetch missing markets from Dome (limit to avoid too many API calls)
+    for slug in list(market_slugs_from_trades)[:10]:  # Limit to 10 to avoid rate limits
+        if slug not in markets_found:
+            dome_market = fetch_market_by_slug_from_dome(slug)
+            if dome_market:
+                markets.append(dome_market)
+                markets_found[slug] = dome_market
+    
+    metrics = calculate_metrics(wallet_address, trades, markets)
+
+    # Derive total trades from raw trades list so it reflects what Dome returned
+    total_trades = len(trades) if trades else 0
+    
+    # Add trade date information
+    timestamps = []
+    for trade in trades or []:
+        timestamp_str = (
+            trade.get("timestamp")
+            or trade.get("createdAt")
+            or trade.get("created_at")
+            or trade.get("time")
+        )
+        if timestamp_str:
+            try:
+                if isinstance(timestamp_str, (int, float)):
+                    timestamps.append(datetime.fromtimestamp(timestamp_str))
+                else:
+                    ts_str = str(timestamp_str).replace("Z", "+00:00")
+                    timestamps.append(datetime.fromisoformat(ts_str))
+            except Exception:
+                # Ignore malformed timestamps, they just won't affect first/last trade dates
+                pass
+    
+    first_trade = min(timestamps) if timestamps else None
+    last_trade = max(timestamps) if timestamps else None
+    
+    # Shape the response to match TraderDetail schema exactly
+    return {
+        "wallet_address": wallet_address,
+        "total_trades": total_trades,
+        "total_positions": metrics.get("total_positions", 0),
+        "active_positions": metrics.get("active_positions", 0),
+        "total_wins": metrics.get("total_wins", 0.0),
+        "total_losses": metrics.get("total_losses", 0.0),
+        "win_rate_percent": metrics.get("win_rate_percent", 0.0),
+        "pnl": metrics.get("pnl", 0.0),
+        "final_score": metrics.get("final_score", 0.0),
+        "first_trade_date": first_trade.isoformat() if first_trade else None,
+        "last_trade_date": last_trade.isoformat() if last_trade else None,
+        "categories": metrics.get("categories", {}),
+    }
+
+
+def get_traders_list(limit: int = 50) -> List[Dict]:
+    """
+    Get a list of traders with basic information.
+    Extracts traders from markets.
+    
+    Args:
+        limit: Maximum number of traders to return
+    
+    Returns:
+        List of trader dictionaries with basic info
+    """
+    markets = fetch_resolved_markets()
+    
+    # Extract traders - try to get more than the limit to account for traders with no data
+    # We'll request 1.5x the limit to ensure we have enough after filtering
+    extraction_limit = int(limit * 1.5) if limit else None
+    trader_addresses = extract_traders_from_markets(markets, limit=extraction_limit)
+    
+    if not trader_addresses:
+        print("⚠ No traders found. Returning empty list.")
+        return []
+    
+    print(f"Found {len(trader_addresses)} unique trader addresses. Getting basic info...")
+    
+    # Get basic info for each trader
+    traders_info = []
+    traders_with_trades = 0
+    traders_without_trades = 0
+    
+    for idx, wallet in enumerate(trader_addresses):
+        if limit and len(traders_info) >= limit:
+            break
+            
+        try:
+            info = get_trader_basic_info(wallet, markets)
+            
+            # Include all traders, even if they have no trades (API might have failed)
+            traders_info.append(info)
+            
+            if info.get("total_trades", 0) > 0:
+                traders_with_trades += 1
+            else:
+                traders_without_trades += 1
+                
+        except Exception as e:
+            # Even if we can't get full info, create a basic entry
+            traders_info.append({
+                "wallet_address": wallet,
+                "total_trades": 0,
+                "total_positions": 0,
+                "first_trade_date": None,
+                "last_trade_date": None
+            })
+            traders_without_trades += 1
+            if idx < 5:  # Only print first few errors
+                print(f"  Warning: Could not get full info for trader {wallet[:20]}... ({str(e)[:50]})")
+    
+    print(f"✓ Successfully retrieved info for {len(traders_info)} traders")
+    print(f"  - {traders_with_trades} with trades, {traders_without_trades} without trades (API may have failed)")
+    return traders_info
+

@@ -1,0 +1,1440 @@
+{
+  "wallet_trades": [
+    {
+      "wallet": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+      "offset": 0,
+      "raw_data": {
+        "orders": [
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 52890000,
+            "price": 0.59,
+            "tx_hash": "0x970efa845a6d2729088cd623a0db3df840c8a5535864f859cfd4cd26d595d130",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764223379,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xef460652c993d011442553faaa81b13a924cf872",
+            "shares_normalized": 52.89
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 48780486,
+            "price": 0.5900000053300002,
+            "tx_hash": "0xa4a4ae3489e904581c8ca17cbb44385ca07ca2f992455ce74f65cbba6eb32117",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764223175,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x2a1158d063ab068142b607508093d86972f9db4b",
+            "shares_normalized": 48.780486
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 4878047,
+            "price": 0.5900000553500202,
+            "tx_hash": "0x398c7ab79641702e4b81a7fa14158548c08684cb00582c47cd8c9cd1d31ad561",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764223103,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x0dcbce62276d3ee9b4f300a90764c27cd07f7089",
+            "shares_normalized": 4.878047
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 48780486,
+            "price": 0.5900000053300002,
+            "tx_hash": "0xd49742e049f5b75cbf5d940eaf9b28eb882c836a1bd41dee37fac95c83faf354",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764222519,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xac7f707e7684190fede17e5100f54f553024361f",
+            "shares_normalized": 48.780486
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 1610000,
+            "price": 0.59,
+            "tx_hash": "0x9484111a55202235e24ac5050383b2a4964d2053deae896ad7e115e36a7598a0",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764222149,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x80c6e54e92c209add40ee3c6f3047396e7a86660",
+            "shares_normalized": 1.61
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 22270000,
+            "price": 0.59,
+            "tx_hash": "0xfe72a418bd119bed80c94dcb324eee0c9dd230e2c3f8d36416b4bb723b5022ca",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764221817,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xc44963399e035f7e7d627efd98c9a309592c2239",
+            "shares_normalized": 22.27
+          },
+          {
+            "token_id": "17461713251719260553470156863516004483770825762572101807185439582693512559321",
+            "token_label": "Up",
+            "side": "SELL",
+            "market_slug": "btc-updown-15m-1764178200",
+            "condition_id": "0x5f0871ebbd5e1e31033449078f81e9945bc324cfa1936e02f45080e2b6069217",
+            "shares": 111110000,
+            "price": 0.95,
+            "tx_hash": "0x29d6fd7518d14a0a1bd0a3049c57650b3c7359ea2cd513c460d5290060f5089f",
+            "title": "Bitcoin Up or Down - November 26, 12:30PM-12:45PM ET",
+            "timestamp": 1764178711,
+            "order_hash": "0x72e7f24b1d65a3d4f2d0bcef7c1aa042ff139c3b0c3e04b011943dc9d4d91bad",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 111.11
+          },
+          {
+            "token_id": "17461713251719260553470156863516004483770825762572101807185439582693512559321",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764178200",
+            "condition_id": "0x5f0871ebbd5e1e31033449078f81e9945bc324cfa1936e02f45080e2b6069217",
+            "shares": 111111110,
+            "price": 0.9,
+            "tx_hash": "0x9def16c4be2cabd31ecc91d4d21cf97822535f5f13eef437dcc3d35ed1fba2d9",
+            "title": "Bitcoin Up or Down - November 26, 12:30PM-12:45PM ET",
+            "timestamp": 1764178615,
+            "order_hash": "0xf6a80cf4cc0c5ee8a1e660b6188802255b3e5539bf1ab2d15add0195e274cbf0",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 111.11111
+          },
+          {
+            "token_id": "29951562483791503900216993733898588111704695048388234102401528765013076107891",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764175500",
+            "condition_id": "0x197665faf6f7b8761ca30ffa72a87be9c82e7c023a238619ce5f0181204be4c8",
+            "shares": 31578940,
+            "price": 0.95,
+            "tx_hash": "0xd04f9afeb2fc34095d315458bfbaae7e8d66bb5c6f0e07132c3765a2f6ae5e89",
+            "title": "Bitcoin Up or Down - November 26, 11:45AM-12:00PM ET",
+            "timestamp": 1764176197,
+            "order_hash": "0x7aa95698d2764a53f71bc5fd82e7415f4376dd792cef56b97b3379b27c0644f5",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 31.57894
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 3365852,
+            "price": 0.5900000950725106,
+            "tx_hash": "0x5a91e1aa40b0d99bd4c5750d5b5c99c19d158ee5292fd8dff51f96f715aea0f6",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764169543,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xc906f499bbe93cfa5fdafc877773b00b801dfe7a",
+            "shares_normalized": 3.365852
+          },
+          {
+            "token_id": "69518074889614318085439205475873856801666282503134348362942368689717207684380",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-27",
+            "condition_id": "0x9ce7af390d48b7285d474fd6a3f2151a0ea790d58ddf8dab94915a2da7955c57",
+            "shares": 17400000,
+            "price": 0.59,
+            "tx_hash": "0x20505c7a497bdde43d010ec7894adeab48f237ea0681cce87da0c46aec1cf1c3",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 5)",
+            "timestamp": 1764169533,
+            "order_hash": "0x86721ddd85680e21eb9576f551c69f4a33c681f7a187289cb71948be28852e2e",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x908aad3bfbd70410e73f1db6a3e46c2a917cad16",
+            "shares_normalized": 17.4
+          },
+          {
+            "token_id": "68423111509919386859583076998262466834126977384581153714791973609942846741274",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764151200",
+            "condition_id": "0x96d30890fd537443b9b86b71e2e6567317cd657fc2ce903a21515a62c3b9d13b",
+            "shares": 100000000,
+            "price": 0.99,
+            "tx_hash": "0x637a89983a51640c22ecd5c5aab44ad882e5913f4a2cb429cdc2b4b650d4da05",
+            "title": "Bitcoin Up or Down - November 26, 5:00AM-5:15AM ET",
+            "timestamp": 1764151963,
+            "order_hash": "0xf0fc55dbf9761be258563d482dbf613d5d1a71c1002201186a7f99d4e8047f45",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xce34fe82f693724f6af02702561bfece3a895c28",
+            "shares_normalized": 100
+          },
+          {
+            "token_id": "67242180752617609947386938803672868307547934160418479597359326866763742492464",
+            "token_label": "Yes",
+            "side": "SELL",
+            "market_slug": "test-ind-sou-2025-11-22-SOU",
+            "condition_id": "0xe28d315b93147e028f1eb9f79b092586c8d66da65d31e9f1881b0126f2be1a0d",
+            "shares": 270000000,
+            "price": 0.999,
+            "tx_hash": "0x5afa4ed8b3fe6ab5d726ac62326b4ea69a4460b67c9c9b4c04a3135acfe004b0",
+            "title": "Will South Africa win?",
+            "timestamp": 1764141897,
+            "order_hash": "0x28e2c805832ebc632bbff6f87fb0c8e7099be71ce24247955a35209b021547a5",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xc5d563a36ae78145c45a50134d48a1215220f80a",
+            "shares_normalized": 270
+          },
+          {
+            "token_id": "67242180752617609947386938803672868307547934160418479597359326866763742492464",
+            "token_label": "Yes",
+            "side": "BUY",
+            "market_slug": "test-ind-sou-2025-11-22-SOU",
+            "condition_id": "0xe28d315b93147e028f1eb9f79b092586c8d66da65d31e9f1881b0126f2be1a0d",
+            "shares": 270000000,
+            "price": 0.78,
+            "tx_hash": "0xd6659bda0ab99f9aaef5e2fd90b8857a093d58b74bc42fd43a7604988a0a27f1",
+            "title": "Will South Africa win?",
+            "timestamp": 1764133221,
+            "order_hash": "0xa0ad9fe5da4966662043cb7447e3a2accc206143cb3c2b99a923983f7927e1e3",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4df332e27f9ee3224f52ce30e3ce15c1075e788f",
+            "shares_normalized": 270
+          },
+          {
+            "token_id": "93165195065262649795812054563962295850166436996124775771268197101789162610312",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764099900",
+            "condition_id": "0x12af90b29348a1827bd1c2172d4cf72586e52e51fffc579265a1cec0fe3822f1",
+            "shares": 220170000,
+            "price": 0.99,
+            "tx_hash": "0x686a87b5979739c65caf656d1644ae55b55f3d2cb1c8c7184cd47db983131b2e",
+            "title": "Bitcoin Up or Down - November 25, 2:45PM-3:00PM ET",
+            "timestamp": 1764100667,
+            "order_hash": "0xa1e07d6dfbcc117c57111528e96d0fdcba8e60979dd5e6cc981f90219b9030b2",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x557bed924a1bb6f62842c5742d1dc789b8d480d4",
+            "shares_normalized": 220.17
+          },
+          {
+            "token_id": "115486826172038599144500999195535728684795815881626855138781798853283576474695",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764099000",
+            "condition_id": "0x20b603ca341acb01768947a580f29bba0295e46a44d989724d9054ec942fdad6",
+            "shares": 220171700,
+            "price": 0.99,
+            "tx_hash": "0xa20b0bfbcfb754e434d574e598387d1634e6a2781883fd26646ae25dccc9b8fd",
+            "title": "Bitcoin Up or Down - November 25, 2:30PM-2:45PM ET",
+            "timestamp": 1764099787,
+            "order_hash": "0x77b32939f81439f42be2386a22e86cf74f8c5979b7fdbc25a43a2974c2db18d1",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 220.1717
+          },
+          {
+            "token_id": "50344523693976813272695994874812976087670638244095822428876341411599486956495",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764093600",
+            "condition_id": "0xb19d6a70f44affb0ef5ec119f3350068fb60dfafd000c5f3ebf4d33f297f490e",
+            "shares": 53191483,
+            "price": 0.9399999996239999,
+            "tx_hash": "0x428de66b8691cbd4b2e622cef247487e0e44bf19db160d028fe28bd7d97cb3e5",
+            "title": "Bitcoin Up or Down - November 25, 1:00PM-1:15PM ET",
+            "timestamp": 1764094241,
+            "order_hash": "0x3245020b446ef04c0b67eb77be96a110841f2c98f4955b956d40b6ee1b680f9f",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 53.191483
+          },
+          {
+            "token_id": "107991940326650467234447394267154269020003287089977608393780496672914633363231",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764079200",
+            "condition_id": "0xe26df34e23bc19d6db64ebe88131421060a6be28042435a711396567178c4839",
+            "shares": 10000000,
+            "price": 0.98,
+            "tx_hash": "0x5cf7d61b03cec01aa776c6801c92832ff7c19ff5bf68d0900959650c5faa92ad",
+            "title": "Bitcoin Up or Down - November 25, 9:00AM-9:15AM ET",
+            "timestamp": 1764080003,
+            "order_hash": "0xb3ccd6dfe5f7f90f1cb17329643070f819b682cfd6b69b81a41580905121bb6c",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 10
+          },
+          {
+            "token_id": "107991940326650467234447394267154269020003287089977608393780496672914633363231",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764079200",
+            "condition_id": "0xe26df34e23bc19d6db64ebe88131421060a6be28042435a711396567178c4839",
+            "shares": 30612200,
+            "price": 0.98,
+            "tx_hash": "0x6c768d48ab60f400db3e39f569b6d5a6f12cd98d163127317adfd72460f87914",
+            "title": "Bitcoin Up or Down - November 25, 9:00AM-9:15AM ET",
+            "timestamp": 1764079911,
+            "order_hash": "0xe9da9aea7e8095997a7ff23f7e4a9700140675bb576add271ec125c840d58ff0",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 30.6122
+          },
+          {
+            "token_id": "29621762085957628393650717875567131835907707234739387815593968836021028275628",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1764078300",
+            "condition_id": "0x14dc84c5a1c41791e536a4803c6b4c28a23aeb26f862ffbfa757e438f9beba87",
+            "shares": 63291138,
+            "price": 0.789999999684,
+            "tx_hash": "0x4ce8e2b2c425446612f14d0644e3038afde96413c7bb19b75fa003a85495cf31",
+            "title": "Bitcoin Up or Down - November 25, 8:45AM-9:00AM ET",
+            "timestamp": 1764079153,
+            "order_hash": "0x1b9c2f5125b41843b909f842fb4d3fd079eb16f27caef0cfe9e2093ddb26f24d",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 63.291138
+          },
+          {
+            "token_id": "90231089525498149720588190638936180157938148255755371873691594698457349079123",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763987400",
+            "condition_id": "0x4810a24cf138e87c58f7d2e338563d1874a57d212ec7ad744682e026e412cb76",
+            "shares": 154880000,
+            "price": 0.99,
+            "tx_hash": "0xc535143bb28e29ae2edfc19383fa4104b81acaad01d942b82334bf550110070c",
+            "title": "Bitcoin Up or Down - November 24, 7:30AM-7:45AM ET",
+            "timestamp": 1763988199,
+            "order_hash": "0x9a0b09fa7bdaa7a5377cb6357397232de60111c4f2f343dfbdd654ae4db9f1d6",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x28fd68cb72b022b4439f1265cd2d76b870da241f",
+            "shares_normalized": 154.88
+          },
+          {
+            "token_id": "90231089525498149720588190638936180157938148255755371873691594698457349079123",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763987400",
+            "condition_id": "0x4810a24cf138e87c58f7d2e338563d1874a57d212ec7ad744682e026e412cb76",
+            "shares": 7050000,
+            "price": 0.99,
+            "tx_hash": "0x2119c5c605045f5666a40879982ded2d6288a0fa1b03da856d93a2b3babf5887",
+            "title": "Bitcoin Up or Down - November 24, 7:30AM-7:45AM ET",
+            "timestamp": 1763988183,
+            "order_hash": "0x9a0b09fa7bdaa7a5377cb6357397232de60111c4f2f343dfbdd654ae4db9f1d6",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x5fd48440d810ca1e3b77aaf6215d62283f158d9f",
+            "shares_normalized": 7.05
+          },
+          {
+            "token_id": "90231089525498149720588190638936180157938148255755371873691594698457349079123",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763987400",
+            "condition_id": "0x4810a24cf138e87c58f7d2e338563d1874a57d212ec7ad744682e026e412cb76",
+            "shares": 38070000,
+            "price": 0.99,
+            "tx_hash": "0xbe2bed91d35853437fa8b57489a49a142cd6e3392c85be5f8aed54787f164785",
+            "title": "Bitcoin Up or Down - November 24, 7:30AM-7:45AM ET",
+            "timestamp": 1763988167,
+            "order_hash": "0x9a0b09fa7bdaa7a5377cb6357397232de60111c4f2f343dfbdd654ae4db9f1d6",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x18502c2f6e6146d840212196cfcc6169329f58b7",
+            "shares_normalized": 38.07
+          },
+          {
+            "token_id": "4536752727630025818473325475607059735885084925017688288479935824764008409345",
+            "token_label": "Down",
+            "side": "SELL",
+            "market_slug": "btc-updown-15m-1763986500",
+            "condition_id": "0x3c868e37951c07a7f7b7e96bccf2f4d6e5cea480b66951fe7ce6a540506d9c14",
+            "shares": 20000000,
+            "price": 0.5375,
+            "tx_hash": "0xd8c0ca691c2239f24a7b7ce81855bc60814e3c90cb04d8fb5808edbf32feb82e",
+            "title": "Bitcoin Up or Down - November 24, 7:15AM-7:30AM ET",
+            "timestamp": 1763986573,
+            "order_hash": "0x7f5845f72bfccd8a6494b6cdb82c0fe7b1fcdae66e26f59167bbc692a1479e01",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 20
+          },
+          {
+            "token_id": "52155066499453092560707309493240546222111061779063758825493467346518782281520",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763985600",
+            "condition_id": "0x0dd32f779a97c92c7d31212394c6800bcf87659f10349106b26a53053d6154e9",
+            "shares": 182460000,
+            "price": 0.98,
+            "tx_hash": "0x4258082a8978ec8aba734a0d049c32d3f09b6f8af80105be68fea52406626c34",
+            "title": "Bitcoin Up or Down - November 24, 7:00AM-7:15AM ET",
+            "timestamp": 1763986271,
+            "order_hash": "0xe6691fba2e3ba63a4420e3d454bd2e926ee3100bc12ee742cce161127a056e3d",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 182.46
+          },
+          {
+            "token_id": "4536752727630025818473325475607059735885084925017688288479935824764008409345",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763986500",
+            "condition_id": "0x3c868e37951c07a7f7b7e96bccf2f4d6e5cea480b66951fe7ce6a540506d9c14",
+            "shares": 20000000,
+            "price": 0.5,
+            "tx_hash": "0xaa04c9afbf5d7d9dfa1869b323260a1c6af2c0f5fb7d8eaa578116dfa9b08c30",
+            "title": "Bitcoin Up or Down - November 24, 7:15AM-7:30AM ET",
+            "timestamp": 1763986095,
+            "order_hash": "0x41929db9d5837e5adb6ba7ab292bc1925a95d453fc50c8ddd02cb5d7cc546042",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 20
+          },
+          {
+            "token_id": "18558553757433244149786497584398217175862510041136696145369104192617389820978",
+            "token_label": "Down",
+            "side": "SELL",
+            "market_slug": "btc-updown-15m-1763970300",
+            "condition_id": "0xcd2ad155b82c3fbaa04c0c918eecda081831124a4c42145c9c1fb05f813c50af",
+            "shares": 19600000,
+            "price": 0.57,
+            "tx_hash": "0xd0ebba48c1c09f653a796e03e97ebc6f87eaf8093ede3f04273a900f58b5920c",
+            "title": "Bitcoin Up or Down - November 24, 2:45AM-3:00AM ET",
+            "timestamp": 1763970351,
+            "order_hash": "0x2bd11ae3f90216187ae5e18c60dd36c33c1636f8715159e950457f0d5a006edc",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 19.6
+          },
+          {
+            "token_id": "18558553757433244149786497584398217175862510041136696145369104192617389820978",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763970300",
+            "condition_id": "0xcd2ad155b82c3fbaa04c0c918eecda081831124a4c42145c9c1fb05f813c50af",
+            "shares": 19607842,
+            "price": 0.5099999785799988,
+            "tx_hash": "0x1d3ba6bc9b969cdeac99a0a2ed97d0423d8417473960988b89990e9525c9852c",
+            "title": "Bitcoin Up or Down - November 24, 2:45AM-3:00AM ET",
+            "timestamp": 1763970227,
+            "order_hash": "0x5d7a6593664c030e508fbd11f0b125a84ba779995296ce66e8393364ceb8d0bb",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 19.607842
+          },
+          {
+            "token_id": "60752800251206028795304422480853961625933857445339936554520161928690017148357",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763967600",
+            "condition_id": "0x044e98979f18c0a5ae95868aa1b3650466a2decc7ace6f6a0c393bbcf6bb6a46",
+            "shares": 59523806,
+            "price": 0.839999999328,
+            "tx_hash": "0x714e0a91d268a39507815a723c98f049a7ac79800f7780f4258ecd1fe8036257",
+            "title": "Bitcoin Up or Down - November 24, 2:00AM-2:15AM ET",
+            "timestamp": 1763968421,
+            "order_hash": "0x5963771796282eacc8f9c6723a994da8fd8b5f231f52f4614c612a5d76d042e8",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 59.523806
+          },
+          {
+            "token_id": "81964169994524788038083710693495385229382821971509477285877380050568409778425",
+            "token_label": "Down",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763929800",
+            "condition_id": "0x0326b7cd94f39144d7b8f2759abbbe172c7d0d06aadd99a0588a3c58d732cde2",
+            "shares": 183575700,
+            "price": 0.99,
+            "tx_hash": "0x0c45ecd2ba8432236bbea45d4f475fbf866377f848959f46e43d771b74928ff1",
+            "title": "Bitcoin Up or Down - November 23, 3:30PM-3:45PM ET",
+            "timestamp": 1763930555,
+            "order_hash": "0xc69cbea0188877b025fafc7533150607168b1e793959cd8aad92c4bdefc58825",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 183.5757
+          },
+          {
+            "token_id": "100373044752570014283681787968139698148342191586679149751943121278919189485625",
+            "token_label": "Up",
+            "side": "BUY",
+            "market_slug": "btc-updown-15m-1763928000",
+            "condition_id": "0x41476da2fef5f5f7bab436afe2a537b364ec884d4d7a3280a67314cc1e8029d1",
+            "shares": 13157891,
+            "price": 0.7599999878399966,
+            "tx_hash": "0x6d3ea4e78c39e118b1d7d58c2eb851cf5ae7912d3e772e3233617950ec33b975",
+            "title": "Bitcoin Up or Down - November 23, 3:00PM-3:15PM ET",
+            "timestamp": 1763928843,
+            "order_hash": "0x67403a00bd12ad867a689e0a20a5fc1bb0078d40a3188ac0d8c2cc82c1a152c0",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 13.157891
+          },
+          {
+            "token_id": "58551393955659814232341933517668513812814388964224363088750048446975844251459",
+            "token_label": "Pakistan",
+            "side": "SELL",
+            "market_slug": "t20-pak-zim-2025-11-23",
+            "condition_id": "0x23c37ded4ac6e6c780cd030a37c792a0d34aebc269861ce7356c70748cc271c2",
+            "shares": 178000000,
+            "price": 0.999,
+            "tx_hash": "0x58ef61e59dce5570cd752a2674fce4625560363317f2071582fbbdde5ba1c01e",
+            "title": "Pakistan Tri-Series: Pakistan vs Zimbabwe (Game 4)",
+            "timestamp": 1763917961,
+            "order_hash": "0xb880f828018a3aa55ad16975d1e011e07b2ef52926b450b7dcb91aa5c004ac34",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 178
+          },
+          {
+            "token_id": "58551393955659814232341933517668513812814388964224363088750048446975844251459",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-zim-2025-11-23",
+            "condition_id": "0x23c37ded4ac6e6c780cd030a37c792a0d34aebc269861ce7356c70748cc271c2",
+            "shares": 128000000,
+            "price": 0.84,
+            "tx_hash": "0x3921d165063ad2e1424aee2c79c80bdff34153da74fe6d71e8165c3affd5f078",
+            "title": "Pakistan Tri-Series: Pakistan vs Zimbabwe (Game 4)",
+            "timestamp": 1763887299,
+            "order_hash": "0x3274dc31500e298a0d8500b0ea975746fc91d97420ebde6e139d4f5d616358d4",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x6684c2a24c764b471a08e441a073ea74c52295d1",
+            "shares_normalized": 128
+          },
+          {
+            "token_id": "58551393955659814232341933517668513812814388964224363088750048446975844251459",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-zim-2025-11-23",
+            "condition_id": "0x23c37ded4ac6e6c780cd030a37c792a0d34aebc269861ce7356c70748cc271c2",
+            "shares": 50000000,
+            "price": 0.83,
+            "tx_hash": "0xe6ee8a191baa1dae61cd941cf498d850cfcbaf0c3dfc05c97ffcca1150bdd065",
+            "title": "Pakistan Tri-Series: Pakistan vs Zimbabwe (Game 4)",
+            "timestamp": 1763879329,
+            "order_hash": "0x928825656a97e00312c1a635273e251bb3ec1c4807a37278aed7b794c9157d44",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x019c1de0abb207f34aa63bd3ffe4dc0563ede2c2",
+            "shares_normalized": 50
+          },
+          {
+            "token_id": "17517940275448437744410068296228472468341922677586818554765950347369361071684",
+            "token_label": "No",
+            "side": "SELL",
+            "market_slug": "ufc-kyo-tag-2025-11-22-horiguchi-win-by-ko-tko",
+            "condition_id": "0x5ba4ed6b4b0ea1ea1e03a8e0c4b41e3a7fa5828a821111502b04bbc53be6098f",
+            "shares": 149990000,
+            "price": 0.9953194879658643,
+            "tx_hash": "0xd3d832395a720ae42721a769f19aeebead461007251659fdcfb87f43a87a73a6",
+            "title": "Will Kyoji Horiguchi win by KO or TKO?",
+            "timestamp": 1763837067,
+            "order_hash": "0x83ee1d55146ccf0f9bad73632a4b00674c607169d984582bb3d2b6b43e57eaed",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 149.99
+          },
+          {
+            "token_id": "17517940275448437744410068296228472468341922677586818554765950347369361071684",
+            "token_label": "No",
+            "side": "BUY",
+            "market_slug": "ufc-kyo-tag-2025-11-22-horiguchi-win-by-ko-tko",
+            "condition_id": "0x5ba4ed6b4b0ea1ea1e03a8e0c4b41e3a7fa5828a821111502b04bbc53be6098f",
+            "shares": 7140000,
+            "price": 0.93,
+            "tx_hash": "0xc76c342da941c952eae2c497ea1704dfeca295b0837027e00beffa4f7822c82c",
+            "title": "Will Kyoji Horiguchi win by KO or TKO?",
+            "timestamp": 1763835995,
+            "order_hash": "0x24bd968753a57d2f86e4ff0305a3051b40a7acf9745bd0e347360f0e9adb3754",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xe542afd3881c4c330ba0ebbb603bb470b2ba0a37",
+            "shares_normalized": 7.14
+          },
+          {
+            "token_id": "17517940275448437744410068296228472468341922677586818554765950347369361071684",
+            "token_label": "No",
+            "side": "BUY",
+            "market_slug": "ufc-kyo-tag-2025-11-22-horiguchi-win-by-ko-tko",
+            "condition_id": "0x5ba4ed6b4b0ea1ea1e03a8e0c4b41e3a7fa5828a821111502b04bbc53be6098f",
+            "shares": 100000000,
+            "price": 0.93,
+            "tx_hash": "0x385424a1152c7d98cbb0bf8cf5076f414d0323080f4f201969bfc42053e26eac",
+            "title": "Will Kyoji Horiguchi win by KO or TKO?",
+            "timestamp": 1763835349,
+            "order_hash": "0x24bd968753a57d2f86e4ff0305a3051b40a7acf9745bd0e347360f0e9adb3754",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x9945e1c1eade45bde6100bf86d03259f2a8a1ef5",
+            "shares_normalized": 100
+          },
+          {
+            "token_id": "17517940275448437744410068296228472468341922677586818554765950347369361071684",
+            "token_label": "No",
+            "side": "BUY",
+            "market_slug": "ufc-kyo-tag-2025-11-22-horiguchi-win-by-ko-tko",
+            "condition_id": "0x5ba4ed6b4b0ea1ea1e03a8e0c4b41e3a7fa5828a821111502b04bbc53be6098f",
+            "shares": 42857141,
+            "price": 0.9300000203000008,
+            "tx_hash": "0x007ac7dfeeac5d55cfbdad67f73b8eda10e87add7222b0b0aa9632d02a558ab9",
+            "title": "Will Kyoji Horiguchi win by KO or TKO?",
+            "timestamp": 1763834909,
+            "order_hash": "0x24bd968753a57d2f86e4ff0305a3051b40a7acf9745bd0e347360f0e9adb3754",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0xf16757b68df7cdff733b165de290a5772d70809d",
+            "shares_normalized": 42.857141
+          },
+          {
+            "token_id": "57219144969120294727892272170842511743357159796613325548360885368709158197387",
+            "token_label": "Pakistan",
+            "side": "SELL",
+            "market_slug": "t20-pak-sri-2025-11-22",
+            "condition_id": "0x0cf7b35cdd614129555beee33fe36a1e650a42732582839ba729a34336101e5a",
+            "shares": 153840000,
+            "price": 0.91,
+            "tx_hash": "0x939ef6702c403fab12d539392e2c73a89350c6171435008942908c04edd36ec5",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 3)",
+            "timestamp": 1763821145,
+            "order_hash": "0x3cc78df3fed1577a7c1f3771f9d83e86751640d92ecea5d9ceb877fc63c40d9b",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 153.84
+          },
+          {
+            "token_id": "57219144969120294727892272170842511743357159796613325548360885368709158197387",
+            "token_label": "Pakistan",
+            "side": "BUY",
+            "market_slug": "t20-pak-sri-2025-11-22",
+            "condition_id": "0x0cf7b35cdd614129555beee33fe36a1e650a42732582839ba729a34336101e5a",
+            "shares": 153846151,
+            "price": 0.6499999990249999,
+            "tx_hash": "0x59544780fe5eeb73081c4a4d9e7b191fdf1d602db78163d92fef24480b905503",
+            "title": "Pakistan Tri-Series: Pakistan vs Sri Lanka (Game 3)",
+            "timestamp": 1763727149,
+            "order_hash": "0x229bbe06b1006344528230214f160e620027e30a78547affa0965d6612a6616d",
+            "user": "0x554ad2bc8a8f372d7e3376918fcb6e284387859a",
+            "taker": "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",
+            "shares_normalized": 153.846151
+          }
+        ],
+        "pagination": {
+          "limit": 1000,
+          "offset": 0,
+          "total": 40,
+          "has_more": false
+        }
+      }
+    }
+  ],
+  "market_resolutions": [
+    {
+      "market_slug": "btc-updown-15m-1764151200",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162146,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763967600",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162146,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763929800",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162146,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764093600",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162146,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764078300",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162146,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763985600",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "t20-pak-zim-2025-11-23",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764079200",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763928000",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "t20-pak-sri-2025-11-22",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "test-ind-sou-2025-11-22-SOU",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "t20-pak-sri-2025-11-27",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764175500",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763970300",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "ufc-kyo-tag-2025-11-22-horiguchi-win-by-ko-tko",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764178200",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764099900",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763986500",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1764099000",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    },
+    {
+      "market_slug": "btc-updown-15m-1763987400",
+      "raw_data": {
+        "markets": [
+          {
+            "market_slug": "bitcoin-up-or-down-november-29-12am-et",
+            "title": "Bitcoin Up or Down - November 29, 12AM ET",
+            "condition_id": "0x2b25c434eb97802ec0adecc5d30b2d5ecd541359c106e44601bb4124aaf06b5a",
+            "start_time": 1764219694,
+            "end_time": 1764396000,
+            "completed_time": null,
+            "close_time": null,
+            "tags": [],
+            "volume_1_week": 0,
+            "volume_1_month": 0,
+            "volume_1_year": 0,
+            "volume_total": 0,
+            "resolution_source": "https://www.binance.com/en/trade/BTC_USDT",
+            "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/BTC+fullsize.png",
+            "side_a": {
+              "id": "101368186987709228173470763144530558859294878270306184144984167810978988945168",
+              "label": "Up"
+            },
+            "side_b": {
+              "id": "113183996485838335953566689567912551448116592208329152766850709720766763236488",
+              "label": "Down"
+            },
+            "winning_side": null,
+            "status": "open"
+          }
+        ],
+        "pagination": {
+          "limit": 1,
+          "offset": 0,
+          "total": 162147,
+          "has_more": true
+        }
+      }
+    }
+  ]
+}
