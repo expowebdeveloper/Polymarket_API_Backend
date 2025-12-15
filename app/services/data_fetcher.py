@@ -3,7 +3,8 @@ Data fetcher service for Polymarket API with authentication support.
 """
 
 import requests
-from typing import List, Dict, Optional
+import httpx
+from typing import List, Dict, Optional, Any
 
 from app.core.config import settings
 
@@ -17,13 +18,22 @@ def get_polymarket_headers() -> Dict[str, str]:
     }
 
 
-def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
+def fetch_markets(
+    status: str = "active", 
+    limit: Optional[int] = None,
+    offset: Optional[int] = None
+) -> tuple[List[Dict], Dict[str, Any]]:
     """
-    Fetch resolved markets from Polymarket API with pagination.
-    Returns a list of market dictionaries (limited to 50 for testing by default).
+    Fetch markets from Polymarket API with pagination.
+    Returns a tuple of (markets list, pagination info).
     
     Args:
+        status: Market status to fetch ("active", "resolved", "closed", etc.)
         limit: Maximum number of markets to fetch (default: 50 from config for testing)
+        offset: Offset for pagination (default: 0)
+    
+    Returns:
+        Tuple of (markets list, pagination dict with keys: limit, offset, total, has_more)
     
     Note: If DNS resolution fails for api.polymarket.com, check:
     1. Network connectivity
@@ -32,10 +42,17 @@ def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
     """
     if limit is None:
         limit = settings.MARKETS_FETCH_LIMIT
+    if offset is None:
+        offset = 0
     
-    markets = []
+    all_markets = []
     page = 1
-    per_page = min(50, limit)  # Fetch max 50 per page to match testing limit
+    per_page = 50  # Fetch 50 per page from API
+    
+    # Calculate which pages we need to fetch
+    start_page = (offset // per_page) + 1
+    end_offset = offset + limit
+    end_page = (end_offset // per_page) + 2  # Fetch one extra page to check has_more
     
     headers = get_polymarket_headers()
     
@@ -47,14 +64,14 @@ def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
     ]
     
     for base_url in api_endpoints:
-        markets = []
-        page = 1
+        all_markets = []
+        page = start_page
         
-        while True:
+        while page <= end_page:
             try:
                 url = f"{base_url}/markets"
                 params = {
-                    "status": "resolved",
+                    "status": status,
                     "page": page,
                     "limit": per_page,  # Use 'limit' for clob.polymarket.com API
                     "per_page": per_page  # Also include per_page for compatibility
@@ -107,40 +124,17 @@ def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
                     page_markets = []
                 
                 if not page_markets:
-                    if page == 1:
+                    if page == start_page:
                         print(f"⚠ Warning: No markets found in response from {base_url}")
                         print(f"  Response preview: {str(data)[:300]}")
                     break
                 
-                # Limit the number of markets to fetch (only take what we need)
-                remaining = limit - len(markets)
-                if remaining > 0:
-                    markets_to_add = page_markets[:remaining]
-                    markets.extend(markets_to_add)
-                    if page == 1:
-                        print(f"✓ Fetched {len(markets_to_add)} markets from {base_url} (total: {len(markets)}/{limit})")
-                else:
-                    if page == 1:
-                        print(f"✓ Already have {len(markets)} markets (limit: {limit})")
+                # Add all markets from this page
+                all_markets.extend(page_markets)
                 
-                # Check if we've reached the limit
-                if len(markets) >= limit:
-                    print(f"✓ Reached limit of {limit} markets. Stopping fetch.")
-                    break
-                    
-                # Check if there are more pages (for cursor-based pagination, check next_cursor)
-                has_more = False
-                if isinstance(data, dict):
-                    # Check for cursor-based pagination
-                    if data.get("next_cursor"):
-                        has_more = True
-                    # Check for traditional pagination
-                    elif len(page_markets) >= per_page:
-                        has_more = True
-                elif isinstance(data, list) and len(page_markets) >= per_page:
-                    has_more = True
-                
-                if not has_more:
+                # Check if we have enough markets or if there are no more
+                if len(page_markets) < per_page:
+                    # No more pages available
                     break
                     
                 page += 1
@@ -150,25 +144,41 @@ def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
                 if "Failed to resolve" in error_msg or "No address associated" in error_msg:
                     print(f"✗ DNS resolution failed for {base_url}")
                     print(f"  Error: {error_msg}")
-                    if page == 1:
+                    if page == start_page:
                         break  # Try next endpoint
                 else:
                     print(f"✗ Error fetching markets page {page} from {base_url}: {e}")
-                    if page == 1:
+                    if page == start_page:
                         break
                     else:
-                        return markets  # Return what we have
+                        # Return what we have so far
+                        break
             except Exception as e:
                 print(f"✗ Unexpected error fetching markets page {page} from {base_url}: {e}")
-                if page == 1:
+                if page == start_page:
                     break
                 else:
-                    return markets
+                    # Return what we have so far
+                    break
         
-        # If we got markets from this endpoint, return them
-        if markets:
-            print(f"✓ Successfully fetched {len(markets)} total markets")
-            return markets
+        # If we got markets from this endpoint, process them
+        if all_markets:
+            # Apply offset and limit
+            total_available = len(all_markets)
+            paginated_markets = all_markets[offset:offset + limit]
+            
+            # Determine if there are more markets
+            has_more = (offset + limit) < total_available or len(paginated_markets) == limit
+            
+            pagination_info = {
+                "limit": limit,
+                "offset": offset,
+                "total": total_available,  # This is approximate - actual total may be higher
+                "has_more": has_more
+            }
+            
+            print(f"✓ Successfully fetched {len(paginated_markets)} markets (offset: {offset}, limit: {limit})")
+            return paginated_markets, pagination_info
     
     # If all endpoints failed
     print("\n" + "="*60)
@@ -185,16 +195,33 @@ def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
     print("- Verify API endpoint URL is correct")
     print("- Check if you need to use a VPN or proxy")
     print("="*60 + "\n")
+    
+    # Return empty result with pagination info
+    pagination_info = {
+        "limit": limit,
+        "offset": offset,
+        "total": 0,
+        "has_more": False
+    }
+    return [], pagination_info
+
+
+def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
+    """
+    Fetch resolved markets from Polymarket API (wrapper for backward compatibility).
+    
+    Args:
+        limit: Maximum number of markets to fetch (default: 50 from config for testing)
+    """
+    markets, _ = fetch_markets(status="resolved", limit=limit)
     return markets
 
 
-def fetch_trades_for_wallet(wallet_address: str) -> List[Dict]:
+async def fetch_trades_for_wallet(wallet_address: str) -> List[Dict]:
     """
-    Fetch trades (orders) for a given wallet address from Dome API.
+    Fetch trades (orders) for a given wallet address from Polymarket API (async version).
     
-    This uses https://api.domeapi.io/v1/polymarket/orders with the `user`
-    or `address` filter (depending on Dome's API) instead of calling
-    Polymarket APIs directly.
+    This uses the Polymarket Data API to fetch user trades.
     
     First checks an in-memory cache from trader extraction to avoid API calls.
     """
@@ -212,8 +239,8 @@ def fetch_trades_for_wallet(wallet_address: str) -> List[Dict]:
     except:
         pass  # If cache not available, continue with API call
     
-    # Use Polymarket Data API instead of Dome
-    return fetch_user_trades(wallet_address)
+    # Use Polymarket Data API
+    return await fetch_user_trades(wallet_address)
 
 
 def fetch_wallet_performance_dome(wallet_address: str) -> Optional[Dict]:
@@ -526,9 +553,9 @@ def fetch_user_activity(
         raise Exception(f"Unexpected error fetching user activity: {str(e)}")
 
 
-def fetch_user_trades(wallet_address: str) -> List[Dict]:
+async def fetch_user_trades(wallet_address: str) -> List[Dict]:
     """
-    Fetch user trades from Polymarket Data API.
+    Fetch user trades from Polymarket Data API (async version).
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
@@ -540,14 +567,15 @@ def fetch_user_trades(wallet_address: str) -> List[Dict]:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         params = {"user": wallet_address}
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        trades = response.json()
-        if isinstance(trades, list):
-            return trades
-        return []
-    except requests.exceptions.RequestException as e:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            trades = response.json()
+            if isinstance(trades, list):
+                return trades
+            return []
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching user trades from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching user trades: {str(e)}")
@@ -684,4 +712,91 @@ def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
         raise Exception(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching leaderboard stats: {str(e)}")
+
+
+def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+    """
+    Fetch market orders from DomeAPI.
+    
+    Args:
+        market_slug: Market slug identifier
+        limit: Maximum number of orders to return (default: 100)
+        offset: Offset for pagination (default: 0)
+    
+    Returns:
+        Dictionary with orders list and pagination info
+    """
+    try:
+        url = "https://api.domeapi.io/v1/polymarket/orders"
+        params = {
+            "market_slug": market_slug,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        return {
+            "orders": data.get("orders", []),
+            "pagination": data.get("pagination", {})
+        }
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error fetching market orders from DomeAPI: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching market orders: {str(e)}")
+
+
+def fetch_user_leaderboard_data(wallet_address: str, category: str = "politics") -> Optional[Dict[str, Any]]:
+    """
+    Fetch full user leaderboard data including username, xUsername, profileImage, volume, pnl, etc.
+    Tries multiple categories (overall, politics) to find the user.
+    
+    Args:
+        wallet_address: Ethereum wallet address (0x...)
+        category: Preferred category filter (default: "politics", can be "overall", "politics", etc.)
+    
+    Returns:
+        Dictionary with user data or None if not found
+    """
+    url = "https://data-api.polymarket.com/v1/leaderboard"
+    categories_to_try = ["overall", category] if category != "overall" else ["overall"]
+    
+    for cat in categories_to_try:
+        try:
+            params = {
+                "timePeriod": "all",
+                "orderBy": "VOL",
+                "limit": 1,
+                "offset": 0,
+                "category": cat,
+                "user": wallet_address
+            }
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                item = data[0]
+                return {
+                    "rank": item.get("rank"),
+                    "proxyWallet": item.get("proxyWallet"),
+                    "userName": item.get("userName"),
+                    "xUsername": item.get("xUsername"),
+                    "verifiedBadge": item.get("verifiedBadge", False),
+                    "vol": float(item.get("vol", 0.0)),
+                    "pnl": float(item.get("pnl", 0.0)),
+                    "profileImage": item.get("profileImage")
+                }
+        except requests.exceptions.RequestException:
+            # Continue to next category if this one fails
+            continue
+        except Exception:
+            # Continue to next category if this one fails
+            continue
+    
+    # If all categories failed, return None
+    return None
 

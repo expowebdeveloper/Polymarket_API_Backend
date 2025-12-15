@@ -24,16 +24,31 @@ class MarketInfo(BaseModel):
         }
 
 
+class PaginationInfo(BaseModel):
+    """Pagination information."""
+    limit: int = Field(..., description="Limit per page")
+    offset: int = Field(..., description="Current offset")
+    total: int = Field(..., description="Total number of markets available")
+    has_more: bool = Field(..., description="Whether there are more markets")
+
+
 class MarketsResponse(BaseModel):
     """Schema for markets list response."""
     count: int = Field(..., description="Number of markets returned", example=100)
     markets: List[Any] = Field(..., description="List of market objects")
+    pagination: Optional[PaginationInfo] = Field(None, description="Pagination information")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "count": 100,
-                "markets": []
+                "markets": [],
+                "pagination": {
+                    "limit": 20,
+                    "offset": 0,
+                    "total": 500,
+                    "has_more": True
+                }
             }
         }
 

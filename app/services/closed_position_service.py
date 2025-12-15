@@ -5,22 +5,46 @@ from app.db.models import ClosedPosition
 from typing import List
 
 async def fetch_and_store_closed_positions(user_address: str, db: AsyncSession) -> List[ClosedPosition]:
-    url = f"https://data-api.polymarket.com/closed-positions?user={user_address}"
-    # Use requests for now, but in async app better to use httpx. However requests is blocking.
-    # For now keeping requests but ideally should be httpx or run in executor.
-    # Given the constraint of 'fixing' quickly, I will stick to requests but wrap it or just use it (calls might block event loop briefly).
-    # Better: Use simple requests strictly for now, or use httpx if available. I don't see httpx in requirements but maybe it is there.
-    # Let's check imports. I'll just use requests synchronously for the fetch part for now, or 
-    # since I can't easily see requirements.txt dependencies without reading, I'll stick to requests.
-    response = requests.get(url)
+    """
+    Fetch all closed positions from Polymarket API using pagination and store them in the database.
+    This ensures we get ALL closed positions, not just the first batch.
+    """
+    url = "https://data-api.polymarket.com/closed-positions"
+    params = {"user": user_address}
     
-    if response.status_code != 200:
-        raise Exception(f"Failed to fetch data from Polymarket API: {response.text}")
+    # Fetch ALL data using pagination (similar to fetch_closed_positions in data_fetcher.py)
+    all_positions_data = []
+    fetch_limit = 1000  # Fetch in chunks
+    current_offset = 0
+    
+    while True:
+        params["limit"] = fetch_limit
+        params["offset"] = current_offset
         
-    data = response.json()
+        response = requests.get(url, params=params, timeout=30)
+        
+        if response.status_code != 200:
+            raise Exception(f"Failed to fetch data from Polymarket API: {response.text}")
+        
+        data = response.json()
+        if not isinstance(data, list) or not data:
+            # Only break when we get 0 items (empty list)
+            # Don't break if we get fewer items than requested, as the API might cap the limit
+            break
+        
+        all_positions_data.extend(data)
+        
+        # Increment offset by the number of received items
+        # Polymarket API might cap limit at 50 even if we ask for 1000
+        # So we only stop if we get 0 items (handled above)
+        current_offset += len(data)
+        
+        # Continue fetching until we get an empty response
+        # Don't break on len(data) < fetch_limit because the API might have server-side limits
+    
     stored_positions = []
     
-    for item in data:
+    for item in all_positions_data:
         # Check if exists
         query = select(ClosedPosition).filter(
             ClosedPosition.proxy_wallet == item.get("proxyWallet"),

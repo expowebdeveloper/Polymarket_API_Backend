@@ -3,6 +3,7 @@ CLI entry point for Polymarket Analytics Platform.
 """
 
 import sys
+import asyncio
 from app.core.config import settings
 from app.services.data_fetcher import fetch_resolved_markets, fetch_trades_for_wallet
 from app.services.scoring_engine import calculate_metrics
@@ -50,7 +51,7 @@ def format_console_output(metrics: dict) -> str:
     return "\n".join(output)
 
 
-def analyze_wallet(wallet_address: str) -> dict:
+async def analyze_wallet(wallet_address: str) -> dict:
     """Main function to analyze a wallet and return metrics."""
     if not validate_wallet(wallet_address):
         raise ValueError(f"Invalid wallet address: {wallet_address}")
@@ -60,7 +61,7 @@ def analyze_wallet(wallet_address: str) -> dict:
     print(f"Found {len(markets)} resolved markets")
     
     print(f"Fetching trades for wallet {wallet_address}...")
-    trades = fetch_trades_for_wallet(wallet_address)
+    trades = await fetch_trades_for_wallet(wallet_address)
     print(f"Found {len(trades)} trades")
     
     print("Calculating metrics...")
@@ -78,7 +79,7 @@ def cli_mode():
     print("=" * 60)
     
     try:
-        metrics = analyze_wallet(target_wallet)
+        metrics = asyncio.run(analyze_wallet(target_wallet))
         output = format_console_output(metrics)
         print(output)
     except Exception as e:

@@ -3,6 +3,7 @@ FastAPI application main file.
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring
 from app.db.session import init_db
@@ -15,6 +16,15 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins like ["http://localhost:5173"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on application startup."""
@@ -22,7 +32,7 @@ async def startup_event():
 
 # Include routers
 app.include_router(general.router)
-# app.include_router(markets.router)
+app.include_router(markets.router)
 # app.include_router(analytics.router)
 app.include_router(traders.router)
 app.include_router(positions.router)

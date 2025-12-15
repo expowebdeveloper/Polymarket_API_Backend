@@ -75,8 +75,8 @@ class PolymarketWalletAnalyzer:
             return []
 
     def get_wallet_activity(self, wallet_address: str, days: int = 30) -> List[Dict]:
-        """
         Fetch user activity (alternative endpoint)
+        """
 
         Args:
             wallet_address: Polymarket wallet address

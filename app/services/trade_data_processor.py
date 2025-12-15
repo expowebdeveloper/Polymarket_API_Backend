@@ -448,7 +448,7 @@ async def process_and_insert_trade_data(
     try:
         # Step 1: Fetch trade data from API
         logger.info(f"Fetching trade data for wallet: {wallet_address}")
-        raw_trades = fetch_user_trades(wallet_address)
+        raw_trades = await fetch_user_trades(wallet_address)
         
         if not raw_trades:
             logger.warning(f"No trades found for wallet: {wallet_address}")

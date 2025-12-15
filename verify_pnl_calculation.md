@@ -90,8 +90,8 @@ total_redemptions = sum(
     for activity in activities 
     if activity['type'] == 'REDEEM'
 )
-```
 
+```
 **Expected:** Should match `total_rewards` and `total_redemptions` in response
 
 #### 2.6 Calculate Total PnL

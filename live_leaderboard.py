@@ -7,6 +7,83 @@ from typing import List, Dict
 
 # Ensure app can be imported
 sys.path.append(os.getcwd())
+import requests
+
+def fetch_orders_for_market(market_slug: str, limit: int = 100):
+    """
+    Fetches the orderbook for a given Polymarket market using the DomeAPI `/orders` endpoint.
+    Returns a dictionary with buy/sell orders or None if error.
+    """
+    url = f"https://api.domeapi.io/v1/polymarket/orders"
+    params = {
+        "market_slug": market_slug,
+        "limit": limit
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json()  # Expected to contain buy/sell orders
+    except Exception as e:
+        print(f"Error fetching orders for market '{market_slug}': {e}")
+        return None
+
+def fetch_trades_for_market(market_slug: str, limit: int = 100):
+    """
+    Fetch trades history for a given market using DomeAPI or Polymarket Data API.
+    DomeAPI doesn't seem to have trades endpoint; fallback to Polymarket Data API.
+    """
+    url = f"https://data-api.polymarket.com/trades"
+    params = {
+        "market": market_slug,
+        "limit": limit
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return response.json().get('trades', [])
+    except Exception as e:
+        print(f"Error fetching trades for market '{market_slug}': {e}")
+        return []
+
+def fetch_best_traders_for_market(market_slug: str, limit: int = 10):
+    """
+    Dummy or placeholder function to simulate fetching of best traders for a market.
+    In reality this data may require on-chain analysis or an analytics API.
+    For now, returns an empty list structure.
+    """
+    # TODO: Replace with real endpoint or calculation if available
+    return []
+
+def fetch_market_votes(market_slug: str):
+    """
+    Placeholder for vote-fetching functionality. 
+    Could be from a DB, a dedicated votes API, or submitted data.
+    Returns a dict: {"win_votes": n, "lose_votes": m}
+    """
+    # Placeholder: This might come from a local database or external service.
+    # For now, return demo numbers.
+    return {"win_votes": 0, "lose_votes": 0}
+
+def get_market_details(market_slug: str):
+    """
+    Given a market slug, fetches orderbook, trades, top traders, and voting summary.
+    Returns a unified dictionary.
+    """
+    orders = fetch_orders_for_market(market_slug)
+    trades = fetch_trades_for_market(market_slug)
+    top_traders = fetch_best_traders_for_market(market_slug)
+    vote_summary = fetch_market_votes(market_slug)
+    return {
+        "orders": orders,
+        "trades": trades,
+        "top_traders": top_traders,      # List of dicts, each with rating and vote counts
+        "vote_summary": vote_summary     # Dict: {win_votes, lose_votes}
+    }
+
+# Usage Example (would be called e.g. when frontend requests market details upon click)
+# details = get_market_details("henry-cavill-announced-as-next-james-bond")
+# print(json.dumps(details, indent=2))
+
 
 from app.services.data_fetcher import fetch_closed_positions
 from scoring_script import get_percentile_value, clamp
@@ -74,31 +151,9 @@ def calculate_metrics_for_wallet(wallet: str):
     
     # --- ROI Calculation ---
     total_pnl = sum([float(p.get('realizedPnl', 0.0)) for p in positions])
-    
-    # Calculate Total Investment (Closed + Open) to match Service Layer
-    # Closed Investment (s_total) is already calculated above as 'total_stakes'
-    # Open Investment needs to be fetched from Open Positions...
-    # BUT fetch_closed_positions only returns closed positions.
-    # To be accurate like the service layer, we SHOULD fetch open positions too.
-    # However, for this script, if we only have closed_positions, we can't get open investment.
-    # If the user wants EXACT parity, we need to fetch open positions.
-    # Assuming "live_leaderboard" primarily looks at closed performance, maybe s_total is enough?
-    # User said "change total_investment variable... get actual total investment".
-    # I will stick to s_total as the proxy if I cannot fetch open positions easily in this script without major refactor.
-    # Wait, fetch_closed_positions is imported. I can import fetch_positions_for_wallet too.
-    
-    # Let's add fetch_positions_for_wallet import first (in a separate block if needed, but here I am in the function).
-    # Actually, let's just use s_total for now to avoid breaking the script structure too much, 
-    # OR better: Assume s_total (closed volume) is the "Total Volume" and we use it as the denominator 
-    # IF we want to match the OLD behavior. But the user asked to FIX it.
-    # I will stick to s_total for now as "Total Closed Investment" because fetching open positions for 
-    # every wallet in a loop might be slow and rate-limited.
-    # User's correction was for the API endpoint specifically.
-    
+        
     roi_raw = (total_pnl / s_total * 100) if s_total > 0 else 0.0
     
-    # --- PnL Score Calculation ---
-    # 1. Start with max_stake for Alpha penalty
     max_stake = 0.0
     worst_loss = 0.0 # Track worst loss
     

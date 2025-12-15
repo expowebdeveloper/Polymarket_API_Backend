@@ -233,13 +233,11 @@ async def fetch_and_save_trades(
     Returns:
         Tuple of (trades list, saved count)
     """
-    # Fetch trades from API (run in thread pool to avoid blocking async event loop)
-    import asyncio
-    trades = await asyncio.to_thread(fetch_user_trades, wallet_address)
+    # Fetch trades from API (async function)
+    trades = await fetch_user_trades(wallet_address)
     
     # Save to database
     saved_count = await save_trades_to_db(session, wallet_address, trades)
     
     return trades, saved_count
-
 

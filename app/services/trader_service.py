@@ -99,12 +99,12 @@ def extract_traders_from_markets(markets: List[Dict], limit: Optional[int] = Non
     return trader_list
 
 
-def get_trader_basic_info(wallet_address: str, markets: List[Dict]) -> Dict:
+async def get_trader_basic_info(wallet_address: str, markets: List[Dict]) -> Dict:
     """
-    Get basic information about a trader without full analytics.
+    Get basic information about a trader without full analytics (async version).
     Faster than full analytics calculation.
     """
-    trades = fetch_trades_for_wallet(wallet_address)
+    trades = await fetch_trades_for_wallet(wallet_address)
     
     if not trades:
         return {
@@ -161,12 +161,12 @@ def get_trader_basic_info(wallet_address: str, markets: List[Dict]) -> Dict:
     }
 
 
-def get_trader_detail(wallet_address: str) -> Dict:
+async def get_trader_detail(wallet_address: str) -> Dict:
     """
     Get detailed trader information including full analytics.
     """
     # Fetch trades first to know which markets we need
-    trades = fetch_trades_for_wallet(wallet_address)
+    trades = await fetch_trades_for_wallet(wallet_address)
     
     # Extract unique market slugs from trades
     market_slugs_from_trades = set()
@@ -243,9 +243,9 @@ def get_trader_detail(wallet_address: str) -> Dict:
     }
 
 
-def get_traders_list(limit: int = 50) -> List[Dict]:
+async def get_traders_list(limit: int = 50) -> List[Dict]:
     """
-    Get a list of traders with basic information.
+    Get a list of traders with basic information (async version with concurrent fetching).
     Extracts traders from markets.
     
     Args:
@@ -254,6 +254,8 @@ def get_traders_list(limit: int = 50) -> List[Dict]:
     Returns:
         List of trader dictionaries with basic info
     """
+    import asyncio
+    
     markets = fetch_resolved_markets()
     
     # Extract traders - try to get more than the limit to account for traders with no data
@@ -267,38 +269,62 @@ def get_traders_list(limit: int = 50) -> List[Dict]:
     
     print(f"Found {len(trader_addresses)} unique trader addresses. Getting basic info...")
     
-    # Get basic info for each trader
-    traders_info = []
-    traders_with_trades = 0
-    traders_without_trades = 0
-    
-    for idx, wallet in enumerate(trader_addresses):
-        if limit and len(traders_info) >= limit:
-            break
-            
+    # Helper function to fetch a single trader with timeout
+    async def fetch_single_trader(wallet: str) -> Dict:
+        """Fetch trader info with timeout and error handling."""
         try:
-            info = get_trader_basic_info(wallet, markets)
-            
-            # Include all traders, even if they have no trades (API might have failed)
-            traders_info.append(info)
-            
-            if info.get("total_trades", 0) > 0:
-                traders_with_trades += 1
-            else:
-                traders_without_trades += 1
-                
-        except Exception as e:
-            # Even if we can't get full info, create a basic entry
-            traders_info.append({
+            # Set timeout for individual trader fetch
+            return await asyncio.wait_for(
+                get_trader_basic_info(wallet, markets),
+                timeout=10.0  # 10 second timeout per trader
+            )
+        except asyncio.TimeoutError:
+            print(f"  Timeout fetching trader {wallet[:20]}...")
+            return {
                 "wallet_address": wallet,
                 "total_trades": 0,
                 "total_positions": 0,
                 "first_trade_date": None,
                 "last_trade_date": None
-            })
-            traders_without_trades += 1
-            if idx < 5:  # Only print first few errors
-                print(f"  Warning: Could not get full info for trader {wallet[:20]}... ({str(e)[:50]})")
+            }
+        except Exception as e:
+            print(f"  Error fetching trader {wallet[:20]}...: {str(e)[:50]}")
+            return {
+                "wallet_address": wallet,
+                "total_trades": 0,
+                "total_positions": 0,
+                "first_trade_date": None,
+                "last_trade_date": None
+            }
+    
+    # Fetch traders in batches to avoid overwhelming the API
+    batch_size = 10  # Fetch 10 traders concurrently at a time
+    traders_info = []
+    traders_with_trades = 0
+    traders_without_trades = 0
+    
+    for i in range(0, len(trader_addresses), batch_size):
+        if limit and len(traders_info) >= limit:
+            break
+        
+        batch = trader_addresses[i:i + batch_size]
+        # Only fetch up to the limit
+        if limit:
+            remaining = limit - len(traders_info)
+            batch = batch[:remaining]
+        
+        print(f"Fetching batch {i//batch_size + 1} ({len(batch)} traders)...")
+        
+        # Fetch batch concurrently
+        batch_results = await asyncio.gather(*[fetch_single_trader(wallet) for wallet in batch])
+        
+        # Add results to traders_info
+        for info in batch_results:
+            traders_info.append(info)
+            if info.get("total_trades", 0) > 0:
+                traders_with_trades += 1
+            else:
+                traders_without_trades += 1
     
     print(f"✓ Successfully retrieved info for {len(traders_info)} traders")
     print(f"  - {traders_with_trades} with trades, {traders_without_trades} without trades (API may have failed)")

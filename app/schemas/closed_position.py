@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from datetime import datetime
 
 class ClosedPositionBase(BaseModel):
@@ -28,6 +28,12 @@ class ClosedPosition(ClosedPositionBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def size(self) -> float:
+        """Size field for frontend compatibility (maps to total_bought)"""
+        return float(self.total_bought)
 
     class Config:
         from_attributes = True
