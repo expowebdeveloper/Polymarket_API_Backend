@@ -1,7 +1,7 @@
 """Leaderboard-related schemas."""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class LeaderboardEntry(BaseModel):
@@ -22,6 +22,36 @@ class LeaderboardEntry(BaseModel):
     score_roi: float = Field(0.0, description="ROI Score (0-1)")
     score_pnl: float = Field(0.0, description="PnL Score (0-1)")
     score_risk: float = Field(0.0, description="Risk Score (0-1)")
+    # Intermediate values for leaderboard sorting
+    W_shrunk: Optional[float] = Field(None, description="W shrunk value (before final score)")
+    roi_shrunk: Optional[float] = Field(None, description="ROI shrunk value (before final score)")
+    pnl_shrunk: Optional[float] = Field(None, description="PnL shrunk value (before final score)")
+
+
+class PercentileInfo(BaseModel):
+    """Percentile information for normalization."""
+    w_shrunk_1_percent: float = Field(..., description="1st percentile of W_shrunk")
+    w_shrunk_99_percent: float = Field(..., description="99th percentile of W_shrunk")
+    roi_shrunk_1_percent: float = Field(..., description="1st percentile of ROI_shrunk")
+    roi_shrunk_99_percent: float = Field(..., description="99th percentile of ROI_shrunk")
+    pnl_shrunk_1_percent: float = Field(..., description="1st percentile of PNL_shrunk")
+    pnl_shrunk_99_percent: float = Field(..., description="99th percentile of PNL_shrunk")
+    population_size: int = Field(..., description="Number of traders with >= 5 trades used for percentiles")
+
+
+class MedianInfo(BaseModel):
+    """Median values used in shrinkage calculations."""
+    roi_median: float = Field(..., description="Median ROI across population")
+    pnl_median: float = Field(..., description="Median adjusted PnL across population")
+
+
+class AllLeaderboardsResponse(BaseModel):
+    """Response model containing all leaderboards and percentile information."""
+    percentiles: PercentileInfo = Field(..., description="Percentile anchors for normalization")
+    medians: MedianInfo = Field(..., description="Median values used in calculations")
+    leaderboards: Dict[str, List[LeaderboardEntry]] = Field(..., description="All leaderboards keyed by metric type")
+    total_traders: int = Field(..., description="Total number of traders")
+    population_traders: int = Field(..., description="Number of traders with >= 5 trades")
 
 
 class LeaderboardResponse(BaseModel):
