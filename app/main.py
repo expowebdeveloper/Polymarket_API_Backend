@@ -17,9 +17,10 @@ app = FastAPI(
 )
 
 # Configure CORS
-# Allow requests from frontend domain
+# Allow requests from frontend domains
 allowed_origins = [
-    "https://polymarket-uimain.vercel.app",
+    "https://polymarket-ui-one.vercel.app",  # Current frontend domain
+    "https://polymarket-uimain.vercel.app",   # Alternative frontend domain
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
@@ -30,8 +31,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 @app.on_event("startup")
