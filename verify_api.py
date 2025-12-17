@@ -4,7 +4,7 @@ import json
 import time
 
 def verify_api():
-    base_url = "http://127.0.0.1:8000"
+    base_url = "https://polyrating.com"
     
     print("Fetching leaderboard...")
     try:
@@ -44,11 +44,11 @@ if __name__ == "__main__":
     # helper to add wallet
     print("Adding sample wallet...")
     try:
-        requests.post("http://127.0.0.1:8000/leaderboard/add-wallet", json={"wallet_address": "0xd8379ba51c110cac3dd324f56f1766a5e1284451"}) 
+        requests.post("https://polyrating.com/leaderboard/add-wallet", json={"wallet_address": "0xd8379ba51c110cac3dd324f56f1766a5e1284451"}) 
         # Using a known active trader if possible, or just a random one. 
         # "0xd8379ba51c110cac3dd324f56f1766a5e1284451" is just an example. 
         # Let's try the one from the schema example: 0x17db3fcd93ba12d38382a0cade24b200185c5f6d
-        requests.post("http://127.0.0.1:8000/leaderboard/add-wallet", json={"wallet_address": "0x17db3fcd93ba12d38382a0cade24b200185c5f6d"})
+        requests.post("https://polyrating.com/leaderboard/add-wallet", json={"wallet_address": "0x17db3fcd93ba12d38382a0cade24b200185c5f6d"})
     except:
         pass
         
