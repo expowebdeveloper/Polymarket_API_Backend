@@ -45,7 +45,7 @@ async def get_market_orders(
     limit: Optional[int] = Query(100, ge=1, le=1000, description="Maximum number of orders to return"),
     offset: Optional[int] = Query(0, ge=0, description="Offset for pagination")
 ):
-    """Fetch orders for a specific market from DomeAPI."""
+    """Fetch orders for a specific market from Polymarket CLOB API."""
     try:
         result = fetch_market_orders(market_slug=market_slug, limit=limit, offset=offset)
         return result

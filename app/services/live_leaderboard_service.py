@@ -72,7 +72,7 @@ def transform_stats_for_scoring(stats: Dict) -> Dict:
         "win_rate": perf_metrics.get('win_rate', 0.0),
         
         # Advanced Metrics for Scoring
-        "total_stakes": perf_metrics.get('total_stakes_calculated', 0.0), # Use calculated stakes
+        "total_stakes": perf_metrics.get('total_stakes', perf_metrics.get('total_stakes_calculated', 0.0)), # Use total_stakes or fallback to total_stakes_calculated
         "winning_stakes": perf_metrics.get('winning_stakes', 0.0),
         "sum_sq_stakes": perf_metrics.get('sum_sq_stakes', 0.0),
         "max_stake": perf_metrics.get('max_stake', 0.0),

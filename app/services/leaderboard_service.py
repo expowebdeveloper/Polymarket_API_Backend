@@ -463,12 +463,16 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
         t['pnl_shrunk'] = pnl_shrunk
         
         # --- Formula 4: Risk ---
+        # Risk Score = worst_loss / total_stake (S)
+        # According to client: loss% = |worst_loss| / total_stake
         worst_loss = t.get('worst_loss', 0.0) 
-        capital = t.get('portfolio_value', 1.0)
-        if capital <= 0: capital = 1.0 
+        capital = S  # Use total_stakes (S) as capital, not portfolio_value
+        if capital <= 0: 
+            capital = 1.0 
         
-        loss_pct = abs(worst_loss) / capital
-        risk_score = 1 - loss_pct
+        loss_pct = abs(worst_loss) / capital if capital > 0 else 0.0
+        risk_score = 1.0 - loss_pct
+        # Clamp risk score to 0-1 range
         t['score_risk'] = clamp(risk_score, 0, 1) 
     
     # Collect Shrunk values from POPULATION for Percentiles
@@ -508,6 +512,21 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)
+        
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
         
     return traders_metrics
 
@@ -603,12 +622,16 @@ def calculate_scores_and_rank_with_percentiles(traders_metrics: List[Dict]) -> D
         t['pnl_shrunk'] = pnl_shrunk
         
         # --- Formula 4: Risk ---
+        # Risk Score = worst_loss / total_stake (S)
+        # According to client: loss% = |worst_loss| / total_stake
         worst_loss = t.get('worst_loss', 0.0) 
-        capital = t.get('portfolio_value', 1.0)
-        if capital <= 0: capital = 1.0 
+        capital = S  # Use total_stakes (S) as capital, not portfolio_value
+        if capital <= 0: 
+            capital = 1.0 
         
-        loss_pct = abs(worst_loss) / capital
-        risk_score = 1 - loss_pct
+        loss_pct = abs(worst_loss) / capital if capital > 0 else 0.0
+        risk_score = 1.0 - loss_pct
+        # Clamp risk score to 0-1 range
         t['score_risk'] = clamp(risk_score, 0, 1) 
     
     # Collect Shrunk values from POPULATION for Percentiles
@@ -648,6 +671,21 @@ def calculate_scores_and_rank_with_percentiles(traders_metrics: List[Dict]) -> D
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)
+        
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
     
     return {
         "traders": traders_metrics,

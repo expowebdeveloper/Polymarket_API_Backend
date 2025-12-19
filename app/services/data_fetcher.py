@@ -716,7 +716,8 @@ def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
 
 def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     """
-    Fetch market orders from DomeAPI.
+    Fetch market orders from Polymarket Data API.
+    Uses the trades endpoint filtered by market slug.
     
     Args:
         market_slug: Market slug identifier
@@ -727,23 +728,96 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
         Dictionary with orders list and pagination info
     """
     try:
-        url = "https://api.domeapi.io/v1/polymarket/orders"
-        params = {
-            "market_slug": market_slug,
-            "limit": limit,
-            "offset": offset
+        # Use Polymarket Data API trades endpoint filtered by market
+        trades_url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
+        
+        # Fetch more than limit to account for pagination
+        fetch_limit = min(limit + offset, 1000)  # API might have limits
+        trades_params = {
+            "market": market_slug,
+            "limit": fetch_limit
         }
         
-        response = requests.get(url, params=params, timeout=30)
+        response = requests.get(trades_url, params=trades_params, timeout=30)
         response.raise_for_status()
         
-        data = response.json()
+        trades_data = response.json()
+        
+        if not isinstance(trades_data, list):
+            # If response is not a list, return empty
+            return {
+                "orders": [],
+                "pagination": {
+                    "limit": limit,
+                    "offset": offset,
+                    "total": 0,
+                    "has_more": False
+                }
+            }
+        
+        # Get market title if available (from first trade)
+        market_title = ""
+        condition_id = ""
+        if trades_data:
+            first_trade = trades_data[0]
+            market_title = first_trade.get("marketTitle", first_trade.get("title", ""))
+            condition_id = first_trade.get("conditionId", first_trade.get("condition_id", ""))
+        
+        # Convert trades to order format
+        all_orders = []
+        for trade in trades_data:
+            try:
+                order = {
+                    "token_id": trade.get("asset", trade.get("token_id", "")),
+                    "token_label": trade.get("outcome", ""),
+                    "side": trade.get("side", "BUY"),
+                    "market_slug": market_slug,
+                    "condition_id": trade.get("conditionId", trade.get("condition_id", condition_id)),
+                    "shares": float(trade.get("size", trade.get("shares", 0))),
+                    "price": float(trade.get("price", 0)),
+                    "tx_hash": trade.get("transactionHash", trade.get("tx_hash", "")),
+                    "title": market_title or trade.get("marketTitle", ""),
+                    "timestamp": trade.get("timestamp", trade.get("time", 0)),
+                    "order_hash": trade.get("id", trade.get("order_hash", "")),
+                    "user": trade.get("user", trade.get("maker", "")),
+                    "taker": trade.get("taker", ""),
+                    "shares_normalized": float(trade.get("size", trade.get("shares", 0)))
+                }
+                all_orders.append(order)
+            except (ValueError, TypeError) as e:
+                # Skip trades with invalid data
+                continue
+        
+        # Apply pagination
+        total_orders = len(all_orders)
+        paginated_orders = all_orders[offset:offset + limit]
+        
         return {
-            "orders": data.get("orders", []),
-            "pagination": data.get("pagination", {})
+            "orders": paginated_orders,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total_orders,
+                "has_more": (offset + limit) < total_orders
+            }
         }
+        
+    except requests.exceptions.HTTPError as e:
+        # Handle specific HTTP errors
+        if e.response and e.response.status_code == 404:
+            # Market not found - return empty result
+            return {
+                "orders": [],
+                "pagination": {
+                    "limit": limit,
+                    "offset": offset,
+                    "total": 0,
+                    "has_more": False
+                }
+            }
+        raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching market orders from DomeAPI: {str(e)}")
+        raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching market orders: {str(e)}")
 

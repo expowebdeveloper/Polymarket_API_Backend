@@ -201,10 +201,12 @@ class PolymarketService:
                 "investment_value_closed_trades": round(total_investment_closed, 2),
                 "total_investment_open_markets": round(total_investment_open, 2),
                 "portfolio_value": round(portfolio_value, 2),
-                "winning_stakes": winning_stakes,
-                "sum_sq_stakes": sum_sq_stakes,
-                "max_stake": max_stake,
-                "worst_loss": worst_loss,
+                "total_stakes": round(total_stakes, 2),  # Total stakes from closed positions
+                "total_stakes_calculated": round(total_stakes, 2),  # Alias for compatibility
+                "winning_stakes": round(winning_stakes, 2),
+                "sum_sq_stakes": round(sum_sq_stakes, 2),
+                "max_stake": round(max_stake, 2),
+                "worst_loss": round(worst_loss, 2),
                 "wins": wins
             },
             "positions_summary": {

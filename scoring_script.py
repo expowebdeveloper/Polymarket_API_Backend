@@ -218,6 +218,21 @@ def calculate_scores_and_rank(traders_metrics):
         # Risk score is already set
         t['score_risk'] = clamp(t['risk_score'], 0, 1) # Ensure 0-1
         
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
+        
     return traders_metrics
 
 # --- Test Case ---

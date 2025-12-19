@@ -276,7 +276,7 @@ def main():
         print("Usage: python verify_pnl_accuracy.py <wallet_address> [api_endpoint_url]")
         print("\nExample:")
         print("  python verify_pnl_accuracy.py 0x17db3fcd93ba12d38382a0cade24b200185c5f6d")
-        print("  python verify_pnl_accuracy.py 0x17db3fcd93ba12d38382a0cade24b200185c5f6d https://polyrating.com/pnl/calculate?user=")
+        print("  python verify_pnl_accuracy.py 0x17db3fcd93ba12d38382a0cade24b200185c5f6d http://127.0.0.1:8000/pnl/calculate?user=")
         sys.exit(1)
     
     wallet_address = sys.argv[1]
@@ -303,7 +303,7 @@ def main():
             print("\nManual calculation completed. Compare manually with your endpoint result.")
     else:
         print("ℹ️  No API endpoint provided. Compare manually with your endpoint result.")
-        print(f"   Your endpoint: https://polyrating.com/pnl/calculate?user={wallet_address}")
+        print(f"   Your endpoint: http://127.0.0.1:8000/pnl/calculate?user={wallet_address}")
 
 
 if __name__ == "__main__":

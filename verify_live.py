@@ -3,7 +3,7 @@ import requests
 import time
 
 def verify_live_leaderboard():
-    url = "https://polyrating.com/leaderboard/live"
+    url = "http://127.0.0.1:8000/leaderboard/live"
     print(f"Calling live leaderboard: {url}")
     
     start = time.time()
