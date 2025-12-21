@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
 from decimal import Decimal
+import math
 from app.db.models import Trade, Position, Activity
 
 
@@ -174,6 +175,20 @@ async def calculate_trader_metrics_with_time_filter(
                 winning_trades_count += 1
                 stakes_of_wins += stake
     
+    # Advanced Metrics for Scoring
+    worst_loss = Decimal('0')
+    max_stake = Decimal('0')
+    sum_sq_stakes = Decimal('0')
+    
+    for trade in trades:
+        stake = trade.size * trade.price
+        max_stake = max(max_stake, stake)
+        sum_sq_stakes += stake ** 2
+        
+        if trade.pnl is not None:
+             if trade.pnl < worst_loss:
+                 worst_loss = trade.pnl
+    
     # Calculate ROI
     roi = Decimal('0')
     if total_stakes > 0:
@@ -206,6 +221,11 @@ async def calculate_trader_metrics_with_time_filter(
         "total_trades_with_pnl": total_trades_with_pnl,
         "winning_trades": winning_trades_count,
         "total_stakes": float(total_stakes),
+        "winning_stakes": float(stakes_of_wins),
+        "worst_loss": float(worst_loss),
+        "max_stake": float(max_stake),
+        "sum_sq_stakes": float(sum_sq_stakes),
+        "portfolio_value": float(total_current_value) if total_current_value > 0 else 0.0 # Use current value as capital proxy
     }
 
 
@@ -240,6 +260,9 @@ async def get_leaderboard_by_pnl(
             # Skip traders with errors
             print(f"Error calculating metrics for {wallet}: {e}")
             continue
+    
+    # Calculate scores
+    leaderboard = calculate_scores_and_rank(leaderboard)
     
     # Sort by total PnL (descending)
     leaderboard.sort(key=lambda x: x['total_pnl'], reverse=True)
@@ -284,6 +307,9 @@ async def get_leaderboard_by_roi(
             print(f"Error calculating metrics for {wallet}: {e}")
             continue
     
+    # Calculate scores
+    leaderboard = calculate_scores_and_rank(leaderboard)
+    
     # Sort by ROI (descending)
     leaderboard.sort(key=lambda x: x['roi'], reverse=True)
     
@@ -327,6 +353,9 @@ async def get_leaderboard_by_win_rate(
             print(f"Error calculating metrics for {wallet}: {e}")
             continue
     
+    # Calculate scores
+    leaderboard = calculate_scores_and_rank(leaderboard)
+    
     # Sort by win rate (descending)
     leaderboard.sort(key=lambda x: x['win_rate'], reverse=True)
     
@@ -335,4 +364,142 @@ async def get_leaderboard_by_win_rate(
         trader['rank'] = rank
     
     return leaderboard[:limit]
+    
+    
+def get_percentile_value(values: List[float], percentile: float) -> float:
+    """
+    Get the value at a specific percentile (0-100).
+    """
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    k = (len(sorted_values) - 1) * (percentile / 100.0)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_values[int(k)]
+    d0 = sorted_values[int(f)] * (c - k)
+    d1 = sorted_values[int(c)] * (k - f)
+    return d0 + d1
+
+
+def clamp(n: float, minn: float, maxn: float) -> float:
+    return max(min(n, maxn), minn)
+
+
+def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
+    """
+    Calculate advanced scores for a list of traders.
+    """
+    if not traders_metrics:
+        return []
+        
+    # Filter valid traders for population stats (>= 5 trades)
+    population_metrics = [t for t in traders_metrics if t.get('total_trades', 0) >= 5]
+    
+    # Fallback if no active traders
+    if not population_metrics:
+        population_metrics = traders_metrics 
+
+    # --- PnL Population Median (for Formula 3) ---
+    pnl_adjs_pop = []
+    
+    for t in population_metrics:
+        pnl_total = t.get('total_pnl', 0.0)
+        S = t.get('total_stakes', 0.0)
+        max_s = t.get('max_stake', 0.0)
+        alpha = 4.0
+        
+        ratio = 0.0
+        if S > 0:
+            ratio = max_s / S
+            
+        pnl_adj = pnl_total / (1 + alpha * ratio)
+        pnl_adjs_pop.append(pnl_adj)
+        
+    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
+
+    # --- ROI Population Median (for Formula 2) ---
+    rois_pop = [t.get('roi', 0.0) for t in population_metrics]
+    roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
+
+    # Calculate Shrunk Values for ALL traders
+    for t in traders_metrics:
+        S = t.get('total_stakes', 0.0)
+        sum_sq_s = t.get('sum_sq_stakes', 0.0)
+        N_eff = (S**2) / sum_sq_s if sum_sq_s > 0 else 0.0
+        
+        # --- Formula 1: Win Rate ---
+        s_w = t.get('winning_stakes', 0.0)
+        W = (s_w / S) if S > 0 else 0.0
+        b = 0.5
+        kW = 50
+        W_shrunk = (W * N_eff + b * kW) / (N_eff + kW)
+        t['W_shrunk'] = W_shrunk
+        
+        # --- Formula 2: ROI ---
+        roi_raw = t.get('roi', 0.0)
+        kR = 50
+        roi_shrunk = (roi_raw * N_eff + roi_m * kR) / (N_eff + kR)
+        t['roi_shrunk'] = roi_shrunk
+        
+        # --- Formula 3: PnL ---
+        pnl_total = t.get('total_pnl', 0.0)
+        max_s = t.get('max_stake', 0.0)
+        alpha = 4.0
+        ratio = (max_s / S) if S > 0 else 0.0
+        pnl_adj = pnl_total / (1 + alpha * ratio)
+        
+        kp = 50
+        pnl_shrunk = (pnl_adj * N_eff + pnl_m * kp) / (N_eff + kp)
+        t['pnl_shrunk'] = pnl_shrunk
+        
+        # --- Formula 4: Risk ---
+        worst_loss = t.get('worst_loss', 0.0) 
+        capital = t.get('portfolio_value', 1.0)
+        if capital <= 0: capital = 1.0 
+        
+        loss_pct = abs(worst_loss) / capital
+        risk_score = 1 - loss_pct
+        t['score_risk'] = clamp(risk_score, 0, 1) 
+    
+    # Collect Shrunk values from POPULATION for Percentiles
+    w_shrunk_pop = [t['W_shrunk'] for t in population_metrics]
+    roi_shrunk_pop = [t['roi_shrunk'] for t in population_metrics]
+    pnl_shrunk_pop = [t['pnl_shrunk'] for t in population_metrics]
+    
+    # Anchors
+    w_1 = get_percentile_value(w_shrunk_pop, 1)
+    w_99 = get_percentile_value(w_shrunk_pop, 99)
+    
+    r_1 = get_percentile_value(roi_shrunk_pop, 1)
+    r_99 = get_percentile_value(roi_shrunk_pop, 99)
+    
+    p_1 = get_percentile_value(pnl_shrunk_pop, 1)
+    p_99 = get_percentile_value(pnl_shrunk_pop, 99)
+    
+    # Final Normalization
+    for t in traders_metrics:
+        # W score
+        if w_99 - w_1 != 0:
+            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+        else:
+            w_score = 0.5 
+        t['score_win_rate'] = clamp(w_score, 0, 1)
+        
+        # R score
+        if r_99 - r_1 != 0:
+            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+        else:
+            r_score = 0.5
+        t['score_roi'] = clamp(r_score, 0, 1)
+        
+        # P score
+        if p_99 - p_1 != 0:
+            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+        else:
+            p_score = 0.5
+        t['score_pnl'] = clamp(p_score, 0, 1)
+        
+    return traders_metrics
 

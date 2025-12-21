@@ -18,6 +18,10 @@ class LeaderboardEntry(BaseModel):
     total_trades_with_pnl: int = Field(..., description="Total trades with calculated PnL")
     winning_trades: int = Field(..., description="Number of winning trades")
     total_stakes: float = Field(..., description="Total stakes invested")
+    score_win_rate: float = Field(0.0, description="Win Rate Score (0-1)")
+    score_roi: float = Field(0.0, description="ROI Score (0-1)")
+    score_pnl: float = Field(0.0, description="PnL Score (0-1)")
+    score_risk: float = Field(0.0, description="Risk Score (0-1)")
 
 
 class LeaderboardResponse(BaseModel):

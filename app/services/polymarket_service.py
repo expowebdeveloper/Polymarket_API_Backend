@@ -34,12 +34,16 @@ class PolymarketService:
         # Breakdown Metrics
         unrealized_pnl = sum(float(p.get("cashPnl", 0.0)) for p in positions)
         reailzed_pnl_sum = sum(float(c.get("realizedPnl", 0.0)) for c in closed_positions)
-        
+        total_calculated_pnl = unrealized_pnl + reailzed_pnl_sum
+
         # Win Rate Calculations
         total_closed_count = len(closed_positions)
         wins = 0
         winning_stakes = 0.0
         total_stakes = 0.0
+        sum_sq_stakes = 0.0
+        max_stake = 0.0
+        worst_loss = 0.0
         
         for c in closed_positions:
             # Calculating Stake for Closed Position
@@ -49,13 +53,20 @@ class PolymarketService:
             stake = size * avg_price
             
             total_stakes += stake
+            sum_sq_stakes += stake ** 2
+            if stake > max_stake:
+                max_stake = stake
             
-            # Check for Win
-            if float(c.get("realizedPnl", 0.0)) > 0:
+            # Check for Win/Loss
+            realized_pnl = float(c.get("realizedPnl", 0.0))
+            if realized_pnl > 0:
                 wins += 1
                 winning_stakes += stake
-        
-        # Standard Win Rate
+            
+            # Worst loss (min PnL)
+            if realized_pnl < worst_loss:
+                worst_loss = realized_pnl 
+
         win_rate = (wins / total_closed_count * 100) if total_closed_count > 0 else 0.0
         
         # Stake-Weighted Win Rate
@@ -71,14 +82,22 @@ class PolymarketService:
             "pnl_metrics": {
                 "realized_pnl": round(reailzed_pnl_sum, 2),
                 "unrealized_pnl": round(unrealized_pnl, 2),
-                "total_pnl": round(total_pnl, 2) # Sourced from Leaderboard
+                "total_pnl": round(total_pnl, 2), # Sourced from Leaderboard
+                "total_calculated_pnl": round(total_calculated_pnl, 2)
             },
             "performance_metrics": {
                 "win_rate": round(win_rate, 2),
                 "stake_weighted_win_rate": round(stake_weighted_win_rate, 2),
                 "roi": round(roi, 2),
+                "roi": round(roi, 2),
                 "total_investment": round(total_investment, 2),
-                "portfolio_value": round(portfolio_value, 2)
+                "portfolio_value": round(portfolio_value, 2),
+                "winning_stakes": winning_stakes,
+                "sum_sq_stakes": sum_sq_stakes,
+                "max_stake": max_stake,
+                "worst_loss": worst_loss,
+                "total_stakes_calculated": total_stakes,
+                "wins": wins
             },
             "positions_summary": {
                 "open_positions_count": len(positions),

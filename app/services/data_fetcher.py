@@ -374,7 +374,7 @@ def fetch_positions_for_wallet(
             
         # If limit is None, fetch ALL data using pagination
         all_positions = []
-        fetch_limit = 100  # Fetch in chunks of 100
+        fetch_limit = 10  # Fetch in chunks of 100
         current_offset = offset or 0
         
         while True:

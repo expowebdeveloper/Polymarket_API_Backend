@@ -43,3 +43,6 @@ class PredictiveAnalysisResult(BaseModel):
     recommendations: List[Recommendation]
 
 
+
+
+

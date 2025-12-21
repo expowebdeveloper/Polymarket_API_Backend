@@ -11,6 +11,7 @@ from app.services.leaderboard_service import (
     get_leaderboard_by_roi,
     get_leaderboard_by_win_rate
 )
+from app.services.live_leaderboard_service import fetch_live_leaderboard_from_file
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
@@ -387,4 +388,38 @@ async def add_wallets_to_leaderboard(
             ))
     
     return results
+
+@router.post(
+    "/live",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard from wallet_address.txt",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt"
+)
+async def get_live_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file.
+    
+    This endpoint:
+    1. Reads wallet_address.txt from the server.
+    2. Fetches LIVE data from Polymarket API (bypassing DB).
+    3. Calculates advanced scores (Win Rate, ROI, PnL, Risk).
+    4. Returns ranked results.
+    """
+    try:
+        file_path = "wallet_address.txt" # Relative to root where app runs
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="score_pnl",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live leaderboard: {str(e)}"
+        )
 
