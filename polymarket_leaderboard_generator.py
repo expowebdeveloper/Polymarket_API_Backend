@@ -13,8 +13,8 @@ from collections import defaultdict
 from datetime import datetime
 import time
 import os
-
 # ============================================================================
+
 # CONFIGURATION
 # ============================================================================
 DOMEAPI_BASE_URL = "https://api.domeapi.io/v1/polymarket"
@@ -48,8 +48,8 @@ def determine_win_or_loss(trade_token_id, winning_token_id):
         trade_token_id: Token ID from the trade
         winning_token_id: Token ID of the winning side
 
-    Returns:
         "WIN" or "LOSS"
+    Returns:
     """
     return "WIN" if trade_token_id == winning_token_id else "LOSS"
 

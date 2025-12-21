@@ -55,13 +55,37 @@ async def save_profile_stats_to_db(
     await session.commit()
     
     # Fetch and return the saved record
-    result = await session.execute(
-        select(ProfileStats).where(
-            ProfileStats.proxy_address == proxy_address,
-            ProfileStats.username == username
-        )
+    # Handle potential duplicates by getting the first match (most recent)
+    # Order by updated_at descending to get the most recent one in case of duplicates
+    query = select(ProfileStats).where(
+        ProfileStats.proxy_address == proxy_address
     )
-    return result.scalar_one()
+    if username:
+        query = query.where(ProfileStats.username == username)
+    else:
+        query = query.where(ProfileStats.username.is_(None))
+    
+    query = query.order_by(ProfileStats.updated_at.desc())
+    
+    result = await session.execute(query)
+    # Use first() instead of scalar_one_or_none() to handle duplicates gracefully
+    row = result.first()
+    profile_stat = row[0] if row else None
+    
+    # If None (shouldn't happen after insert), try without username filter as fallback
+    if profile_stat is None:
+        query = select(ProfileStats).where(
+            ProfileStats.proxy_address == proxy_address
+        ).order_by(ProfileStats.updated_at.desc())
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            profile_stat = row[0]
+    
+    if profile_stat is None:
+        raise ValueError(f"Failed to retrieve saved profile stats for {proxy_address}")
+    
+    return profile_stat
 
 
 async def get_profile_stats_from_db(

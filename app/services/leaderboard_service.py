@@ -177,18 +177,37 @@ async def calculate_trader_metrics_with_time_filter(
     
     # Advanced Metrics for Scoring
     worst_loss = Decimal('0')
+<<<<<<< HEAD
     max_stake = Decimal('0')
+=======
+    stakes_list = []  # Collect all stakes for top 5 calculation
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
     sum_sq_stakes = Decimal('0')
     
     for trade in trades:
         stake = trade.size * trade.price
+<<<<<<< HEAD
         max_stake = max(max_stake, stake)
+=======
+        stakes_list.append(stake)
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
         sum_sq_stakes += stake ** 2
         
         if trade.pnl is not None:
              if trade.pnl < worst_loss:
                  worst_loss = trade.pnl
     
+<<<<<<< HEAD
+=======
+    # Calculate max_stake: average of top 5 highest stakes (or all if < 5)
+    max_stake = Decimal('0')
+    if stakes_list:
+        sorted_stakes = sorted(stakes_list, reverse=True)
+        top_n = min(5, len(sorted_stakes))
+        top_stakes = sorted_stakes[:top_n]
+        max_stake = sum(top_stakes) / Decimal(str(top_n)) if top_n > 0 else Decimal('0')
+    
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
     # Calculate ROI
     roi = Decimal('0')
     if total_stakes > 0:
@@ -455,12 +474,25 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
         t['pnl_shrunk'] = pnl_shrunk
         
         # --- Formula 4: Risk ---
+<<<<<<< HEAD
         worst_loss = t.get('worst_loss', 0.0) 
         capital = t.get('portfolio_value', 1.0)
         if capital <= 0: capital = 1.0 
         
         loss_pct = abs(worst_loss) / capital
         risk_score = 1 - loss_pct
+=======
+        # Risk Score = worst_loss / total_stake (S)
+        # According to client: loss% = |worst_loss| / total_stake
+        worst_loss = t.get('worst_loss', 0.0) 
+        capital = S  # Use total_stakes (S) as capital, not portfolio_value
+        if capital <= 0: 
+            capital = 1.0 
+        
+        loss_pct = abs(worst_loss) / capital if capital > 0 else 0.0
+        risk_score = 1.0 - loss_pct
+        # Clamp risk score to 0-1 range
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
         t['score_risk'] = clamp(risk_score, 0, 1) 
     
     # Collect Shrunk values from POPULATION for Percentiles
@@ -501,5 +533,199 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)
         
+<<<<<<< HEAD
     return traders_metrics
+=======
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
+        
+    return traders_metrics
+
+
+def calculate_scores_and_rank_with_percentiles(traders_metrics: List[Dict]) -> Dict:
+    """
+    Calculate advanced scores for a list of traders and return with percentile information.
+    
+    Returns:
+        Dict containing:
+        - traders: List of traders with all scores
+        - percentiles: Dict with 1% and 99% percentile values
+        - medians: Dict with median values used in calculations
+        - population_size: Number of traders with >= 5 trades
+    """
+    if not traders_metrics:
+        return {
+            "traders": [],
+            "percentiles": {
+                "w_shrunk_1_percent": 0.0,
+                "w_shrunk_99_percent": 0.0,
+                "roi_shrunk_1_percent": 0.0,
+                "roi_shrunk_99_percent": 0.0,
+                "pnl_shrunk_1_percent": 0.0,
+                "pnl_shrunk_99_percent": 0.0,
+            },
+            "medians": {
+                "roi_median": 0.0,
+                "pnl_median": 0.0,
+            },
+            "population_size": 0,
+            "total_traders": 0
+        }
+        
+    # Filter valid traders for population stats (>= 5 trades)
+    population_metrics = [t for t in traders_metrics if t.get('total_trades', 0) >= 5]
+    
+    # Fallback if no active traders
+    if not population_metrics:
+        population_metrics = traders_metrics 
+
+    # --- PnL Population Median (for Formula 3) ---
+    pnl_adjs_pop = []
+    
+    for t in population_metrics:
+        pnl_total = t.get('total_pnl', 0.0)
+        S = t.get('total_stakes', 0.0)
+        max_s = t.get('max_stake', 0.0)
+        alpha = 4.0
+        
+        ratio = 0.0
+        if S > 0:
+            ratio = max_s / S
+            
+        pnl_adj = pnl_total / (1 + alpha * ratio)
+        pnl_adjs_pop.append(pnl_adj)
+        
+    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
+
+    # --- ROI Population Median (for Formula 2) ---
+    rois_pop = [t.get('roi', 0.0) for t in population_metrics]
+    roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
+
+    # Calculate Shrunk Values for ALL traders
+    for t in traders_metrics:
+        S = t.get('total_stakes', 0.0)
+        sum_sq_s = t.get('sum_sq_stakes', 0.0)
+        N_eff = (S**2) / sum_sq_s if sum_sq_s > 0 else 0.0
+        
+        # --- Formula 1: Win Rate ---
+        s_w = t.get('winning_stakes', 0.0)
+        W = (s_w / S) if S > 0 else 0.0
+        b = 0.5
+        kW = 50
+        W_shrunk = (W * N_eff + b * kW) / (N_eff + kW)
+        t['W_shrunk'] = W_shrunk
+        
+        # --- Formula 2: ROI ---
+        roi_raw = t.get('roi', 0.0)
+        kR = 50
+        roi_shrunk = (roi_raw * N_eff + roi_m * kR) / (N_eff + kR)
+        t['roi_shrunk'] = roi_shrunk
+        
+        # --- Formula 3: PnL ---
+        pnl_total = t.get('total_pnl', 0.0)
+        max_s = t.get('max_stake', 0.0)
+        alpha = 4.0
+        ratio = (max_s / S) if S > 0 else 0.0
+        pnl_adj = pnl_total / (1 + alpha * ratio)
+        
+        kp = 50
+        pnl_shrunk = (pnl_adj * N_eff + pnl_m * kp) / (N_eff + kp)
+        t['pnl_shrunk'] = pnl_shrunk
+        
+        # --- Formula 4: Risk ---
+        # Risk Score = worst_loss / total_stake (S)
+        # According to client: loss% = |worst_loss| / total_stake
+        worst_loss = t.get('worst_loss', 0.0) 
+        capital = S  # Use total_stakes (S) as capital, not portfolio_value
+        if capital <= 0: 
+            capital = 1.0 
+        
+        loss_pct = abs(worst_loss) / capital if capital > 0 else 0.0
+        risk_score = 1.0 - loss_pct
+        # Clamp risk score to 0-1 range
+        t['score_risk'] = clamp(risk_score, 0, 1) 
+    
+    # Collect Shrunk values from POPULATION for Percentiles
+    w_shrunk_pop = [t['W_shrunk'] for t in population_metrics]
+    roi_shrunk_pop = [t['roi_shrunk'] for t in population_metrics]
+    pnl_shrunk_pop = [t['pnl_shrunk'] for t in population_metrics]
+    
+    # Anchors
+    w_1 = get_percentile_value(w_shrunk_pop, 1)
+    w_99 = get_percentile_value(w_shrunk_pop, 99)
+    
+    r_1 = get_percentile_value(roi_shrunk_pop, 1)
+    r_99 = get_percentile_value(roi_shrunk_pop, 99)
+    
+    p_1 = get_percentile_value(pnl_shrunk_pop, 1)
+    p_99 = get_percentile_value(pnl_shrunk_pop, 99)
+    
+    # Final Normalization
+    for t in traders_metrics:
+        # W score
+        if w_99 - w_1 != 0:
+            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+        else:
+            w_score = 0.5 
+        t['score_win_rate'] = clamp(w_score, 0, 1)
+        
+        # R score
+        if r_99 - r_1 != 0:
+            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+        else:
+            r_score = 0.5
+        t['score_roi'] = clamp(r_score, 0, 1)
+        
+        # P score
+        if p_99 - p_1 != 0:
+            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+        else:
+            p_score = 0.5
+        t['score_pnl'] = clamp(p_score, 0, 1)
+        
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
+    
+    return {
+        "traders": traders_metrics,
+        "percentiles": {
+            "w_shrunk_1_percent": w_1,
+            "w_shrunk_99_percent": w_99,
+            "roi_shrunk_1_percent": r_1,
+            "roi_shrunk_99_percent": r_99,
+            "pnl_shrunk_1_percent": p_1,
+            "pnl_shrunk_99_percent": p_99,
+        },
+        "medians": {
+            "roi_median": roi_m,
+            "pnl_median": pnl_m,
+        },
+        "population_size": len(population_metrics),
+        "total_traders": len(traders_metrics)
+    }
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
 

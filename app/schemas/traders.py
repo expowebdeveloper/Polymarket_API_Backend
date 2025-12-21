@@ -11,7 +11,7 @@ class TraderBasicInfo(BaseModel):
     total_trades: int = Field(..., description="Total number of trades", example=12)
     total_positions: int = Field(..., description="Total number of positions", example=5)
     first_trade_date: Optional[str] = Field(None, description="Date of first trade")
-    last_trade_date: Optional[str] = Field(None, description="Date of last trade")
+    last_trade_date: Optional[str] = Field(None, description="Date of last trade")  
 
     class Config:
         json_schema_extra = {

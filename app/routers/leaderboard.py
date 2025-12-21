@@ -1,15 +1,14 @@
 """Leaderboard API routes."""
 
 from fastapi import APIRouter, Query, HTTPException, status, Depends, Body
+from fastapi.responses import JSONResponse
 from typing import Literal, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from app.schemas.leaderboard import LeaderboardResponse, LeaderboardEntry
+from app.schemas.leaderboard import LeaderboardResponse, LeaderboardEntry, AllLeaderboardsResponse, PercentileInfo, MedianInfo
 from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
-    get_leaderboard_by_pnl,
-    get_leaderboard_by_roi,
-    get_leaderboard_by_win_rate
+    calculate_scores_and_rank_with_percentiles
 )
 from app.services.live_leaderboard_service import fetch_live_leaderboard_from_file
 from app.services.trade_service import fetch_and_save_trades
@@ -63,32 +62,41 @@ class AddWalletResponse(BaseModel):
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
     summary="Get leaderboard by Total PnL",
-    description="Get leaderboard of traders ranked by Total PnL with optional time period filtering"
+    description="Get leaderboard of traders ranked by Total PnL using live Polymarket API data"
 )
 async def get_pnl_leaderboard(
     period: Literal["7d", "30d", "all"] = Query(
         "all",
-        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time)"
+        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time) - Note: Currently uses all time data from API"
     ),
     limit: int = Query(
         100,
         ge=1,
         le=1000,
         description="Maximum number of traders to return"
-    ),
-    db: AsyncSession = Depends(get_db)
+    )
 ):
     """
-    Get leaderboard sorted by Total PnL.
+    Get leaderboard sorted by Total PnL using live Polymarket API data.
     
     Returns traders ranked by their total profit and loss (PnL).
+    Uses wallet_address.txt file and fetches fresh data from Polymarket API.
     """
     try:
-        leaderboard = await get_leaderboard_by_pnl(db, period=period, limit=limit)
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
         
-        entries = [
-            LeaderboardEntry(**trader) for trader in leaderboard
-        ]
+        # Sort by total_pnl (descending - highest PnL = rank 1)
+        entries_data.sort(key=lambda x: x.get('total_pnl', float('-inf')), reverse=True)
+        
+        # Apply limit
+        entries_data = entries_data[:limit]
+        
+        # Add rank
+        for i, trader in enumerate(entries_data, 1):
+            trader['rank'] = i
+        
+        entries = [LeaderboardEntry(**trader) for trader in entries_data]
         
         return LeaderboardResponse(
             period=period,
@@ -111,32 +119,41 @@ async def get_pnl_leaderboard(
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
     summary="Get leaderboard by ROI",
-    description="Get leaderboard of traders ranked by Return on Investment (ROI) with optional time period filtering"
+    description="Get leaderboard of traders ranked by Return on Investment (ROI) using live Polymarket API data"
 )
 async def get_roi_leaderboard(
     period: Literal["7d", "30d", "all"] = Query(
         "all",
-        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time)"
+        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time) - Note: Currently uses all time data from API"
     ),
     limit: int = Query(
         100,
         ge=1,
         le=1000,
         description="Maximum number of traders to return"
-    ),
-    db: AsyncSession = Depends(get_db)
+    )
 ):
     """
-    Get leaderboard sorted by ROI.
+    Get leaderboard sorted by ROI using live Polymarket API data.
     
-    Returns traders ranked by their Return on Investment (ROI) percentage.
+    Returns traders ranked by their return on investment percentage.
+    Uses wallet_address.txt file and fetches fresh data from Polymarket API.
     """
     try:
-        leaderboard = await get_leaderboard_by_roi(db, period=period, limit=limit)
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
         
-        entries = [
-            LeaderboardEntry(**trader) for trader in leaderboard
-        ]
+        # Sort by roi (descending - highest ROI = rank 1)
+        entries_data.sort(key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        
+        # Apply limit
+        entries_data = entries_data[:limit]
+        
+        # Add rank
+        for i, trader in enumerate(entries_data, 1):
+            trader['rank'] = i
+        
+        entries = [LeaderboardEntry(**trader) for trader in entries_data]
         
         return LeaderboardResponse(
             period=period,
@@ -159,32 +176,41 @@ async def get_roi_leaderboard(
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
     summary="Get leaderboard by Win Rate",
-    description="Get leaderboard of traders ranked by Win Rate with optional time period filtering"
+    description="Get leaderboard of traders ranked by Win Rate using live Polymarket API data"
 )
 async def get_win_rate_leaderboard(
     period: Literal["7d", "30d", "all"] = Query(
         "all",
-        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time)"
+        description="Time period filter: 7d (7 days), 30d (30 days), or all (all time) - Note: Currently uses all time data from API"
     ),
     limit: int = Query(
         100,
         ge=1,
         le=1000,
         description="Maximum number of traders to return"
-    ),
-    db: AsyncSession = Depends(get_db)
+    )
 ):
     """
-    Get leaderboard sorted by Win Rate.
+    Get leaderboard sorted by Win Rate using live Polymarket API data.
     
     Returns traders ranked by their win rate percentage.
+    Uses wallet_address.txt file and fetches fresh data from Polymarket API.
     """
     try:
-        leaderboard = await get_leaderboard_by_win_rate(db, period=period, limit=limit)
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
         
-        entries = [
-            LeaderboardEntry(**trader) for trader in leaderboard
-        ]
+        # Sort by win_rate (descending - highest win rate = rank 1)
+        entries_data.sort(key=lambda x: x.get('win_rate', float('-inf')), reverse=True)
+        
+        # Apply limit
+        entries_data = entries_data[:limit]
+        
+        # Add rank
+        for i, trader in enumerate(entries_data, 1):
+            trader['rank'] = i
+        
+        entries = [LeaderboardEntry(**trader) for trader in entries_data]
         
         return LeaderboardResponse(
             period=period,
@@ -423,3 +449,497 @@ async def get_live_leaderboard_from_file():
             detail=f"Error generating live leaderboard: {str(e)}"
         )
 
+<<<<<<< HEAD
+=======
+
+@router.post(
+    "/live-roi",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by ROI Score",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by ROI Score"
+)
+async def get_live_roi_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by ROI Score.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by ROI Score
+        # Note: keys in dictionary from fetch_live_leaderboard might need checking
+        # app/services/live_leaderboard_service.py calls calculate_scores_and_rank
+        # scoring_script.py produces 'score_roi'.
+        
+        # Sort by ROI_shrunk in ascending order (best = lowest shrunk value = rank 1)
+        entries_data.sort(key=lambda x: x.get('roi_shrunk', float('inf')))
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="roi_shrunk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live ROI leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/live-pnl",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by PnL Score",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by PnL Score"
+)
+async def get_live_pnl_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by PnL Score.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by PNL_shrunk in ascending order (best = lowest shrunk value = rank 1)
+        entries_data.sort(key=lambda x: x.get('pnl_shrunk', float('inf')))
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="pnl_shrunk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live PnL leaderboard: {str(e)}"
+        )
+
+@router.post(
+    "/live-risk",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by Risk Score",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by Risk Score"
+)
+async def get_live_risk_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by Risk Score.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by Risk Score
+        entries_data.sort(key=lambda x: x.get('score_risk', 0), reverse=True)
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="score_risk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live Risk leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/w-shrunk",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by W Shrunk",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by W_shrunk (ascending - best = rank 1)"
+)
+async def get_live_w_shrunk_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by W_shrunk in ascending order.
+    Lower W_shrunk = better performance = rank 1.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by W_shrunk in ascending order (best = lowest shrunk value = rank 1)
+        entries_data.sort(key=lambda x: x.get('W_shrunk', float('inf')))
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="W_shrunk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live W shrunk leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/roi-raw",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by Raw ROI",
+    description="Calculate live leaderboard for wallets listed in wallet_address.txt, ranked by raw ROI (before shrinkage)"
+)
+async def get_live_roi_raw_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by raw ROI (before shrinkage).
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by raw ROI in descending order (highest ROI = rank 1)
+        entries_data.sort(key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="roi",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live ROI raw leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/roi-shrunk",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by ROI Shrunk",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by ROI_shrunk (ascending - best = rank 1)"
+)
+async def get_live_roi_shrunk_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by ROI_shrunk in ascending order.
+    Lower ROI_shrunk = better performance = rank 1.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by ROI_shrunk in ascending order (best = lowest shrunk value = rank 1)
+        entries_data.sort(key=lambda x: x.get('roi_shrunk', float('inf')))
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="roi_shrunk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live ROI shrunk leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/pnl-shrunk",
+    response_model=LeaderboardResponse,
+    summary="Get Live Leaderboard by PnL Shrunk",
+    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt, ranked by PNL_shrunk (ascending - best = rank 1)"
+)
+async def get_live_pnl_shrunk_leaderboard_from_file():
+    """
+    Generate a live leaderboard using the wallet_address.txt file, sorted by PNL_shrunk in ascending order.
+    Lower PNL_shrunk = better performance = rank 1.
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        # Sort by PNL_shrunk in ascending order (best = lowest shrunk value = rank 1)
+        entries_data.sort(key=lambda x: x.get('pnl_shrunk', float('inf')))
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="pnl_shrunk",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating live PnL shrunk leaderboard: {str(e)}"
+        )
+
+
+@router.post(
+    "/all",
+    response_model=AllLeaderboardsResponse,
+    summary="Get All Leaderboards with Percentile Information",
+    description="Get all leaderboards (sorted by different metrics) along with percentile anchors and median values used in calculations"
+)
+async def get_all_leaderboards_with_percentiles():
+    """
+    Generate all leaderboards with percentile information.
+    
+    Returns:
+    - All leaderboards sorted by different metrics (W_shrunk, ROI_raw, ROI_shrunk, PNL_shrunk, final scores)
+    - Percentile information (1% and 99% anchors for W, ROI, and PNL shrunk values)
+    - Median values (ROI median and PNL median used in shrinkage)
+    - Population statistics
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        if not entries_data:
+            return AllLeaderboardsResponse(
+                percentiles=PercentileInfo(
+                    w_shrunk_1_percent=0.0,
+                    w_shrunk_99_percent=0.0,
+                    roi_shrunk_1_percent=0.0,
+                    roi_shrunk_99_percent=0.0,
+                    pnl_shrunk_1_percent=0.0,
+                    pnl_shrunk_99_percent=0.0,
+                    population_size=0
+                ),
+                medians=MedianInfo(
+                    roi_median=0.0,
+                    pnl_median=0.0
+                ),
+                leaderboards={},
+                total_traders=0,
+                population_traders=0
+            )
+        
+        # Calculate scores with percentile information
+        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        traders = result["traders"]
+        percentiles_data = result["percentiles"]
+        medians_data = result["medians"]
+        
+        # Create all different leaderboards
+        leaderboards = {}
+        
+        # 1. W_shrunk leaderboard (ascending - best = lowest)
+        w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
+        for i, trader in enumerate(w_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["w_shrunk"] = [LeaderboardEntry(**t) for t in w_shrunk_sorted]
+        
+        # 2. ROI raw leaderboard (descending - best = highest)
+        roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        for i, trader in enumerate(roi_raw_sorted, 1):
+            trader['rank'] = i
+        leaderboards["roi_raw"] = [LeaderboardEntry(**t) for t in roi_raw_sorted]
+        
+        # 3. ROI shrunk leaderboard (ascending - best = lowest)
+        roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
+        for i, trader in enumerate(roi_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["roi_shrunk"] = [LeaderboardEntry(**t) for t in roi_shrunk_sorted]
+        
+        # 4. PNL shrunk leaderboard (ascending - best = lowest)
+        pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
+        for i, trader in enumerate(pnl_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["pnl_shrunk"] = [LeaderboardEntry(**t) for t in pnl_shrunk_sorted]
+        
+        # 5. Final Score leaderboards (descending - best = highest)
+        # Win Rate Score
+        win_rate_sorted = sorted(traders, key=lambda x: x.get('score_win_rate', 0), reverse=True)
+        for i, trader in enumerate(win_rate_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_win_rate"] = [LeaderboardEntry(**t) for t in win_rate_sorted]
+        
+        # ROI Score
+        roi_score_sorted = sorted(traders, key=lambda x: x.get('score_roi', 0), reverse=True)
+        for i, trader in enumerate(roi_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_roi"] = [LeaderboardEntry(**t) for t in roi_score_sorted]
+        
+        # PNL Score
+        pnl_score_sorted = sorted(traders, key=lambda x: x.get('score_pnl', 0), reverse=True)
+        for i, trader in enumerate(pnl_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
+        
+        # Risk Score
+        risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
+        for i, trader in enumerate(risk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
+        
+        # Final Score (descending - best = highest)
+        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
+        for i, trader in enumerate(final_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["final_score"] = [LeaderboardEntry(**t) for t in final_score_sorted]
+        
+        return AllLeaderboardsResponse(
+            percentiles=PercentileInfo(
+                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
+                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
+                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
+                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
+                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
+                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
+                population_size=result["population_size"]
+            ),
+            medians=MedianInfo(
+                roi_median=medians_data["roi_median"],
+                pnl_median=medians_data["pnl_median"]
+            ),
+            leaderboards=leaderboards,
+            total_traders=result["total_traders"],
+            population_traders=result["population_size"]
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating all leaderboards: {str(e)}"
+        )
+
+
+@router.get(
+    "/view-all",
+    response_model=AllLeaderboardsResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="View All Leaderboards (JSON)",
+    description="Get all leaderboards and percentile information in JSON format"
+)
+async def view_all_leaderboards():
+    """
+    Get all leaderboards and percentile information in JSON format.
+    
+    Returns:
+    - All leaderboards sorted by different metrics (W_shrunk, ROI_raw, ROI_shrunk, PNL_shrunk, final scores)
+    - Percentile information (1% and 99% anchors for W, ROI, and PNL shrunk values)
+    - Median values (ROI median and PNL median used in shrinkage)
+    - Population statistics
+    """
+    try:
+        file_path = "wallet_address.txt"
+        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        
+        if not entries_data:
+            return AllLeaderboardsResponse(
+                percentiles=PercentileInfo(
+                    w_shrunk_1_percent=0.0,
+                    w_shrunk_99_percent=0.0,
+                    roi_shrunk_1_percent=0.0,
+                    roi_shrunk_99_percent=0.0,
+                    pnl_shrunk_1_percent=0.0,
+                    pnl_shrunk_99_percent=0.0,
+                    population_size=0
+                ),
+                medians=MedianInfo(
+                    roi_median=0.0,
+                    pnl_median=0.0
+                ),
+                leaderboards={},
+                total_traders=0,
+                population_traders=0
+            )
+        
+        # Calculate scores with percentile information
+        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        traders = result["traders"]
+        percentiles_data = result["percentiles"]
+        medians_data = result["medians"]
+        
+        # Create all different leaderboards
+        leaderboards = {}
+        
+        # 1. W_shrunk leaderboard (ascending - best = lowest)
+        w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
+        for i, trader in enumerate(w_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["w_shrunk"] = [LeaderboardEntry(**t) for t in w_shrunk_sorted]
+        
+        # 2. ROI raw leaderboard (descending - best = highest)
+        roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        for i, trader in enumerate(roi_raw_sorted, 1):
+            trader['rank'] = i
+        leaderboards["roi_raw"] = [LeaderboardEntry(**t) for t in roi_raw_sorted]
+        
+        # 3. ROI shrunk leaderboard (ascending - best = lowest)
+        roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
+        for i, trader in enumerate(roi_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["roi_shrunk"] = [LeaderboardEntry(**t) for t in roi_shrunk_sorted]
+        
+        # 4. PNL shrunk leaderboard (ascending - best = lowest)
+        pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
+        for i, trader in enumerate(pnl_shrunk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["pnl_shrunk"] = [LeaderboardEntry(**t) for t in pnl_shrunk_sorted]
+        
+        # 5. Final Score leaderboards (descending - best = highest)
+        # Win Rate Score
+        win_rate_sorted = sorted(traders, key=lambda x: x.get('score_win_rate', 0), reverse=True)
+        for i, trader in enumerate(win_rate_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_win_rate"] = [LeaderboardEntry(**t) for t in win_rate_sorted]
+        
+        # ROI Score
+        roi_score_sorted = sorted(traders, key=lambda x: x.get('score_roi', 0), reverse=True)
+        for i, trader in enumerate(roi_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_roi"] = [LeaderboardEntry(**t) for t in roi_score_sorted]
+        
+        # PNL Score
+        pnl_score_sorted = sorted(traders, key=lambda x: x.get('score_pnl', 0), reverse=True)
+        for i, trader in enumerate(pnl_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
+        
+        # Risk Score
+        risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
+        for i, trader in enumerate(risk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
+        
+        # Final Score (descending - best = highest)
+        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
+        for i, trader in enumerate(final_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["final_score"] = [LeaderboardEntry(**t) for t in final_score_sorted]
+        
+        return AllLeaderboardsResponse(
+            percentiles=PercentileInfo(
+                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
+                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
+                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
+                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
+                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
+                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
+                population_size=result["population_size"]
+            ),
+            medians=MedianInfo(
+                roi_median=medians_data["roi_median"],
+                pnl_median=medians_data["pnl_median"]
+            ),
+            leaderboards=leaderboards,
+            total_traders=result["total_traders"],
+            population_traders=result["population_size"]
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating all leaderboards: {str(e)}"
+        )
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66

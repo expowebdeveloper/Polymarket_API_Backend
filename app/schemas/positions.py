@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from decimal import Decimal
 
-
+  
 class PositionResponse(BaseModel):
     """Position data from API response."""
     proxy_wallet: str = Field(..., description="Proxy wallet address")

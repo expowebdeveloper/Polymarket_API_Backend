@@ -80,13 +80,17 @@ def calculate_scores_and_rank(traders_metrics):
         if sum_sq_s > 0:
             N_eff = (S**2) / sum_sq_s
         
+<<<<<<< HEAD
         # Step 3: Shrink Win Rate
         # Baseline b=0.5, kW=50
+=======
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
         b = 0.5
         kW = 50
         W_shrunk = (W * N_eff + b * kW) / (N_eff + kW)
         trader['W_shrunk'] = W_shrunk
         
+<<<<<<< HEAD
         # ROI - Step 1
         # Need ROI raw, ROI_median? 
         # ROI_m is median across traders. Which traders? "across traders". Including small ones?
@@ -97,6 +101,10 @@ def calculate_scores_and_rank(traders_metrics):
     # We need Medians first for ROI and PnL shrinking.
     # Collect raw ROIs and PnLs from population
     
+=======
+        pass
+
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
     # ROI population
     rois_pop = [t.get('roi', 0.0) for t in population_metrics]
     roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
@@ -164,6 +172,7 @@ def calculate_scores_and_rank(traders_metrics):
         pnl_shrunk = (pnl_adj * N_eff + pnl_m * kp) / (N_eff + kp)
         t['pnl_shrunk'] = pnl_shrunk
         
+<<<<<<< HEAD
         # --- Formula 4 ---
         worst_loss = t.get('worst_loss', 0.0) # Should be negative or positive? "biggest single loss". Usually abs() magnitude.
         # But commonly PnL is negative for loss.
@@ -179,6 +188,28 @@ def calculate_scores_and_rank(traders_metrics):
         risk_score = 1 - loss_pct
         t['risk_score'] = risk_score # This is final score already? Formula 4 Step 2: Risk_score = 1 - loss%. Yes.
         # Wait, is there normalization for Risk? No, it's just 1 - loss%.
+=======
+        # --- Formula 4: Risk Score ---
+        # loss% = |worst_loss| / capital
+        # Capital = account capital (Total Investment in Closed Trades or Portfolio Value?)
+        # User defined "capital = account capital"
+        # In live_leaderboard.py, I used s_total (Total Closed Investment) which matches "Total Stakes".
+        # However, "account capital" usually usually implies 'portfolio_value' (current equity) or 'total_investment' (cumulative).
+        # Given "worst_loss" is a historical max, comparing it to "cumulative investment" might dilute it too much.
+        # But comparing to current portfolio value might be volatile.
+        # Using "total_stakes" (S) as "Capital Deployed" is a reasonable proxy for "Activity Volume".
+        # Let's align with live_leaderboard.py for consistency.
+        capital = S 
+        worst_loss = t.get('worst_loss', 0.0)
+        
+        loss_pct = 0.0
+        if capital > 0:
+            loss_pct = abs(worst_loss) / capital
+            
+        risk_score = 1.0 - loss_pct
+        t['risk_score'] = clamp(risk_score, 0, 1) # Clamp 0-1
+        
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
     
     # Now Percentile Normalization for W, R, P
     # Collect Shrunk values from POPULATION (>=5 trades)
@@ -223,6 +254,24 @@ def calculate_scores_and_rank(traders_metrics):
         # Risk score is already set
         t['score_risk'] = clamp(t['risk_score'], 0, 1) # Ensure 0-1
         
+<<<<<<< HEAD
+=======
+        # Final Score: Weighted combination of all 4 scores (0-100 scale)
+        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        w_score = t.get('score_win_rate', 0.0)
+        r_score = t.get('score_roi', 0.0)
+        p_score = t.get('score_pnl', 0.0)
+        risk_score = t.get('score_risk', 0.0)
+        
+        final_score = 100.0 * (
+            0.30 * w_score + 
+            0.30 * r_score + 
+            0.30 * p_score + 
+            0.10 * (1.0 - risk_score / 4.0)
+        )
+        t['final_score'] = clamp(final_score, 0, 100)
+        
+>>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
     return traders_metrics
 
 # --- Test Case ---

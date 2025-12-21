@@ -52,7 +52,7 @@ async def get_traders(
     3. Returns basic information for each trader
     """
     try:
-        traders = fetch_traders_list(limit=limit)
+        traders = await fetch_traders_list(limit=limit)
         return TradersListResponse(
             count=len(traders),
             traders=[TraderBasicInfo(**trader) for trader in traders]
@@ -95,7 +95,7 @@ async def get_trader(
         )
     
     try:
-        trader_data = get_trader_detail(wallet)
+        trader_data = await get_trader_detail(wallet)
         
         # Check if trader has any data
         if trader_data.get("total_trades", 0) == 0:
@@ -153,7 +153,7 @@ async def get_trader_basic(
     
     try:
         markets = fetch_resolved_markets()
-        trader_data = get_trader_basic_info(wallet, markets)
+        trader_data = await get_trader_basic_info(wallet, markets)
         return TraderBasicInfo(**trader_data)
     except Exception as e:
         raise HTTPException(
