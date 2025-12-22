@@ -37,6 +37,40 @@ def get_percentile_value(values, percentile):
     d1 = sorted_values[int(c)] * (k - f)
     return d0 + d1
 
+def calculate_median(values):
+    """
+    Calculate median using the exact traditional formula.
+    
+    Case A: When n is Odd
+    Median = ((n + 1) / 2)^th term (1-indexed)
+    In 0-indexed: index = (n - 1) // 2 = n // 2
+    
+    Case B: When n is Even
+    Median = average of (n/2)^th and (n/2 + 1)^th terms (1-indexed)
+    In 0-indexed: indices = (n//2 - 1) and (n//2)
+    """
+    if not values:
+        return 0.0
+    
+    sorted_values = sorted(values)
+    n = len(sorted_values)
+    
+    if n == 0:
+        return 0.0
+    
+    # Case A: When n is Odd
+    if n % 2 == 1:
+        median_index = n // 2
+        return sorted_values[median_index]
+    
+    # Case B: When n is Even
+    else:
+        mid1_index = (n // 2) - 1
+        mid2_index = n // 2
+        median = (sorted_values[mid1_index] + sorted_values[mid2_index]) / 2.0
+        return median
+
+
 def calculate_scores_and_rank(traders_metrics):
     """
     Calculate advanced scores for a list of traders.
@@ -89,7 +123,8 @@ def calculate_scores_and_rank(traders_metrics):
 
     # ROI population
     rois_pop = [t.get('roi', 0.0) for t in population_metrics]
-    roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
+    # Calculate ROI median using exact traditional formula
+    roi_m = calculate_median(rois_pop)
     
     # PnL population - but wait, PnL score uses PnL_adj first
     # PnL_adj depends on max_s_i / S
@@ -118,7 +153,8 @@ def calculate_scores_and_rank(traders_metrics):
         pnl_adj = pnl_total / (1 + alpha * ratio)
         pnl_adjs_pop.append(pnl_adj)
         
-    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
+    # Calculate PnL median using exact traditional formula
+    pnl_m = calculate_median(pnl_adjs_pop)
 
     # Calculate Shrunk Values for ALL traders
     for t in traders_metrics:

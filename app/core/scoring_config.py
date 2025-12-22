@@ -105,3 +105,5 @@ class ScoringConfig:
 # Global configuration instance
 scoring_config = ScoringConfig()
 
+
+

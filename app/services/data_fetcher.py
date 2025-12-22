@@ -18,202 +18,190 @@ def get_polymarket_headers() -> Dict[str, str]:
     }
 
 
-def fetch_markets(
+async def fetch_markets(
     status: str = "active", 
     limit: Optional[int] = None,
-    offset: Optional[int] = None
+    offset: Optional[int] = None,
+    tag_slug: Optional[str] = None
 ) -> tuple[List[Dict], Dict[str, Any]]:
     """
-    Fetch markets from Polymarket API with pagination.
+    Fetch markets from Polymarket Gamma API with pagination (async).
+    Uses https://gamma-api.polymarket.com/events/pagination endpoint.
     Returns a tuple of (markets list, pagination info).
     
     Args:
         status: Market status to fetch ("active", "resolved", "closed", etc.)
-        limit: Maximum number of markets to fetch (default: 50 from config for testing)
+        limit: Maximum number of markets to fetch (default: 50 from config)
         offset: Offset for pagination (default: 0)
+        tag_slug: Optional tag filter (e.g., "sports", "politics", "crypto")
     
     Returns:
         Tuple of (markets list, pagination dict with keys: limit, offset, total, has_more)
-    
-    Note: If DNS resolution fails for api.polymarket.com, check:
-    1. Network connectivity
-    2. DNS server configuration
-    3. API endpoint URL (may have changed)
     """
     if limit is None:
         limit = settings.MARKETS_FETCH_LIMIT
     if offset is None:
         offset = 0
     
-    all_markets = []
-    page = 1
-    per_page = 50  # Fetch 50 per page from API
-    
-    # Calculate which pages we need to fetch
-    start_page = (offset // per_page) + 1
-    end_offset = offset + limit
-    end_page = (end_offset // per_page) + 2  # Fetch one extra page to check has_more
-    
-    headers = get_polymarket_headers()
-    
-    # List of possible API endpoints to try
-    api_endpoints = [
-        settings.POLYMARKET_API_URL,
-        settings.POLYMARKET_BASE_URL,
-        "https://clob.polymarket.com",
-    ]
-    
-    for base_url in api_endpoints:
+    try:
+        # Use Gamma API endpoint
+        url = "https://gamma-api.polymarket.com/events/pagination"
+        
+        # Map status to Gamma API parameters
+        active = None
+        closed = None
+        archived = None
+        
+        if status == "active":
+            active = True
+            closed = False
+            archived = False
+        elif status == "closed":
+            closed = True
+            active = None  # Can be either
+            archived = False
+        elif status == "resolved":
+            closed = True
+            archived = False
+        elif status == "archived":
+            archived = True
+        
+        # Build query parameters
+        # Optimize: Only fetch what we need (limit + offset) but cap at reasonable size
+        # For better performance, we fetch only the required amount
+        fetch_limit = min(offset + limit, 200)  # Cap at 200 to avoid huge requests
+        
+        params = {
+            "limit": fetch_limit,
+        }
+        
+        if active is not None:
+            params["active"] = str(active).lower()
+        if closed is not None:
+            params["closed"] = str(closed).lower()
+        if archived is not None:
+            params["archived"] = str(archived).lower()
+        if tag_slug:
+            params["tag_slug"] = tag_slug
+        
+        # Add ordering by volume (descending) for better results
+        params["order"] = "volume"
+        params["ascending"] = "false"
+        
+        # Use async HTTP client for better performance
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+        
+        # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
+        events = data.get("data", [])
+        pagination = data.get("pagination", {})
+        
+        # Convert events to market format efficiently
+        # IMPORTANT: Don't include nested markets array to keep response size small
         all_markets = []
-        page = start_page
-        
-        while page <= end_page:
-            try:
-                url = f"{base_url}/markets"
-                params = {
-                    "status": status,
-                    "page": page,
-                    "limit": per_page,  # Use 'limit' for clob.polymarket.com API
-                    "per_page": per_page  # Also include per_page for compatibility
-                }
-                
-                # Try with auth headers first
-                try:
-                    response = requests.get(url, headers=headers, params=params, timeout=10)
-                    response.raise_for_status()
-                except requests.exceptions.RequestException:
-                    # If auth fails, try without headers (public API)
-                    try:
-                        response = requests.get(url, params=params, timeout=10)
-                        response.raise_for_status()
-                    except requests.exceptions.RequestException as e:
-                        # If this endpoint fails, try next one
-                        error_msg = str(e)
-                        if "Failed to resolve" in error_msg or "No address associated" in error_msg:
-                            print(f"DNS resolution failed for {base_url}. Trying next endpoint...")
-                        else:
-                            print(f"Connection failed for {base_url}: {e}")
-                        break
-                
-                data = response.json()
-                
-                # Debug: Print response structure
-                if page == 1:
-                    print(f"✓ Successfully connected to {base_url}")
-                    if isinstance(data, dict):
-                        print(f"  Response keys: {list(data.keys())}")
-                    elif isinstance(data, list):
-                        print(f"  Response is a list with {len(data)} items")
-                
-                # Handle different possible response formats
-                if isinstance(data, list):
-                    page_markets = data
-                elif isinstance(data, dict):
-                    # Try various possible keys
-                    page_markets = (
-                        data.get("data") or 
-                        data.get("markets") or 
-                        data.get("results") or 
-                        data.get("items") or
-                        []
-                    )
-                    # If still empty, check if data itself is the list
-                    if not page_markets and isinstance(data.get("data"), list):
-                        page_markets = data.get("data")
-                else:
-                    page_markets = []
-                
-                if not page_markets:
-                    if page == start_page:
-                        print(f"⚠ Warning: No markets found in response from {base_url}")
-                        print(f"  Response preview: {str(data)[:300]}")
-                    break
-                
-                # Add all markets from this page
-                all_markets.extend(page_markets)
-                
-                # Check if we have enough markets or if there are no more
-                if len(page_markets) < per_page:
-                    # No more pages available
-                    break
-                    
-                page += 1
-                
-            except requests.exceptions.RequestException as e:
-                error_msg = str(e)
-                if "Failed to resolve" in error_msg or "No address associated" in error_msg:
-                    print(f"✗ DNS resolution failed for {base_url}")
-                    print(f"  Error: {error_msg}")
-                    if page == start_page:
-                        break  # Try next endpoint
-                else:
-                    print(f"✗ Error fetching markets page {page} from {base_url}: {e}")
-                    if page == start_page:
-                        break
-                    else:
-                        # Return what we have so far
-                        break
-            except Exception as e:
-                print(f"✗ Unexpected error fetching markets page {page} from {base_url}: {e}")
-                if page == start_page:
-                    break
-                else:
-                    # Return what we have so far
-                    break
-        
-        # If we got markets from this endpoint, process them
-        if all_markets:
-            # Apply offset and limit
-            total_available = len(all_markets)
-            paginated_markets = all_markets[offset:offset + limit]
-            
-            # Determine if there are more markets
-            has_more = (offset + limit) < total_available or len(paginated_markets) == limit
-            
-            pagination_info = {
-                "limit": limit,
-                "offset": offset,
-                "total": total_available,  # This is approximate - actual total may be higher
-                "has_more": has_more
+        for event in events:
+            # Create a market object from the event
+            tags = event.get("tags", [])
+            market = {
+                "id": event.get("id"),
+                "slug": event.get("slug"),
+                "ticker": event.get("ticker"),
+                "question": event.get("title"),
+                "title": event.get("title"),
+                "description": event.get("description"),
+                "status": "active" if event.get("active") else ("closed" if event.get("closed") else "archived"),
+                "volume": float(event.get("volume", 0)),
+                "liquidity": float(event.get("liquidity", 0)),
+                "openInterest": float(event.get("openInterest", 0)),
+                "image": event.get("image"),
+                "icon": event.get("icon"),
+                "startDate": event.get("startDate"),
+                "endDate": event.get("endDate"),
+                "end_date": event.get("endDate"),  # Also include snake_case for compatibility
+                "creationDate": event.get("creationDate"),
+                "createdAt": event.get("createdAt"),
+                "updatedAt": event.get("updatedAt"),
+                "volume24hr": float(event.get("volume24hr", 0)),
+                "volume1wk": float(event.get("volume1wk", 0)),
+                "volume1mo": float(event.get("volume1mo", 0)),
+                "volume1yr": float(event.get("volume1yr", 0)),
+                "competitive": event.get("competitive"),
+                "tags": [tag.get("slug") for tag in tags] if tags else [],
+                "category": tags[0].get("label", "Uncategorized") if tags else "Uncategorized",
+                # Don't include nested markets array - it makes response too large
+                # "markets": event.get("markets", []),  # Removed to reduce response size
+                "markets_count": len(event.get("markets", [])),  # Just include count instead
+                "featured": event.get("featured", False),
+                "restricted": event.get("restricted", False),
             }
-            
-            print(f"✓ Successfully fetched {len(paginated_markets)} markets (offset: {offset}, limit: {limit})")
-            return paginated_markets, pagination_info
-    
-    # If all endpoints failed
-    print("\n" + "="*60)
-    print("⚠ WARNING: All API endpoints failed!")
-    print("="*60)
-    print("Possible issues:")
-    print("1. Network connectivity problem")
-    print("2. DNS resolution failure (api.polymarket.com cannot be resolved)")
-    print("3. API endpoint URL may have changed")
-    print("4. Firewall or proxy blocking the connection")
-    print("\nTroubleshooting:")
-    print("- Check internet connection")
-    print("- Try: nslookup api.polymarket.com")
-    print("- Verify API endpoint URL is correct")
-    print("- Check if you need to use a VPN or proxy")
-    print("="*60 + "\n")
-    
-    # Return empty result with pagination info
-    pagination_info = {
-        "limit": limit,
-        "offset": offset,
-        "total": 0,
-        "has_more": False
-    }
-    return [], pagination_info
+            all_markets.append(market)
+        
+        # Apply offset and limit to the fetched results
+        # IMPORTANT: Only return the requested number of markets (limit)
+        total_results = pagination.get("totalResults", len(all_markets))
+        
+        # Slice the array to get only the requested page
+        if offset < len(all_markets):
+            paginated_markets = all_markets[offset:offset + limit]
+        else:
+            paginated_markets = []
+        
+        # Ensure we don't return more than requested
+        if len(paginated_markets) > limit:
+            paginated_markets = paginated_markets[:limit]
+        
+        # Determine if there are more results
+        has_more = pagination.get("hasMore", False) or (offset + limit < total_results)
+        
+        pagination_info = {
+            "limit": limit,
+            "offset": offset,
+            "total": total_results,
+            "has_more": has_more
+        }
+        
+        print(f"✓ Successfully fetched {len(paginated_markets)} markets from Gamma API (offset: {offset}, limit: {limit}, total: {total_results}, fetched: {len(all_markets)})")
+        return paginated_markets, pagination_info
+        
+    except httpx.HTTPStatusError as e:
+        print(f"✗ HTTP error fetching markets from Gamma API: {e}")
+        pagination_info = {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+        return [], pagination_info
+    except httpx.RequestError as e:
+        print(f"✗ Request error fetching markets from Gamma API: {e}")
+        pagination_info = {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+        return [], pagination_info
+    except Exception as e:
+        print(f"✗ Unexpected error fetching markets from Gamma API: {e}")
+        pagination_info = {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+        return [], pagination_info
 
 
-def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
+async def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
     """
     Fetch resolved markets from Polymarket API (wrapper for backward compatibility).
     
     Args:
         limit: Maximum number of markets to fetch (default: 50 from config for testing)
     """
-    markets, _ = fetch_markets(status="resolved", limit=limit)
+    markets, _ = await fetch_markets(status="resolved", limit=limit)
     return markets
 
 
@@ -282,9 +270,9 @@ def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
     """Get the resolution (YES/NO) for a given market ID."""
     market = get_market_by_id(market_id, markets)
     
-    # If market not found in our list, try fetching from Dome API
+    # If market not found in our list, try fetching from Polymarket API
     if not market:
-        market = fetch_market_by_slug_from_dome(market_id)
+        market = fetch_market_by_slug(market_id)
         if market:
             # Add to markets list for future lookups
             markets.append(market)
@@ -338,9 +326,73 @@ def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
 def fetch_market_by_slug_from_dome(market_slug: str) -> Optional[Dict]:
     """
     Fetch market data from Dome API for a specific market slug.
-    DEPRECATED: Returning None.
+    DEPRECATED: Returning None. Use fetch_market_by_slug instead.
     """
     return None
+
+
+async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
+    """
+    Fetch market details by slug from Polymarket API only (async).
+    
+    Args:
+        market_slug: Market slug identifier
+    
+    Returns:
+        Market dictionary or None if not found
+    """
+    try:
+        # Try api.polymarket.com first
+        api_endpoints = [
+            "https://api.polymarket.com",
+            "https://data-api.polymarket.com",
+        ]
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for base_url in api_endpoints:
+                try:
+                    # Try /markets/{slug} endpoint
+                    url = f"{base_url}/markets/{market_slug}"
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    if isinstance(data, dict):
+                        return data
+                    elif isinstance(data, list) and len(data) > 0:
+                        return data[0]
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response and e.response.status_code == 404:
+                        # Market not found, try next endpoint
+                        continue
+                    # For other HTTP errors, try next endpoint
+                    continue
+                except httpx.RequestError:
+                    # Connection error, try next endpoint
+                    continue
+        
+        # If direct slug endpoint doesn't work, try fetching from markets list and filtering
+        # This is a fallback approach
+        try:
+            markets, _ = await fetch_markets(status="active", limit=100, offset=0)
+            for market in markets:
+                market_slug_field = (
+                    market.get("slug") or 
+                    market.get("market_slug") or 
+                    market.get("id") or
+                    market.get("market_id")
+                )
+                if market_slug_field and str(market_slug_field).lower() == market_slug.lower():
+                    return market
+        except Exception:
+            pass
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error fetching market by slug '{market_slug}': {e}")
+        return None
 
 
 def get_market_category(market: Dict) -> str:
@@ -716,8 +768,11 @@ def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
 
 def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     """
-    Fetch market orders from Polymarket Data API.
+    Fetch market orders from Polymarket Data API only (no CLOB, Dome, Gamma, etc.).
     Uses the trades endpoint filtered by market slug.
+    
+    Note: The trades endpoint filtered by market may not include user addresses.
+    This is a limitation of the Polymarket Data API when filtering by market.
     
     Args:
         market_slug: Market slug identifier
@@ -728,8 +783,8 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
         Dictionary with orders list and pagination info
     """
     try:
-        # Use Polymarket Data API trades endpoint filtered by market
-        trades_url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
+        # Use trades endpoint - activity endpoint requires user parameter, not market
+        trades_url = "https://data-api.polymarket.com/trades"
         
         # Fetch more than limit to account for pagination
         fetch_limit = min(limit + offset, 1000)  # API might have limits
@@ -762,11 +817,61 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
             first_trade = trades_data[0]
             market_title = first_trade.get("marketTitle", first_trade.get("title", ""))
             condition_id = first_trade.get("conditionId", first_trade.get("condition_id", ""))
+            
+            # Debug: Log available fields in first trade to help diagnose user field issues
+            available_fields = list(first_trade.keys())
+            print(f"📋 Available fields in trade data: {available_fields}")
+            
+            # Check if user info is available
+            has_user_info = any([
+                first_trade.get("proxyWallet"), 
+                first_trade.get("user"), 
+                first_trade.get("maker"), 
+                first_trade.get("from"), 
+                first_trade.get("trader"),
+                first_trade.get("proxy_wallet")
+            ])
+            
+            if not has_user_info:
+                print(f"⚠ Warning: Market-filtered trades endpoint doesn't include user addresses.")
+                print(f"   This is a limitation of the Polymarket Data API when filtering by market.")
+                print(f"   Available fields: {available_fields[:15]}...")
         
         # Convert trades to order format
         all_orders = []
         for trade in trades_data:
             try:
+                # Get user address from multiple possible fields
+                # Activity endpoint uses "proxyWallet" or "user" field
+                # Trades endpoint may not have user info when filtered by market
+                user_address = (
+                    trade.get("proxyWallet") or  # Primary field from Activity API
+                    trade.get("proxy_wallet") or  # Snake case variant
+                    trade.get("user") or 
+                    trade.get("userProfileAddress") or  # Alternative field name
+                    trade.get("maker") or 
+                    trade.get("makerAddress") or
+                    trade.get("userAddress") or
+                    trade.get("trader") or
+                    trade.get("wallet") or
+                    trade.get("walletAddress") or
+                    trade.get("from") or  # Transaction from field
+                    trade.get("account") or  # Account field
+                    trade.get("owner") or  # Owner field
+                    ""
+                )
+                
+                # Get taker address similarly
+                taker_address = (
+                    trade.get("taker") or
+                    trade.get("takerAddress") or
+                    trade.get("takerWallet") or
+                    trade.get("to") or  # Transaction to field
+                    ""
+                )
+                
+                # Map fields from activity or trades endpoint
+                # Activity endpoint uses different field names than trades
                 order = {
                     "token_id": trade.get("asset", trade.get("token_id", "")),
                     "token_label": trade.get("outcome", ""),
@@ -775,12 +880,12 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
                     "condition_id": trade.get("conditionId", trade.get("condition_id", condition_id)),
                     "shares": float(trade.get("size", trade.get("shares", 0))),
                     "price": float(trade.get("price", 0)),
-                    "tx_hash": trade.get("transactionHash", trade.get("tx_hash", "")),
-                    "title": market_title or trade.get("marketTitle", ""),
+                    "tx_hash": trade.get("transactionHash", trade.get("transaction_hash", trade.get("tx_hash", ""))),
+                    "title": market_title or trade.get("marketTitle", trade.get("title", "")),
                     "timestamp": trade.get("timestamp", trade.get("time", 0)),
                     "order_hash": trade.get("id", trade.get("order_hash", "")),
-                    "user": trade.get("user", trade.get("maker", "")),
-                    "taker": trade.get("taker", ""),
+                    "user": user_address,  # Use the extracted user address (wallet address)
+                    "taker": taker_address,
                     "shares_normalized": float(trade.get("size", trade.get("shares", 0)))
                 }
                 all_orders.append(order)

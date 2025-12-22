@@ -6,6 +6,7 @@ from app.services.data_fetcher import (
     fetch_portfolio_value,
     fetch_leaderboard_stats
 )
+from app.services.pnl_median_service import calculate_pnl_median_from_traders
 
 class UserScoringService:
     # --- Constants & Hyperparameters ---
@@ -21,7 +22,7 @@ class UserScoringService:
     # PnL Constants
     K_P = 50       # Shrink constant for PnL
     ALPHA = 4      # Whale penalty strength
-    PNL_MEDIAN = 0.0 # Baseline PnL ($0)
+    # PNL_MEDIAN is now calculated from population, not a static value
 
     # --- Percentile Anchors (Placeholders) ---
     # In a real system, these would be fetched from a DB of all traders.
@@ -173,10 +174,16 @@ class UserScoringService:
     @staticmethod
     def calculate_pnl_score(
         total_pnl: float, 
-        closed_positions: List[Dict]
+        closed_positions: List[Dict],
+        pnl_median: Optional[float] = None
     ) -> Dict[str, float]:
         """
         Formula 3: PnL Score (P_score)
+        
+        Args:
+            total_pnl: Total profit and loss
+            closed_positions: List of closed positions
+            pnl_median: Optional PnL median from population. If not provided, uses default.
         """
         if not closed_positions:
              return {"score": 0.0, "adj_pnl": 0.0, "shrunk_pnl": 0.0}
@@ -205,7 +212,11 @@ class UserScoringService:
         
         # Step 2: Shrink PnL
         # PnL_shrunk = (PnL_adj * N_eff + PnL_m * K_P) / (N_eff + K_P)
-        pnl_shrunk = (pnl_adj * n_eff + UserScoringService.PNL_MEDIAN * UserScoringService.K_P) / (n_eff + UserScoringService.K_P)
+        # Use provided median (must be calculated from population)
+        if pnl_median is None:
+            raise ValueError("pnl_median must be provided. It should be calculated from the population using get_pnl_median_from_population()")
+        
+        pnl_shrunk = (pnl_adj * n_eff + pnl_median * UserScoringService.K_P) / (n_eff + UserScoringService.K_P)
         
         # Step 3: Normalize
         p_score = UserScoringService._normalize(
@@ -219,7 +230,9 @@ class UserScoringService:
             "total_pnl": total_pnl,
             "adj_pnl": pnl_adj,
             "shrunk_pnl": pnl_shrunk,
-            "whale_ratio": ratio
+            "whale_ratio": ratio,
+            "n_eff": n_eff,
+            "pnl_median_used": pnl_m
         }
 
     @staticmethod

@@ -7,9 +7,29 @@ from decimal import Decimal
 from collections import defaultdict
 
 from app.db.models import Trade, Position, ClosedPosition
-from app.services.data_fetcher import fetch_market_by_slug_from_dome, get_market_category
-from app.services.scoring_engine import calculate_metrics
-from app.core.constants import DEFAULT_CATEGORY
+from app.services.data_fetcher import (
+    fetch_market_by_slug_from_dome, 
+    get_market_category,
+    fetch_resolved_markets,
+    get_market_by_id,
+    get_market_resolution,
+    fetch_trades_for_wallet
+)
+from app.services.scoring_engine import (
+    calculate_metrics,
+    calculate_roi,
+    calculate_consistency,
+    calculate_recency,
+    calculate_trade_pnl
+)
+from app.core.constants import (
+    DEFAULT_CATEGORY,
+    ROI_WEIGHT,
+    WIN_RATE_WEIGHT,
+    CONSISTENCY_WEIGHT,
+    RECENCY_WEIGHT
+)
+from app.services.pnl_median_service import get_pnl_median_from_population
 
 
 async def get_trade_history(
@@ -199,11 +219,55 @@ async def get_trade_history(
         
         closed_positions_list.append(pos_dict)
     
-    # Calculate overall metrics
-    overall_metrics = calculate_overall_metrics(trades_list, open_positions_list, closed_positions_list)
+    # Fetch trades from API (same as Trader Analytics) for accurate scoring
+    # This ensures we use the same data source and calculation method
+    try:
+        api_trades = await fetch_trades_for_wallet(wallet_address)
+    except Exception as e:
+        print(f"Warning: Could not fetch trades from API: {e}")
+        # Fallback: convert database trades to format expected by scoring engine
+        api_trades = []
+        for trade in trades_list:
+            scoring_trade = {
+                "market_id": trade.get("slug") or trade.get("condition_id"),
+                "market_slug": trade.get("slug"),
+                "slug": trade.get("slug"),
+                "side": trade.get("side"),
+                "size": trade.get("size"),
+                "shares_normalized": trade.get("size"),
+                "price": trade.get("price"),
+                "timestamp": trade.get("timestamp"),
+                "outcome": trade.get("outcome"),
+                "outcomeIndex": trade.get("outcome_index"),
+            }
+            api_trades.append(scoring_trade)
     
-    # Calculate category breakdown
-    category_breakdown = calculate_category_breakdown(trades_list, open_positions_list, closed_positions_list)
+    # Fetch resolved markets for scoring engine
+    markets = fetch_resolved_markets(limit=200)
+    
+    # Use the same scoring engine as Trader Analytics
+    # This ensures consistency between Trade History and Trader Analytics
+    scoring_metrics = calculate_metrics(wallet_address, api_trades, markets)
+    
+    # Get PnL median from population for shrinkage calculation (from Polymarket API)
+    pnl_median = await get_pnl_median_from_population()
+    
+    # Calculate overall metrics using both scoring engine results and position data
+    overall_metrics = calculate_overall_metrics_enhanced(
+        trades_list, 
+        open_positions_list, 
+        closed_positions_list,
+        scoring_metrics,
+        pnl_median
+    )
+    
+    # Calculate category breakdown using scoring engine results
+    category_breakdown = calculate_category_breakdown_enhanced(
+        trades_list, 
+        open_positions_list, 
+        closed_positions_list,
+        scoring_metrics
+    )
     
     return {
         "wallet_address": wallet_address,
@@ -215,158 +279,222 @@ async def get_trade_history(
     }
 
 
-def calculate_overall_metrics(
+def calculate_overall_metrics_enhanced(
     trades: List[Dict],
     open_positions: List[Dict],
-    closed_positions: List[Dict]
+    closed_positions: List[Dict],
+    scoring_metrics: Dict,
+    pnl_median: float = 0.0
 ) -> Dict:
-    """Calculate overall ROI, PnL, Win Rate, and Score."""
-    # Calculate realized PnL from closed positions and trades with PnL
-    total_realized_pnl = 0.0
-    total_unrealized_pnl = 0.0
-    total_volume = 0.0
+    """
+    Calculate overall ROI, PnL, Win Rate, and Score using scoring engine results.
+    This ensures consistency with Trader Analytics.
+    """
+    # Use scoring engine metrics as base (these are calculated from resolved markets)
+    total_trades_count = len(trades)  # Total trades from database
+    winning_trades = scoring_metrics.get("win_count", 0)
+    losing_trades = scoring_metrics.get("loss_count", 0)
+    total_trades_with_pnl = winning_trades + losing_trades
     
-    # From closed positions
+    # PnL from scoring engine (based on resolved markets)
+    scoring_pnl = scoring_metrics.get("pnl", 0.0)
+    
+    # Add unrealized PnL from open positions
+    total_unrealized_pnl = 0.0
+    for pos in open_positions:
+        if pos.get("cash_pnl"):
+            total_unrealized_pnl += pos["cash_pnl"]
+    
+    # Add realized PnL from closed positions (if not already in scoring_pnl)
+    total_realized_pnl_from_positions = 0.0
     for pos in closed_positions:
         if pos.get("realized_pnl"):
-            total_realized_pnl += pos["realized_pnl"]
+            total_realized_pnl_from_positions += pos["realized_pnl"]
     
-    # From trades with calculated PnL
-    winning_trades = 0
-    losing_trades = 0
+    # Total PnL = scoring PnL (from resolved trades) + unrealized from open positions
+    # Note: Closed positions PnL might already be included in scoring_pnl if trades were processed
+    total_pnl = scoring_pnl + total_unrealized_pnl
+    
+    # Calculate total volume from all trades
+    total_volume = 0.0
     for trade in trades:
-        if trade.get("pnl") is not None:
-            pnl = trade["pnl"]
-            total_realized_pnl += pnl
-            if pnl > 0:
-                winning_trades += 1
-            elif pnl < 0:
-                losing_trades += 1
-        
-        # Calculate volume (cost basis)
         if trade.get("entry_price") and trade.get("size"):
             total_volume += trade["entry_price"] * trade["size"]
         elif trade.get("price") and trade.get("size"):
             total_volume += trade["price"] * trade["size"]
     
-    # From open positions (unrealized)
+    # Add volume from open positions
     for pos in open_positions:
-        if pos.get("cash_pnl"):
-            total_unrealized_pnl += pos["cash_pnl"]
+        if pos.get("initial_value"):
+            total_volume += pos["initial_value"]
     
-    total_pnl = total_realized_pnl + total_unrealized_pnl
+    # Calculate ROI using scoring engine formula
+    roi = scoring_metrics.get("roi", 0.0)
+    if roi == 0.0 and total_volume > 0:
+        # Fallback: calculate ROI from total PnL and volume
+        roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
     
-    # Calculate ROI
-    roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
+    # Win Rate from scoring engine
+    win_rate = scoring_metrics.get("win_rate_percent", 0.0)
     
-    # Calculate Win Rate
-    total_trades_with_pnl = winning_trades + losing_trades
-    win_rate = (winning_trades / total_trades_with_pnl * 100) if total_trades_with_pnl > 0 else 0.0
+    # Score from scoring engine (uses ROI, Win Rate, Consistency, Recency)
+    score = scoring_metrics.get("final_score", 0.0)
     
-    # Calculate Score (simplified - can be enhanced with scoring engine)
-    # Score = weighted combination of ROI, Win Rate, and PnL
-    roi_score = min(max(roi / 100.0, -1.0), 1.0)  # Normalize ROI to -1 to 1
-    win_rate_score = win_rate / 100.0  # Normalize Win Rate to 0 to 1
-    pnl_score = min(max(total_pnl / 10000.0, -1.0), 1.0) if total_pnl != 0 else 0.0  # Normalize PnL
+    # Calculate PnL shrunk using the same formula as leaderboard
+    # Step 1: Calculate PnL_adj (whale-adjusted)
+    # First, calculate max stake and total stakes from closed positions
+    max_stake = 0.0
+    total_stakes = 0.0
     
-    score = (0.4 * roi_score + 0.3 * win_rate_score + 0.3 * pnl_score) * 100
-    score = max(0, min(100, score))  # Clamp to 0-100
+    for pos in closed_positions:
+        # Calculate stake from closed position
+        if pos.get("avg_price") and pos.get("size"):
+            stake = float(pos.get("avg_price", 0)) * float(pos.get("size", 0))
+        elif pos.get("initial_value"):
+            stake = float(pos.get("initial_value", 0))
+        else:
+            continue
+        
+        total_stakes += stake
+        if stake > max_stake:
+            max_stake = stake
+    
+    # Also check trades for stakes
+    for trade in trades:
+        if trade.get("entry_price") and trade.get("size"):
+            stake = float(trade.get("entry_price", 0)) * float(trade.get("size", 0))
+        elif trade.get("price") and trade.get("size"):
+            stake = float(trade.get("price", 0)) * float(trade.get("size", 0))
+        else:
+            continue
+        
+        total_stakes += stake
+        if stake > max_stake:
+            max_stake = stake
+    
+    # Calculate PnL_adj = PnL_total / (1 + alpha * (max_s / S))
+    alpha = 4.0
+    ratio = (max_stake / total_stakes) if total_stakes > 0 else 0.0
+    pnl_adj = total_pnl / (1 + alpha * ratio) if (1 + alpha * ratio) > 0 else total_pnl
+    
+    # Step 2: Calculate N_eff (effective number of trades)
+    # N_eff = (Sum s_i)^2 / Sum (s_i^2)
+    sum_sq_stakes = 0.0
+    stakes_list = []
+    
+    for pos in closed_positions:
+        if pos.get("avg_price") and pos.get("size"):
+            stake = float(pos.get("avg_price", 0)) * float(pos.get("size", 0))
+        elif pos.get("initial_value"):
+            stake = float(pos.get("initial_value", 0))
+        else:
+            continue
+        stakes_list.append(stake)
+        sum_sq_stakes += stake * stake
+    
+    for trade in trades:
+        if trade.get("entry_price") and trade.get("size"):
+            stake = float(trade.get("entry_price", 0)) * float(trade.get("size", 0))
+        elif trade.get("price") and trade.get("size"):
+            stake = float(trade.get("price", 0)) * float(trade.get("size", 0))
+        else:
+            continue
+        stakes_list.append(stake)
+        sum_sq_stakes += stake * stake
+    
+    n_eff = (total_stakes ** 2 / sum_sq_stakes) if sum_sq_stakes > 0 else len(stakes_list) if stakes_list else 1.0
+    
+    # Step 3: Calculate PnL_shrunk = (PnL_adj * N_eff + PnL_m * k_p) / (N_eff + k_p)
+    k_p = 50.0
+    pnl_shrunk = (pnl_adj * n_eff + pnl_median * k_p) / (n_eff + k_p) if (n_eff + k_p) > 0 else pnl_adj
     
     return {
         "total_pnl": round(total_pnl, 2),
-        "realized_pnl": round(total_realized_pnl, 2),
+        "realized_pnl": round(scoring_pnl, 2),  # Realized from resolved trades
         "unrealized_pnl": round(total_unrealized_pnl, 2),
         "roi": round(roi, 2),
         "win_rate": round(win_rate, 2),
         "winning_trades": winning_trades,
         "losing_trades": losing_trades,
-        "total_trades": total_trades_with_pnl,
+        "total_trades": total_trades_count,  # All trades from database
+        "total_trades_with_pnl": total_trades_with_pnl,  # Trades with calculated PnL
         "score": round(score, 2),
         "total_volume": round(total_volume, 2),
+        "pnl_adj": round(pnl_adj, 2),  # Whale-adjusted PnL
+        "pnl_shrunk": round(pnl_shrunk, 2),  # Shrunk PnL
+        "n_eff": round(n_eff, 2),  # Effective number of trades
+        "pnl_median_used": round(pnl_median, 2),  # Median used in calculation
     }
 
 
-def calculate_category_breakdown(
+def calculate_category_breakdown_enhanced(
     trades: List[Dict],
     open_positions: List[Dict],
-    closed_positions: List[Dict]
+    closed_positions: List[Dict],
+    scoring_metrics: Dict,
+    pnl_median: float = 0.0
 ) -> Dict[str, Dict]:
-    """Calculate ROI, PnL, Win Rate, and Score broken down by category."""
-    category_stats = defaultdict(lambda: {
-        "total_pnl": 0.0,
-        "realized_pnl": 0.0,
-        "unrealized_pnl": 0.0,
-        "total_volume": 0.0,
-        "winning_trades": 0,
-        "losing_trades": 0,
-        "total_trades": 0,
-    })
+    """
+    Calculate ROI, PnL, Win Rate, and Score broken down by category.
+    Uses scoring engine category data for consistency.
+    """
+    # Start with category data from scoring engine
+    scoring_categories = scoring_metrics.get("categories", {})
     
-    # Process trades
-    for trade in trades:
-        category = trade.get("category", DEFAULT_CATEGORY)
-        
-        if trade.get("pnl") is not None:
-            pnl = trade["pnl"]
-            category_stats[category]["realized_pnl"] += pnl
-            category_stats[category]["total_pnl"] += pnl
-            if pnl > 0:
-                category_stats[category]["winning_trades"] += 1
-            elif pnl < 0:
-                category_stats[category]["losing_trades"] += 1
-            category_stats[category]["total_trades"] += 1
-        
-        # Calculate volume
-        if trade.get("entry_price") and trade.get("size"):
-            category_stats[category]["total_volume"] += trade["entry_price"] * trade["size"]
-        elif trade.get("price") and trade.get("size"):
-            category_stats[category]["total_volume"] += trade["price"] * trade["size"]
-    
-    # Process closed positions
-    for pos in closed_positions:
-        category = pos.get("category", DEFAULT_CATEGORY)
-        if pos.get("realized_pnl"):
-            category_stats[category]["realized_pnl"] += pos["realized_pnl"]
-            category_stats[category]["total_pnl"] += pos["realized_pnl"]
-    
-    # Process open positions
-    for pos in open_positions:
-        category = pos.get("category", DEFAULT_CATEGORY)
-        if pos.get("cash_pnl"):
-            category_stats[category]["unrealized_pnl"] += pos["cash_pnl"]
-            category_stats[category]["total_pnl"] += pos["cash_pnl"]
-    
-    # Calculate metrics for each category
+    # Build breakdown from scoring engine categories
     breakdown = {}
-    for category, stats in category_stats.items():
-        total_pnl = stats["total_pnl"]
-        total_volume = stats["total_volume"]
-        winning_trades = stats["winning_trades"]
-        losing_trades = stats["losing_trades"]
-        total_trades = stats["total_trades"]
+    for category, cat_metrics in scoring_categories.items():
+        total_wins = cat_metrics.get("total_wins", 0.0)
+        total_losses = cat_metrics.get("total_losses", 0.0)
+        win_count = cat_metrics.get("win_count", 0)
+        loss_count = cat_metrics.get("loss_count", 0)
+        cat_pnl = cat_metrics.get("pnl", 0.0)
+        win_rate_percent = cat_metrics.get("win_rate_percent", 0.0)
+        
+        # Calculate total trades in this category
+        total_trades = win_count + loss_count
+        
+        # Calculate volume for this category from trades
+        total_volume = 0.0
+        for trade in trades:
+            if trade.get("category", DEFAULT_CATEGORY) == category:
+                if trade.get("entry_price") and trade.get("size"):
+                    total_volume += trade["entry_price"] * trade["size"]
+                elif trade.get("price") and trade.get("size"):
+                    total_volume += trade["price"] * trade["size"]
+        
+        # Add volume from positions in this category
+        for pos in open_positions:
+            if pos.get("category", DEFAULT_CATEGORY) == category:
+                if pos.get("initial_value"):
+                    total_volume += pos["initial_value"]
         
         # Calculate ROI
-        roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
+        roi = (cat_pnl / total_volume * 100) if total_volume > 0 else 0.0
         
-        # Calculate Win Rate
-        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
-        
-        # Calculate Score
+        # Calculate Score using same formula as overall score
         roi_score = min(max(roi / 100.0, -1.0), 1.0)
-        win_rate_score = win_rate / 100.0
-        pnl_score = min(max(total_pnl / 10000.0, -1.0), 1.0) if total_pnl != 0 else 0.0
+        win_rate_score = win_rate_percent / 100.0
+        pnl_score = min(max(cat_pnl / 10000.0, -1.0), 1.0) if cat_pnl != 0 else 0.0
         
-        score = (0.4 * roi_score + 0.3 * win_rate_score + 0.3 * pnl_score) * 100
+        score = (ROI_WEIGHT * roi_score + WIN_RATE_WEIGHT * win_rate_score + 0.3 * pnl_score) * 100
         score = max(0, min(100, score))
+        
+        # Add unrealized PnL from open positions in this category
+        unrealized_pnl = 0.0
+        for pos in open_positions:
+            if pos.get("category", DEFAULT_CATEGORY) == category:
+                if pos.get("cash_pnl"):
+                    unrealized_pnl += pos["cash_pnl"]
         
         breakdown[category] = {
             "roi": round(roi, 2),
-            "pnl": round(total_pnl, 2),
-            "realized_pnl": round(stats["realized_pnl"], 2),
-            "unrealized_pnl": round(stats["unrealized_pnl"], 2),
-            "win_rate": round(win_rate, 2),
-            "winning_trades": winning_trades,
-            "losing_trades": losing_trades,
+            "pnl": round(cat_pnl + unrealized_pnl, 2),
+            "realized_pnl": round(cat_pnl, 2),
+            "unrealized_pnl": round(unrealized_pnl, 2),
+            "win_rate": round(win_rate_percent, 2),
+            "winning_trades": win_count,
+            "losing_trades": loss_count,
             "total_trades": total_trades,
             "score": round(score, 2),
             "total_volume": round(total_volume, 2),

@@ -10,6 +10,7 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
+from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
     fetch_raw_metrics_for_scoring
@@ -724,11 +725,21 @@ async def get_all_leaderboards_with_percentiles():
                 population_traders=0
             )
         
+        # Get medians from Polymarket API (all traders in file, fetched from API)
+        pnl_median_api = await get_pnl_median_from_population()
+        
         # Calculate scores with percentile information
-        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        # Pass API PnL median to use in calculations
+        result = calculate_scores_and_rank_with_percentiles(
+            entries_data,
+            pnl_median=pnl_median_api
+        )
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
+        
+        # Override PnL median with API value
+        medians_data["pnl_median"] = pnl_median_api
         
         # Create all different leaderboards
         leaderboards = {}
@@ -863,11 +874,21 @@ async def view_all_leaderboards():
                 population_traders=0
             )
         
+        # Get medians from Polymarket API (all traders in file, fetched from API)
+        pnl_median_api = await get_pnl_median_from_population()
+        
         # Calculate scores with percentile information (single calculation)
-        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        # Pass API PnL median to use in calculations
+        result = calculate_scores_and_rank_with_percentiles(
+            entries_data,
+            pnl_median=pnl_median_api
+        )
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
+        
+        # Override PnL median with API value
+        medians_data["pnl_median"] = pnl_median_api
         
         # Create all different leaderboards
         leaderboards = {}

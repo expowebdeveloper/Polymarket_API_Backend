@@ -8,6 +8,7 @@ from decimal import Decimal
 import math
 from app.db.models import Trade, Position, Activity
 from app.core.scoring_config import scoring_config
+from app.services.pnl_median_service import calculate_median
 
 
 def get_time_filter(timestamp: int, period: str) -> bool:
@@ -574,11 +575,13 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
         pnl_adj = pnl_total / (1 + alpha * ratio)
         pnl_adjs_pop.append(pnl_adj)
         
-    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
+    # Calculate PnL median using exact traditional formula
+    pnl_m = calculate_median(pnl_adjs_pop)
 
     # --- ROI Population Median (for Formula 2) ---
     rois_pop = [t.get('roi', 0.0) for t in population_metrics]
-    roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
+    # Calculate ROI median using exact traditional formula
+    roi_m = calculate_median(rois_pop)
 
     # Calculate Shrunk Values for ALL traders
     for t in traders_metrics:
@@ -689,9 +692,18 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
     return traders_metrics
 
 
-def calculate_scores_and_rank_with_percentiles(traders_metrics: List[Dict]) -> Dict:
+def calculate_scores_and_rank_with_percentiles(
+    traders_metrics: List[Dict],
+    pnl_median: Optional[float] = None,
+    roi_median: Optional[float] = None
+) -> Dict:
     """
     Calculate advanced scores for a list of traders and return with percentile information.
+    
+    Args:
+        traders_metrics: List of trader metric dictionaries
+        pnl_median: Optional PnL median from database (all traders). If None, calculates from provided traders.
+        roi_median: Optional ROI median from database (all traders). If None, calculates from provided traders.
     
     Returns:
         Dict containing:
@@ -727,26 +739,38 @@ def calculate_scores_and_rank_with_percentiles(traders_metrics: List[Dict]) -> D
         population_metrics = traders_metrics 
 
     # --- PnL Population Median (for Formula 3) ---
-    pnl_adjs_pop = []
-    
-    for t in population_metrics:
-        pnl_total = t.get('total_pnl', 0.0)
-        S = t.get('total_stakes', 0.0)
-        max_s = t.get('max_stake', 0.0)
-        alpha = 4.0
+    # Use provided median from database, or calculate from current population
+    if pnl_median is not None:
+        pnl_m = pnl_median
+    else:
+        # Calculate from current population (fallback for backward compatibility)
+        pnl_adjs_pop = []
         
-        ratio = 0.0
-        if S > 0:
-            ratio = max_s / S
+        for t in population_metrics:
+            pnl_total = t.get('total_pnl', 0.0)
+            S = t.get('total_stakes', 0.0)
+            max_s = t.get('max_stake', 0.0)
+            alpha = 4.0
             
-        pnl_adj = pnl_total / (1 + alpha * ratio)
-        pnl_adjs_pop.append(pnl_adj)
-        
-    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
+            ratio = 0.0
+            if S > 0:
+                ratio = max_s / S
+                
+            pnl_adj = pnl_total / (1 + alpha * ratio)
+            pnl_adjs_pop.append(pnl_adj)
+            
+        # Calculate PnL median using exact traditional formula
+        pnl_m = calculate_median(pnl_adjs_pop)
 
     # --- ROI Population Median (for Formula 2) ---
-    rois_pop = [t.get('roi', 0.0) for t in population_metrics]
-    roi_m = sorted(rois_pop)[len(rois_pop) // 2] if rois_pop else 0.0
+    # Use provided median from database, or calculate from current population
+    if roi_median is not None:
+        roi_m = roi_median
+    else:
+        # Calculate from current population (fallback for backward compatibility)
+        rois_pop = [t.get('roi', 0.0) for t in population_metrics]
+        # Calculate ROI median using exact traditional formula
+        roi_m = calculate_median(rois_pop)
 
     # Calculate Shrunk Values for ALL traders
     for t in traders_metrics:

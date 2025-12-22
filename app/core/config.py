@@ -66,7 +66,7 @@ class Settings:
     )
     
     # Testing/Development limits
-    MARKETS_FETCH_LIMIT: int = int(os.getenv("MARKETS_FETCH_LIMIT", "50"))  # Limit to 50 for testing
+    MARKETS_FETCH_LIMIT: int = int(os.getenv("MARKETS_FETCH_LIMIT", "50"))  # Default limit: 50 markets per page (optimized for performance)
 
 
 settings = Settings()

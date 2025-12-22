@@ -88,6 +88,40 @@ def get_market_details(market_slug: str):
 from app.services.data_fetcher import fetch_closed_positions
 from scoring_script import get_percentile_value, clamp
 
+
+def calculate_median(values):
+    """
+    Calculate median using the exact traditional formula.
+    
+    Case A: When n is Odd
+    Median = ((n + 1) / 2)^th term (1-indexed)
+    In 0-indexed: index = (n - 1) // 2 = n // 2
+    
+    Case B: When n is Even
+    Median = average of (n/2)^th and (n/2 + 1)^th terms (1-indexed)
+    In 0-indexed: indices = (n//2 - 1) and (n//2)
+    """
+    if not values:
+        return 0.0
+    
+    sorted_values = sorted(values)
+    n = len(sorted_values)
+    
+    if n == 0:
+        return 0.0
+    
+    # Case A: When n is Odd
+    if n % 2 == 1:
+        median_index = n // 2
+        return sorted_values[median_index]
+    
+    # Case B: When n is Even
+    else:
+        mid1_index = (n // 2) - 1
+        mid2_index = n // 2
+        median = (sorted_values[mid1_index] + sorted_values[mid2_index]) / 2.0
+        return median
+
 # --- Constants ---
 B = 0.5
 KW = 50
@@ -236,15 +270,13 @@ def main():
         w_1 = get_percentile_value(w_shrunk_values, 1)
         w_99 = get_percentile_value(w_shrunk_values, 99)
         
-        # ROI Stats
+        # ROI Stats - Calculate median using exact traditional formula
         rois_pop = [r['roi_raw'] for r in population]
-        rois_pop.sort()
-        roi_m = rois_pop[len(rois_pop) // 2]
+        roi_m = calculate_median(rois_pop)
         
-        # PnL Stats - Median of Adjusted PnL
+        # PnL Stats - Median of Adjusted PnL using exact traditional formula
         pnls_adj_pop = [r['pnl_adj'] for r in population]
-        pnls_adj_pop.sort()
-        pnl_m = pnls_adj_pop[len(pnls_adj_pop) // 2]
+        pnl_m = calculate_median(pnls_adj_pop)
         
         # Calculate Shrunk Values for population
         KR = 50

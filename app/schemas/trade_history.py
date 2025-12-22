@@ -92,9 +92,14 @@ class OverallMetrics(BaseModel):
     win_rate: float = Field(..., description="Win rate percentage")
     winning_trades: int = Field(..., description="Number of winning trades")
     losing_trades: int = Field(..., description="Number of losing trades")
-    total_trades: int = Field(..., description="Total number of trades with PnL")
+    total_trades: int = Field(..., description="Total number of trades")
+    total_trades_with_pnl: Optional[int] = Field(None, description="Number of trades with calculated PnL")
     score: float = Field(..., description="Overall performance score (0-100)")
     total_volume: float = Field(..., description="Total trading volume")
+    pnl_adj: Optional[float] = Field(None, description="Whale-adjusted PnL")
+    pnl_shrunk: Optional[float] = Field(None, description="Shrunk PnL using population median")
+    n_eff: Optional[float] = Field(None, description="Effective number of trades")
+    pnl_median_used: Optional[float] = Field(None, description="PnL median used in shrinkage calculation")
 
 
 class CategoryMetrics(BaseModel):
