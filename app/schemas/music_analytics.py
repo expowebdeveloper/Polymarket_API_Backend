@@ -46,3 +46,4 @@ class PredictiveAnalysisResult(BaseModel):
 
 
 
+

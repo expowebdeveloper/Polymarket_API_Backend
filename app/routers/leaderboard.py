@@ -10,6 +10,7 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
+from app.core.scoring_config import default_scoring_config
 from app.services.live_leaderboard_service import fetch_live_leaderboard_from_file
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
@@ -449,8 +450,6 @@ async def get_live_leaderboard_from_file():
             detail=f"Error generating live leaderboard: {str(e)}"
         )
 
-<<<<<<< HEAD
-=======
 
 @router.post(
     "/live-roi",
@@ -723,11 +722,20 @@ async def get_all_leaderboards_with_percentiles():
                 population_traders=0
             )
         
-        # Calculate scores with percentile information
-        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        # Calculate scores with percentile information using configurable scoring
+        result = calculate_scores_and_rank_with_percentiles(entries_data, default_scoring_config)
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
+        
+        # Extract percentile values using configurable keys (default uses 1% and 99%)
+        config = default_scoring_config
+        w_lower_key = f"w_shrunk_{config.percentile_lower}_percent"
+        w_upper_key = f"w_shrunk_{config.percentile_upper}_percent"
+        roi_lower_key = f"roi_shrunk_{config.percentile_lower}_percent"
+        roi_upper_key = f"roi_shrunk_{config.percentile_upper}_percent"
+        pnl_lower_key = f"pnl_shrunk_{config.percentile_lower}_percent"
+        pnl_upper_key = f"pnl_shrunk_{config.percentile_upper}_percent"
         
         # Create all different leaderboards
         leaderboards = {}
@@ -775,13 +783,14 @@ async def get_all_leaderboards_with_percentiles():
             trader['rank'] = i
         leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
         
-        # Risk Score
+        # Risk Score (using fixed formula: |Worst Loss| / Total Stake, range 0-1)
         risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
         for i, trader in enumerate(risk_sorted, 1):
             trader['rank'] = i
         leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
         
         # Final Score (descending - best = highest)
+        # Uses formula: Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
         final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
         for i, trader in enumerate(final_score_sorted, 1):
             trader['rank'] = i
@@ -789,12 +798,12 @@ async def get_all_leaderboards_with_percentiles():
         
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
-                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
-                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
-                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
-                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
-                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
-                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
+                w_shrunk_1_percent=percentiles_data.get(w_lower_key, 0.0),
+                w_shrunk_99_percent=percentiles_data.get(w_upper_key, 0.0),
+                roi_shrunk_1_percent=percentiles_data.get(roi_lower_key, 0.0),
+                roi_shrunk_99_percent=percentiles_data.get(roi_upper_key, 0.0),
+                pnl_shrunk_1_percent=percentiles_data.get(pnl_lower_key, 0.0),
+                pnl_shrunk_99_percent=percentiles_data.get(pnl_upper_key, 0.0),
                 population_size=result["population_size"]
             ),
             medians=MedianInfo(
@@ -855,11 +864,20 @@ async def view_all_leaderboards():
                 population_traders=0
             )
         
-        # Calculate scores with percentile information
-        result = calculate_scores_and_rank_with_percentiles(entries_data)
+        # Calculate scores with percentile information using configurable scoring
+        result = calculate_scores_and_rank_with_percentiles(entries_data, default_scoring_config)
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
+        
+        # Extract percentile values using configurable keys (default uses 1% and 99%)
+        config = default_scoring_config
+        w_lower_key = f"w_shrunk_{config.percentile_lower}_percent"
+        w_upper_key = f"w_shrunk_{config.percentile_upper}_percent"
+        roi_lower_key = f"roi_shrunk_{config.percentile_lower}_percent"
+        roi_upper_key = f"roi_shrunk_{config.percentile_upper}_percent"
+        pnl_lower_key = f"pnl_shrunk_{config.percentile_lower}_percent"
+        pnl_upper_key = f"pnl_shrunk_{config.percentile_upper}_percent"
         
         # Create all different leaderboards
         leaderboards = {}
@@ -907,13 +925,14 @@ async def view_all_leaderboards():
             trader['rank'] = i
         leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
         
-        # Risk Score
+        # Risk Score (using fixed formula: |Worst Loss| / Total Stake, range 0-1)
         risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
         for i, trader in enumerate(risk_sorted, 1):
             trader['rank'] = i
         leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
         
         # Final Score (descending - best = highest)
+        # Uses formula: Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
         final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
         for i, trader in enumerate(final_score_sorted, 1):
             trader['rank'] = i
@@ -921,12 +940,12 @@ async def view_all_leaderboards():
         
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
-                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
-                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
-                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
-                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
-                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
-                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
+                w_shrunk_1_percent=percentiles_data.get(w_lower_key, 0.0),
+                w_shrunk_99_percent=percentiles_data.get(w_upper_key, 0.0),
+                roi_shrunk_1_percent=percentiles_data.get(roi_lower_key, 0.0),
+                roi_shrunk_99_percent=percentiles_data.get(roi_upper_key, 0.0),
+                pnl_shrunk_1_percent=percentiles_data.get(pnl_lower_key, 0.0),
+                pnl_shrunk_99_percent=percentiles_data.get(pnl_upper_key, 0.0),
                 population_size=result["population_size"]
             ),
             medians=MedianInfo(
@@ -942,4 +961,3 @@ async def view_all_leaderboards():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating all leaderboards: {str(e)}"
         )
->>>>>>> 999959a3e342a80b83a369a0da4c339fb0c5fe66
