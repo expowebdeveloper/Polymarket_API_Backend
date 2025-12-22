@@ -10,7 +10,10 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
-from app.services.live_leaderboard_service import fetch_live_leaderboard_from_file
+from app.services.live_leaderboard_service import (
+    fetch_live_leaderboard_from_file,
+    fetch_raw_metrics_for_scoring
+)
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
@@ -817,21 +820,28 @@ async def get_all_leaderboards_with_percentiles():
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
     summary="View All Leaderboards (JSON)",
-    description="Get all leaderboards and percentile information in JSON format"
+    description="Get all leaderboards and percentile information in JSON format with proper data structure"
 )
 async def view_all_leaderboards():
     """
     Get all leaderboards and percentile information in JSON format.
     
+    This endpoint:
+    1. Fetches raw metrics for all wallets from wallet_address.txt
+    2. Calculates scores with percentile information using the fixed formulas
+    3. Returns all leaderboards sorted by different metrics
+    4. Includes percentile anchors, medians, and population statistics
+    
     Returns:
     - All leaderboards sorted by different metrics (W_shrunk, ROI_raw, ROI_shrunk, PNL_shrunk, final scores)
-    - Percentile information (1% and 99% anchors for W, ROI, and PNL shrunk values)
+    - Percentile information (configurable percentiles for W, ROI, and PNL shrunk values)
     - Median values (ROI median and PNL median used in shrinkage)
     - Population statistics
     """
     try:
         file_path = "wallet_address.txt"
-        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        # Fetch raw metrics without calculating scores (to avoid double calculation)
+        entries_data = await fetch_raw_metrics_for_scoring(file_path)
         
         if not entries_data:
             return AllLeaderboardsResponse(
@@ -853,7 +863,7 @@ async def view_all_leaderboards():
                 population_traders=0
             )
         
-        # Calculate scores with percentile information
+        # Calculate scores with percentile information (single calculation)
         result = calculate_scores_and_rank_with_percentiles(entries_data)
         traders = result["traders"]
         percentiles_data = result["percentiles"]

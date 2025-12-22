@@ -154,25 +154,22 @@ def calculate_scores_and_rank(traders_metrics):
         pnl_shrunk = (pnl_adj * N_eff + pnl_m * kp) / (N_eff + kp)
         t['pnl_shrunk'] = pnl_shrunk
         
-        # --- Formula 4: Risk Score ---
-        # loss% = |worst_loss| / capital
-        # Capital = account capital (Total Investment in Closed Trades or Portfolio Value?)
-        # User defined "capital = account capital"
-        # In live_leaderboard.py, I used s_total (Total Closed Investment) which matches "Total Stakes".
-        # However, "account capital" usually usually implies 'portfolio_value' (current equity) or 'total_investment' (cumulative).
-        # Given "worst_loss" is a historical max, comparing it to "cumulative investment" might dilute it too much.
-        # But comparing to current portfolio value might be volatile.
-        # Using "total_stakes" (S) as "Capital Deployed" is a reasonable proxy for "Activity Volume".
-        # Let's align with live_leaderboard.py for consistency.
-        capital = S 
+        # --- Formula 4: Risk Score (Fixed Formula) ---
+        # Risk Score = |Worst Loss| / Total Stake
+        # Output range: 0 → 1, Higher value = higher risk
+        # This formula is not percentile-based
         worst_loss = t.get('worst_loss', 0.0)
+        total_stakes = S  # Use total_stakes (S) as Total Stake
         
-        loss_pct = 0.0
-        if capital > 0:
-            loss_pct = abs(worst_loss) / capital
-            
-        risk_score = 1.0 - loss_pct
-        t['risk_score'] = clamp(risk_score, 0, 1) # Clamp 0-1
+        if total_stakes <= 0:
+            risk_score = 0.0
+        else:
+            # Base Formula: Risk Score = |Worst Loss| / Total Stake
+            risk_score = abs(worst_loss) / total_stakes
+        
+        # Clamp to 0-1 range (as per specification)
+        t['risk_score'] = clamp(risk_score, 0, 1)
+        t['score_risk'] = t['risk_score']  # Alias for consistency
         
     
     # Now Percentile Normalization for W, R, P
@@ -218,18 +215,21 @@ def calculate_scores_and_rank(traders_metrics):
         # Risk score is already set
         t['score_risk'] = clamp(t['risk_score'], 0, 1) # Ensure 0-1
         
-        # Final Score: Weighted combination of all 4 scores (0-100 scale)
-        # Rating = 100 * [0.30 * W_score + 0.30 * R_score + 0.30 * P_score + 0.10 * (1 - Risk_score/4)]
+        # Final Score: Weighted combination using configurable weights
+        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
+        # Default weights: wW = 0.30, wR = 0.30, wP = 0.30, wrisk = 0.10
         w_score = t.get('score_win_rate', 0.0)
         r_score = t.get('score_roi', 0.0)
         p_score = t.get('score_pnl', 0.0)
         risk_score = t.get('score_risk', 0.0)
         
+        # Final Rating Formula
+        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
         final_score = 100.0 * (
             0.30 * w_score + 
             0.30 * r_score + 
             0.30 * p_score + 
-            0.10 * (1.0 - risk_score / 4.0)
+            0.10 * (1.0 - risk_score)  # Fixed: use (1 - risk_score), not divided by 4
         )
         t['final_score'] = clamp(final_score, 0, 100)
         

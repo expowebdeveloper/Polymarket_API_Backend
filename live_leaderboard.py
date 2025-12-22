@@ -174,18 +174,18 @@ def calculate_metrics_for_wallet(wallet: str):
     ratio = (max_stake / s_total) if s_total > 0 else 0.0
     pnl_adj = total_pnl / (1 + ALPHA * ratio)
     
-    # --- Risk Score Calculation (Formula 4) ---
-    # loss% = |worst_loss| / capital
-    # We use s_total as 'capital' (Total Investment in Closed Trades)
+    # --- Risk Score Calculation (Fixed Formula) ---
+    # Risk Score = |Worst Loss| / Total Stake
+    # Output range: 0 → 1, Higher value = higher risk
+    # This formula is not percentile-based
     if s_total > 0:
-        loss_pct = abs(worst_loss) / s_total
+        # Base Formula: Risk Score = |Worst Loss| / Total Stake
+        risk_score = abs(worst_loss) / s_total
     else:
-        loss_pct = 0.0
-        
-    # Risk Score = 1 - loss%
-    # If loss% > 1 (lost more than invested? possible with leverage or calculation quirks), clamp to 0
-    risk_score = 1.0 - loss_pct
-    risk_score = max(0.0, min(1.0, risk_score)) # Clamp 0-1
+        risk_score = 0.0
+    
+    # Clamp to 0-1 range (as per specification)
+    risk_score = max(0.0, min(1.0, risk_score))
     
     return {
         "wallet": wallet,

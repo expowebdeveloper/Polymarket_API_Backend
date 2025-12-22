@@ -132,6 +132,7 @@ class PolymarketService:
         sum_sq_stakes = 0.0
         max_stake = 0.0
         worst_loss = 0.0
+        all_losses = []  # Collect all losses for average calculation (future enhancement)
         
         for c in closed_positions:
             # Calculating Stake for Closed Position
@@ -151,9 +152,12 @@ class PolymarketService:
                 wins += 1
                 winning_stakes += stake
             
-            # Worst loss (min PnL)
+            # Worst loss (min PnL) and collect all losses
             if realized_pnl < worst_loss:
-                worst_loss = realized_pnl 
+                worst_loss = realized_pnl
+            # Collect all losses (negative PnL values) for average calculation
+            if realized_pnl < 0:
+                all_losses.append(realized_pnl) 
 
         win_rate = (wins / total_closed_count * 100) if total_closed_count > 0 else 0.0
         
@@ -207,6 +211,7 @@ class PolymarketService:
                 "sum_sq_stakes": round(sum_sq_stakes, 2),
                 "max_stake": round(max_stake, 2),
                 "worst_loss": round(worst_loss, 2),
+                "all_losses": [round(loss, 2) for loss in all_losses],  # All losses for average calculation
                 "wins": wins
             },
             "positions_summary": {

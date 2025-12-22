@@ -60,6 +60,9 @@ def transform_stats_for_scoring(stats: Dict) -> Dict:
     perf_metrics = stats.get('performance_metrics', {})
     positions_summary = stats.get('positions_summary', {})
     
+    # Get all_losses if available (for average of N worst losses feature)
+    all_losses = perf_metrics.get('all_losses', [])
+    
     # Flatten
     return {
         "wallet_address": stats.get('user_address'),
@@ -77,6 +80,7 @@ def transform_stats_for_scoring(stats: Dict) -> Dict:
         "sum_sq_stakes": perf_metrics.get('sum_sq_stakes', 0.0),
         "max_stake": perf_metrics.get('max_stake', 0.0),
         "worst_loss": perf_metrics.get('worst_loss', 0.0),
+        "all_losses": all_losses,  # All losses for average calculation (future enhancement)
         "portfolio_value": perf_metrics.get('portfolio_value', 0.0),
         
         "total_trades": positions_summary.get('closed_positions_count', 0),
@@ -88,4 +92,37 @@ def transform_stats_for_scoring(stats: Dict) -> Dict:
         "total_trades_with_pnl": positions_summary.get('closed_positions_count', 0), # Simplified
         "winning_trades": perf_metrics.get('wins', 0)
     }
+
+
+async def fetch_raw_metrics_for_scoring(file_path: str) -> List[Dict]:
+    """
+    Fetch raw metrics for wallets without calculating scores.
+    This is used by endpoints that need to calculate scores with percentiles.
+    """
+    try:
+        with open(file_path, 'r') as f:
+            wallets = [line.strip() for line in f if line.strip()]
+    except FileNotFoundError:
+        return []
+    
+    semaphore = asyncio.Semaphore(5)  # Limit concurrency
+    
+    async def fetch_wallet_safe(wallet: str):
+        async with semaphore:
+            try:
+                # PolymarketService.calculate_portfolio_stats is synchronous (requests)
+                # Run in thread pool to not block event loop
+                stats = await asyncio.to_thread(PolymarketService.calculate_portfolio_stats, wallet)
+                return transform_stats_for_scoring(stats)
+            except Exception as e:
+                print(f"Error fetching stats for {wallet}: {e}")
+                return None
+
+    tasks = [fetch_wallet_safe(w) for w in wallets]
+    results = await asyncio.gather(*tasks)
+    
+    # Filter None results
+    valid_metrics = [r for r in results if r is not None]
+    
+    return valid_metrics
 

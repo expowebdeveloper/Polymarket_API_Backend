@@ -229,47 +229,44 @@ class UserScoringService:
         total_pnl: float = 0.0
     ) -> Dict[str, float]:
         """
-        Formula 4: Risk Score (Risk_score)
+        Formula 4: Risk Score (Fixed Formula)
+        Risk Score = |Worst Loss| / Total Stake
+        Output range: 0 → 1, Higher value = higher risk
+        This formula is not percentile-based
         """
         if not closed_positions:
-             return {"score": 0.5, "worst_loss": 0.0, "loss_pct": 0.0}
+             return {"score": 0.0, "worst_loss": 0.0, "total_stake": 0.0}
         
-        # Step 1: Find Worst Loss
-        worst_loss = 0.0 # Should be negative or 0
+        # Step 1: Find Worst Loss and Calculate Total Stake
+        worst_loss = 0.0  # Should be negative or 0
+        total_stake = 0.0
         
         for pos in closed_positions:
+            # Calculate stake for this position
+            size = float(pos.get("totalBought", 0.0))
+            avg_price = float(pos.get("avgPrice", 0.0))
+            stake = size * avg_price
+            total_stake += stake
+            
+            # Find worst loss
             pnl = float(pos.get("realizedPnl", 0.0))
             if pnl < worst_loss:
                 worst_loss = pnl
-                
-        # Capital Approximation
-        # If we use strict Current Portfolio Value, a user who lost 90% of funds
-        # will have Loss / Current = Huge %.
-        # We reconstruct "Effective Capital" as Current Value - Total PnL (Net Profit/Loss).
-        # Example: Start 1000. Lost 400. PnL = -400. Current = 600.
-        # Est Capital = 600 - (-400) = 1000.
-        # Example: Start 1000. Won 200. PnL = +200. Current = 1200.
-        # Est Capital = 1200 - 200 = 1000.
         
-        adjusted_capital = current_portfolio_value
-        if total_pnl < 0:
-             adjusted_capital -= total_pnl # Add back the losses to find base capital
+        # Step 2: Compute Risk Score using Fixed Formula
+        # Risk Score = |Worst Loss| / Total Stake
+        if total_stake > 0:
+            risk_score = abs(worst_loss) / total_stake
+        else:
+            risk_score = 0.0
         
-        # Ensure we don't divide by zero or negative (if withdrawn everything)
-        capital = max(adjusted_capital, 1.0)
-        
-        # Loss % = |Worst Loss| / Capital
-        loss_pct = abs(worst_loss) / capital
-        
-        # Step 2: Compute Score
-        risk_score = 1.0 - loss_pct
-        risk_score = max(0.0, risk_score)
+        # Clamp to 0-1 range (as per specification)
+        risk_score = max(0.0, min(1.0, risk_score))
         
         return {
             "score": float(risk_score),
             "worst_loss": worst_loss,
-            "loss_pct": loss_pct,
-            "capital_proxy": capital
+            "total_stake": total_stake
         }
 
     @staticmethod
