@@ -37,25 +37,42 @@ def validate_wallet(wallet_address: str) -> bool:
         return False
 
 
+@router.post(
+    "/sync",
+    summary="Sync traders to database",
+    description="Fetch traders from Leaderboard API and save/update them in the database"
+)
+async def sync_traders(
+    limit: int = Query(50, ge=1, le=200, description="Number of traders to sync")
+):
+    """Trigger synchronization of traders from API to Database."""
+    from app.services.trader_service import sync_traders_to_db
+    try:
+        stats = await sync_traders_to_db(limit=limit)
+        return {"message": "Sync complete", "stats": stats}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error syncing traders: {str(e)}"
+        )
+
+
 @router.get(
     "",
     response_model=TradersListResponse,
     summary="Get list of traders",
-    description="Get a list of traders extracted from markets with basic information"
+    description="Get a list of traders from the database with basic information"
 )
 async def get_traders(
-    limit: int = Query(50, ge=1, le=100, description="Maximum number of traders to return")
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
     """
-    Get a list of traders with basic information.
-    
-    This endpoint:
-    1. Fetches resolved markets
-    2. Extracts unique trader wallet addresses from market trades
-    3. Returns basic information for each trader
+    Get a list of traders from the database.
     """
+    from app.services.trader_service import get_traders_from_db
     try:
-        traders = await fetch_traders_list(limit=limit)
+        traders = await get_traders_from_db(limit=limit, offset=offset)
         return TradersListResponse(
             count=len(traders),
             traders=[TraderBasicInfo(**trader) for trader in traders]

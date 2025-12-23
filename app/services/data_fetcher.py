@@ -93,7 +93,7 @@ async def fetch_markets(
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
-        
+                
         # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
         events = data.get("data", [])
         pagination = data.get("pagination", {})
@@ -136,6 +136,36 @@ async def fetch_markets(
                 "featured": event.get("featured", False),
                 "restricted": event.get("restricted", False),
             }
+            
+            # Extract outcome prices from the first nested market if available
+            # This fixes the issue where all probabilities show as 50%
+            event_markets = event.get("markets", [])
+            if event_markets and isinstance(event_markets, list) and len(event_markets) > 0:
+                primary_market = event_markets[0]
+                
+                # Extract outcomes and prices
+                outcomes = primary_market.get("outcomes", [])
+                outcome_prices = primary_market.get("outcomePrices", [])
+                
+                # Create outcomePrices map if both lists exist and have same length
+                if outcomes and outcome_prices and len(outcomes) == len(outcome_prices):
+                    try:
+                        prices_map = {}
+                        for i, outcome in enumerate(outcomes):
+                            # Clean outcome name (sometimes valid JSON string) and price
+                            name = str(outcome).strip()
+                            price = float(outcome_prices[i])
+                            prices_map[name] = price
+                        
+                        market["outcomePrices"] = prices_map
+                        
+                        # Set main price (usually the first outcome's price, e.g., Yes)
+                        if len(outcome_prices) > 0:
+                            market["price"] = float(outcome_prices[0])
+                            
+                    except (ValueError, TypeError):
+                        pass
+            
             all_markets.append(market)
         
         # Apply offset and limit to the fetched results
@@ -151,20 +181,20 @@ async def fetch_markets(
         # Ensure we don't return more than requested
         if len(paginated_markets) > limit:
             paginated_markets = paginated_markets[:limit]
-        
+            
         # Determine if there are more results
         has_more = pagination.get("hasMore", False) or (offset + limit < total_results)
-        
+            
         pagination_info = {
             "limit": limit,
             "offset": offset,
             "total": total_results,
             "has_more": has_more
         }
-        
+            
         print(f"✓ Successfully fetched {len(paginated_markets)} markets from Gamma API (offset: {offset}, limit: {limit}, total: {total_results}, fetched: {len(all_markets)})")
         return paginated_markets, pagination_info
-        
+    
     except httpx.HTTPStatusError as e:
         print(f"✗ HTTP error fetching markets from Gamma API: {e}")
         pagination_info = {
@@ -185,13 +215,13 @@ async def fetch_markets(
         return [], pagination_info
     except Exception as e:
         print(f"✗ Unexpected error fetching markets from Gamma API: {e}")
-        pagination_info = {
-            "limit": limit,
-            "offset": offset,
-            "total": 0,
-            "has_more": False
-        }
-        return [], pagination_info
+    pagination_info = {
+        "limit": limit,
+        "offset": offset,
+        "total": 0,
+        "has_more": False
+    }
+    return [], pagination_info
 
 
 async def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
@@ -392,7 +422,7 @@ async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
         
     except Exception as e:
         print(f"Error fetching market by slug '{market_slug}': {e}")
-        return None
+    return None
 
 
 def get_market_category(market: Dict) -> str:

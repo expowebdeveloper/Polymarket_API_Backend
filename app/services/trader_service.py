@@ -9,9 +9,15 @@ from datetime import datetime
 from app.services.data_fetcher import (
     fetch_resolved_markets,
     fetch_trades_for_wallet,
+    fetch_traders_from_leaderboard,
     get_market_by_id
 )
 from app.services.scoring_engine import calculate_metrics
+from app.db.session import AsyncSessionLocal
+from app.db.models import Trader, AggregatedMetrics, Trade
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 
 # Simple in-memory cache to store orders by wallet address
 # This avoids re-fetching when we already have the data from market extraction
@@ -330,3 +336,155 @@ async def get_traders_list(limit: int = 50) -> List[Dict]:
     print(f"  - {traders_with_trades} with trades, {traders_without_trades} without trades (API may have failed)")
     return traders_info
 
+async def sync_traders_to_db(limit: int = 50) -> Dict[str, int]:
+    """
+    Fetch traders from Leaderboard API and save/update them in the database.
+    
+    Args:
+        limit: Number of traders to fetch and sync
+        
+    Returns:
+        Dict with stats (added, updated, failed)
+    """
+    stats = {"added": 0, "updated": 0, "failed": 0}
+    
+    try:
+        # Fetch from Polymarket Leaderboard API
+        traders_data, _ = await fetch_traders_from_leaderboard(
+            limit=limit,
+            time_period="all",
+            order_by="VOL"
+        )
+        
+        if not traders_data:
+            print("⚠ No traders fetched from Leaderboard API to sync.")
+            return stats
+            
+        async with AsyncSessionLocal() as session:
+            for trader_info in traders_data:
+                wallet = trader_info.get("wallet_address")
+                if not wallet:
+                    continue
+                    
+                try:
+                    # Check if trader exists
+                    result = await session.execute(select(Trader).where(Trader.wallet_address == wallet))
+                    existing_trader = result.scalar_one_or_none()
+                    
+                    if existing_trader:
+                        # Update existing trader fields
+                        existing_trader.name = trader_info.get("userName") or existing_trader.name
+                        existing_trader.profile_image = trader_info.get("profileImage") or existing_trader.profile_image
+                        # existing_trader.updated_at = datetime.utcnow() # handled by onupdate
+                        stats["updated"] += 1
+                        trader_obj = existing_trader
+                    else:
+                        # Create new trader
+                        trader_obj = Trader(
+                            wallet_address=wallet,
+                            name=trader_info.get("userName"),
+                            profile_image=trader_info.get("profileImage"),
+                            created_at=datetime.utcnow()
+                        )
+                        session.add(trader_obj)
+                        # Flush to get the ID for metrics
+                        await session.flush()
+                        stats["added"] += 1
+                    
+                    # Update or Create AggregatedMetrics
+                    # We need to await flush to ensure trader_obj.id is available if it's new
+                    if not trader_obj.id:
+                        await session.flush()
+                        
+                    metrics_result = await session.execute(
+                        select(AggregatedMetrics).where(AggregatedMetrics.trader_id == trader_obj.id)
+                    )
+                    existing_metrics = metrics_result.scalar_one_or_none()
+                    
+                    # Extract values from API response
+                    vol = float(trader_info.get("vol", 0))
+                    pnl = float(trader_info.get("pnl", 0))
+                    roi = float(trader_info.get("roi", 0)) if trader_info.get("roi") is not None else 0
+                    win_rate = float(trader_info.get("winRate", 0)) if trader_info.get("winRate") is not None else 0
+                    total_trades = int(trader_info.get("totalTrades", 0)) if trader_info.get("totalTrades") is not None else 0
+                    
+                    if existing_metrics:
+                        existing_metrics.total_volume = vol
+                        existing_metrics.total_pnl = pnl
+                        # Start with existing values if API doesn't provide them, or use API values
+                        # Note: AggregatedMetrics has specific fields that might not map 1:1 to Leaderboard basics
+                        # We map what we can
+                        existing_metrics.win_rate = win_rate
+                        existing_metrics.total_trades = total_trades
+                        # existing_metrics.updated_at = datetime.utcnow()
+                    else:
+                        new_metrics = AggregatedMetrics(
+                            trader_id=trader_obj.id,
+                            total_volume=vol,
+                            total_pnl=pnl,
+                            win_rate=win_rate,
+                            total_trades=total_trades,
+                            created_at=datetime.utcnow()
+                        )
+                        session.add(new_metrics)
+                        
+                except Exception as e:
+                    print(f"Error syncing trader {wallet}: {e}")
+                    stats["failed"] += 1
+            
+            await session.commit()
+            
+    except Exception as e:
+        print(f"Error in sync_traders_to_db: {e}")
+        
+    print(f"Sync complete: {stats}")
+    return stats
+
+
+async def get_traders_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
+    """
+    Fetch traders from the database with pagination.
+    Returns a list of dictionaries matching the api response format.
+    """
+    async with AsyncSessionLocal() as session:
+        # Query traders with their metrics
+        stmt = (
+            select(Trader)
+            .options(selectinload(Trader.aggregated_metrics))
+            .limit(limit)
+            .offset(offset)
+            .order_by(Trader.updated_at.desc()) # Or order by volume if joined
+        )
+        
+        result = await session.execute(stmt)
+        traders = result.scalars().all()
+        
+        trader_list = []
+        for trader in traders:
+            # Get metrics if available
+            metrics = trader.aggregated_metrics[0] if trader.aggregated_metrics else None
+            
+            # Map DB model to dict
+            trader_dict = {
+                "wallet_address": trader.wallet_address,
+                "userName": trader.name,
+                "profileImage": trader.profile_image,
+                # Metrics
+                "vol": float(metrics.total_volume) if metrics else 0.0,
+                "pnl": float(metrics.total_pnl) if metrics else 0.0,
+                "winRate": float(metrics.win_rate) if metrics else 0.0,
+                "totalTrades": metrics.total_trades if metrics else 0,
+                
+                # Required fields for TraderBasicInfo
+                "total_trades": metrics.total_trades if metrics else 0,
+                "total_positions": 0, # Not currently synced from leaderboard
+                "first_trade_date": None,
+                "last_trade_date": None,
+                
+                # Fields not strictly in DB but expected by some views (defaults)
+                "rank": 0, # Rank would need to be calculated or stored
+                "verifiedBadge": False
+            }
+            trader_list.append(trader_dict)
+            
+        return trader_list
