@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from datetime import datetime
+from app.schemas.markets import PaginationInfo
 
 
 class TraderBasicInfo(BaseModel):
@@ -85,6 +86,59 @@ class TraderTradesResponse(BaseModel):
                 "wallet_address": "0x56687bf447db6ffa42ffe2204a05edaa20f55839",
                 "count": 12,
                 "trades": []
+            }
+        }
+
+
+class LeaderboardTrader(BaseModel):
+    """Trader information from Polymarket Leaderboard API."""
+    wallet_address: str = Field(..., description="Wallet address")
+    rank: Optional[int] = Field(None, description="Rank in leaderboard")
+    userName: Optional[str] = Field(None, description="Username")
+    xUsername: Optional[str] = Field(None, description="Twitter/X username")
+    verifiedBadge: bool = Field(False, description="Verified badge status")
+    profileImage: Optional[str] = Field(None, description="Profile image URL")
+    vol: float = Field(0.0, description="Total volume")
+    pnl: float = Field(0.0, description="Profit and loss")
+    roi: Optional[float] = Field(None, description="Return on investment")
+    winRate: Optional[float] = Field(None, description="Win rate percentage")
+    totalTrades: int = Field(0, description="Total number of trades")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "wallet_address": "0x56687bf447db6ffa42ffe2204a05edaa20f55839",
+                "rank": 1,
+                "userName": "trader123",
+                "xUsername": "@trader123",
+                "verifiedBadge": True,
+                "profileImage": "https://...",
+                "vol": 123456.78,
+                "pnl": 12345.67,
+                "roi": 10.5,
+                "winRate": 65.2,
+                "totalTrades": 150
+            }
+        }
+
+
+class LeaderboardTradersResponse(BaseModel):
+    """Response for leaderboard traders list."""
+    count: int = Field(..., description="Number of traders returned")
+    traders: List[LeaderboardTrader] = Field(..., description="List of traders")
+    pagination: Optional[PaginationInfo] = Field(None, description="Pagination information")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "count": 50,
+                "traders": [],
+                "pagination": {
+                    "limit": 50,
+                    "offset": 0,
+                    "total": 1000,
+                    "has_more": True
+                }
             }
         }
 

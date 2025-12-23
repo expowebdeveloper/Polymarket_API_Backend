@@ -927,6 +927,107 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
         raise Exception(f"Unexpected error fetching market orders: {str(e)}")
 
 
+async def fetch_traders_from_leaderboard(
+    category: str = "overall",
+    time_period: str = "all",
+    order_by: str = "VOL",
+    limit: int = 50,
+    offset: int = 0
+) -> tuple[List[Dict], Dict[str, Any]]:
+    """
+    Fetch traders from Polymarket Leaderboard API.
+    
+    Args:
+        category: Category filter ("overall", "politics", "sports", etc.)
+        time_period: Time period ("all", "1m", "3m", "6m", "1y")
+        order_by: Sort by ("VOL", "PNL", "ROI")
+        limit: Maximum number of traders to return
+        offset: Offset for pagination
+    
+    Returns:
+        Tuple of (traders list, pagination info)
+    """
+    try:
+        url = "https://data-api.polymarket.com/v1/leaderboard"
+        params = {
+            "timePeriod": time_period,
+            "orderBy": order_by,
+            "limit": limit,
+            "offset": offset,
+            "category": category
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+        
+        # API returns a list of trader objects
+        if not isinstance(data, list):
+            return [], {
+                "limit": limit,
+                "offset": offset,
+                "total": 0,
+                "has_more": False
+            }
+        
+        # Convert to trader format
+        traders = []
+        for item in data:
+            trader = {
+                "wallet_address": item.get("user") or item.get("proxyWallet") or "",
+                "rank": item.get("rank"),
+                "userName": item.get("userName"),
+                "xUsername": item.get("xUsername"),
+                "verifiedBadge": item.get("verifiedBadge", False),
+                "profileImage": item.get("profileImage"),
+                "vol": float(item.get("vol", 0.0)),
+                "pnl": float(item.get("pnl", 0.0)),
+                "roi": float(item.get("roi", 0.0)) if item.get("roi") is not None else None,
+                "winRate": float(item.get("winRate", 0.0)) if item.get("winRate") is not None else None,
+                "totalTrades": int(item.get("totalTrades", 0)) if item.get("totalTrades") is not None else 0,
+            }
+            traders.append(trader)
+        
+        # Determine pagination
+        has_more = len(data) == limit  # If we got full limit, there might be more
+        
+        pagination_info = {
+            "limit": limit,
+            "offset": offset,
+            "total": len(traders) + (offset if has_more else 0),  # Approximate total
+            "has_more": has_more
+        }
+        
+        print(f"✓ Successfully fetched {len(traders)} traders from Polymarket Leaderboard API")
+        return traders, pagination_info
+        
+    except httpx.HTTPStatusError as e:
+        print(f"✗ HTTP error fetching traders from leaderboard: {e}")
+        return [], {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+    except httpx.RequestError as e:
+        print(f"✗ Request error fetching traders from leaderboard: {e}")
+        return [], {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+    except Exception as e:
+        print(f"✗ Unexpected error fetching traders from leaderboard: {e}")
+        return [], {
+            "limit": limit,
+            "offset": offset,
+            "total": 0,
+            "has_more": False
+        }
+
+
 def fetch_user_leaderboard_data(wallet_address: str, category: str = "politics") -> Optional[Dict[str, Any]]:
     """
     Fetch full user leaderboard data including username, xUsername, profileImage, volume, pnl, etc.

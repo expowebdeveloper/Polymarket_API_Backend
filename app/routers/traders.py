@@ -6,15 +6,18 @@ from app.schemas.traders import (
     TraderBasicInfo,
     TraderDetail,
     TradersListResponse,
-    TraderTradesResponse
+    TraderTradesResponse,
+    LeaderboardTrader,
+    LeaderboardTradersResponse
 )
+from app.schemas.markets import PaginationInfo
 from app.schemas.general import ErrorResponse
 from app.services.trader_service import (
     get_trader_basic_info,
     get_trader_detail,
     get_traders_list as fetch_traders_list
 )
-from app.services.data_fetcher import fetch_resolved_markets, fetch_trades_for_wallet
+from app.services.data_fetcher import fetch_resolved_markets, fetch_trades_for_wallet, fetch_traders_from_leaderboard
 
 router = APIRouter(prefix="/traders", tags=["Traders"])
 
@@ -61,6 +64,55 @@ async def get_traders(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching traders list: {str(e)}"
+        )
+
+
+@router.get(
+    "/leaderboard",
+    response_model=LeaderboardTradersResponse,
+    summary="Get traders from Polymarket Leaderboard",
+    description="Fetch traders from Polymarket Leaderboard API with ranking and stats"
+)
+async def get_leaderboard_traders(
+    category: str = Query("overall", description="Category filter: 'overall', 'politics', 'sports', etc."),
+    time_period: str = Query("all", description="Time period: 'all', '1m', '3m', '6m', '1y'"),
+    order_by: str = Query("VOL", description="Sort by: 'VOL', 'PNL', 'ROI'"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
+):
+    """
+    Get traders from Polymarket Leaderboard API.
+    
+    This endpoint fetches traders directly from Polymarket's leaderboard API,
+    which includes ranking, volume, PnL, ROI, and other performance metrics.
+    """
+    try:
+        traders, pagination_dict = await fetch_traders_from_leaderboard(
+            category=category,
+            time_period=time_period,
+            order_by=order_by,
+            limit=limit,
+            offset=offset
+        )
+        
+        pagination_info = None
+        if pagination_dict:
+            pagination_info = PaginationInfo(
+                limit=pagination_dict["limit"],
+                offset=pagination_dict["offset"],
+                total=pagination_dict["total"],
+                has_more=pagination_dict["has_more"]
+            )
+        
+        return LeaderboardTradersResponse(
+            count=len(traders),
+            traders=[LeaderboardTrader(**trader) for trader in traders],
+            pagination=pagination_info
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching traders from leaderboard: {str(e)}"
         )
 
 

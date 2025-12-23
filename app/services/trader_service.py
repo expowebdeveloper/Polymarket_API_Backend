@@ -183,7 +183,7 @@ async def get_trader_detail(wallet_address: str) -> Dict:
             market_slugs_from_trades.add(market_id)
     
     # Fetch resolved markets (these have resolution data)
-    markets = fetch_resolved_markets(limit=200)  # Fetch more markets for better matching
+    markets = await fetch_resolved_markets(limit=200)  # Fetch more markets for better matching
     
     # For markets in trades that aren't in resolved markets, try to fetch from Dome
     # This helps get resolution data for markets that might be resolved but not in our list
@@ -256,7 +256,7 @@ async def get_traders_list(limit: int = 50) -> List[Dict]:
     """
     import asyncio
     
-    markets = fetch_resolved_markets()
+    markets = await fetch_resolved_markets()
     
     # Extract traders - try to get more than the limit to account for traders with no data
     # We'll request 1.5x the limit to ensure we have enough after filtering
