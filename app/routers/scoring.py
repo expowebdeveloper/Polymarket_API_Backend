@@ -20,7 +20,7 @@ async def get_user_scores(user_address: str):
             # Basic validation
             raise HTTPException(status_code=400, detail="Invalid wallet address format")
             
-        scores = UserScoringService.calculate_all_scores(user_address)
+        scores = await UserScoringService.calculate_all_scores(user_address)
         return scores
     except Exception as e:
         import traceback

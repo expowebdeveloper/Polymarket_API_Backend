@@ -83,7 +83,6 @@ async def save_activities_to_db(
         await session.execute(stmt)
         saved_count += 1
     
-    await session.commit()
     return saved_count
 
 
@@ -139,25 +138,12 @@ async def fetch_and_save_activities(
     Returns:
         Tuple of (activities list, saved count)
     """
-    # Fetch activities from API (run in thread pool to avoid blocking async event loop)
-    import asyncio
-    from app.services.data_fetcher import fetch_user_activity
-    
-    # We use a partial or lambda to pass keyword args to to_thread
-    # but to_thread supports args directly. For kwargs, we might need a lambda or wrapper.
-    # Actually asyncio.to_thread doesn't support kwargs directly in older python versions, 
-    # but in 3.9+ it does. Assuming 3.9+. 
-    # If not safe, better use a wrapper function.
-    
-    def fetch_wrapper():
-        return fetch_user_activity(
-            wallet_address, 
-            activity_type=activity_type, 
-            limit=limit, 
-            offset=offset
-        )
-    
-    activities = await asyncio.to_thread(fetch_wrapper)
+    activities = await fetch_user_activity(
+        wallet_address, 
+        activity_type=activity_type, 
+        limit=limit, 
+        offset=offset
+    )
     
     # Save to database
     saved_count = await save_activities_to_db(session, wallet_address, activities)

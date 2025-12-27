@@ -55,7 +55,6 @@ async def save_pnl_to_db(
         await session.execute(stmt)
         saved_count += 1
     
-    await session.commit()
     return saved_count
 
 
@@ -114,7 +113,7 @@ async def fetch_and_save_pnl(
         Tuple of (pnl data list, saved count)
     """
     # Fetch PnL data from API
-    pnl_data = fetch_user_pnl(user_address, interval=interval, fidelity=fidelity)
+    pnl_data = await fetch_user_pnl(user_address, interval=interval, fidelity=fidelity)
     
     # Save to database
     saved_count = await save_pnl_to_db(session, user_address, pnl_data, interval=interval, fidelity=fidelity)

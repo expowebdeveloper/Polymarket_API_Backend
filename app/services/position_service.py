@@ -26,13 +26,18 @@ async def save_positions_to_db(
         Number of positions saved
     """
     saved_count = 0
+    synced_combination_ids = []
     
     for pos_data in positions:
+        asset = str(pos_data.get("asset", ""))
+        condition_id = pos_data.get("conditionId", "")
+        synced_combination_ids.append((asset, condition_id))
+        
         # Convert position data to database model
         position_dict = {
             "proxy_wallet": pos_data.get("proxyWallet", wallet_address),
-            "asset": str(pos_data.get("asset", "")),
-            "condition_id": pos_data.get("conditionId", ""),
+            "asset": asset,
+            "condition_id": condition_id,
             "size": Decimal(str(pos_data.get("size", 0))),
             "avg_price": Decimal(str(pos_data.get("avgPrice", 0))),
             "initial_value": Decimal(str(pos_data.get("initialValue", 0))),
@@ -94,7 +99,30 @@ async def save_positions_to_db(
         await session.execute(stmt)
         saved_count += 1
     
-    await session.commit()
+    # --- Stale Position Cleanup ---
+    # Delete positions for this wallet that were NOT in the current sync list
+    # This prevents closed positions from hanging around as "active" in the DB
+    from sqlalchemy import and_, not_
+    
+    # We want to delete positions for this wallet AND (asset, condition_id) NOT IN syncing list
+    if synced_combination_ids:
+        # Create a condition to keep the ones we just synced
+        from sqlalchemy import tuple_
+        keep_condition = tuple_(Position.asset, Position.condition_id).in_(synced_combination_ids)
+        delete_stmt = (
+            Position.__table__.delete()
+            .where(Position.proxy_wallet == wallet_address)
+            .where(not_(keep_condition))
+        )
+        await session.execute(delete_stmt)
+    else:
+        # If no active positions returned from API, clear all for this wallet
+        delete_stmt = (
+            Position.__table__.delete()
+            .where(Position.proxy_wallet == wallet_address)
+        )
+        await session.execute(delete_stmt)
+    
     return saved_count
 
 
@@ -141,11 +169,7 @@ async def fetch_and_save_positions(
     Returns:
         Tuple of (positions list, saved count)
     """
-    # Fetch positions from API (run in thread pool to avoid blocking async event loop)
-    import asyncio
-    from app.services.data_fetcher import fetch_positions_for_wallet
-    positions = await asyncio.to_thread(
-        fetch_positions_for_wallet,
+    positions = await fetch_positions_for_wallet(
         wallet_address,
         sort_by,
         sort_direction,

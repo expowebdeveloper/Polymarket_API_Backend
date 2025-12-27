@@ -13,6 +13,7 @@ from app.schemas.traders import (
 from app.schemas.markets import PaginationInfo
 from app.schemas.general import ErrorResponse
 from app.services.trader_service import (
+    get_traders_analytics_from_db,
     get_trader_basic_info,
     get_trader_detail,
     get_traders_list as fetch_traders_list
@@ -37,23 +38,40 @@ def validate_wallet(wallet_address: str) -> bool:
         return False
 
 
+from fastapi import APIRouter, HTTPException, Query, Path, status, BackgroundTasks
+
 @router.post(
     "/sync",
     summary="Sync traders to database",
-    description="Fetch traders from Leaderboard API and save/update them in the database"
+    description="Fetch traders from Leaderboard API and save/update them in the database. Done in background. Set limit=0 to sync all available traders."
 )
 async def sync_traders(
-    limit: int = Query(50, ge=1, le=200, description="Number of traders to sync")
+    background_tasks: BackgroundTasks,
+    limit: int = Query(50, ge=0, description="Number of traders to sync (use 0 for all)")
 ):
     """Trigger synchronization of traders from API to Database."""
     from app.services.trader_service import sync_traders_to_db
+    
+    # Trigger sync in background
+    background_tasks.add_task(sync_traders_to_db, limit)
+    
+    return {"message": f"Sync started in background for {'all' if limit == 0 else limit} traders", "limit": limit}
+
+
+@router.get(
+    "/analytics",
+    summary="Get database leaderboards analytics",
+    description="Get aggregated analytics and leaderboards from local database"
+)
+async def get_db_analytics():
+    """Get full leaderboard analytics from database."""
     try:
-        stats = await sync_traders_to_db(limit=limit)
-        return {"message": "Sync complete", "stats": stats}
+        data = await get_traders_analytics_from_db()
+        return data
     except Exception as e:
-        raise HTTPException(
+         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error syncing traders: {str(e)}"
+            detail=f"Error generating analytics: {str(e)}"
         )
 
 

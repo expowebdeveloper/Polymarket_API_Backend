@@ -243,11 +243,10 @@ async def get_trade_history(
             api_trades.append(scoring_trade)
     
     # Fetch resolved markets for scoring engine
-    markets = fetch_resolved_markets(limit=200)
+    markets = await fetch_resolved_markets(limit=200)
     
-    # Use the same scoring engine as Trader Analytics
     # This ensures consistency between Trade History and Trader Analytics
-    scoring_metrics = calculate_metrics(wallet_address, api_trades, markets)
+    scoring_metrics = await calculate_metrics(wallet_address, api_trades, markets)
     
     # Get PnL median from population for shrinkage calculation (from Polymarket API)
     pnl_median = await get_pnl_median_from_population()

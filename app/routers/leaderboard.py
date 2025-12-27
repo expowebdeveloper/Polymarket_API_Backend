@@ -18,6 +18,7 @@ from app.services.live_leaderboard_service import (
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
+from app.services.db_scoring_service import get_db_leaderboard
 from app.db.session import get_db
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboards"])
@@ -814,14 +815,159 @@ async def get_all_leaderboards_with_percentiles():
                 pnl_median=medians_data["pnl_median"]
             ),
             leaderboards=leaderboards,
-            total_traders=result["total_traders"],
+            total_traders=len(traders),
             population_traders=result["population_size"]
         )
     except Exception as e:
+        import traceback
+        print(f"Error generating all leaderboards: {e}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating all leaderboards: {str(e)}"
         )
+
+
+@router.get(
+    "/db/final-score",
+    response_model=LeaderboardResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Database Leaderboard by Final Score",
+    description="Calculate leaderboard scores for ALL wallets in database using advanced formula"
+)
+async def get_db_final_score_leaderboard(
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
+    use_file: bool = Query(False, description="Whether to limit to wallets in wallet_address.txt"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate a database-backed leaderboard using the advanced scoring logic.
+    By default, calculates for all wallets in DB.
+    """
+    try:
+        wallets = None
+        if use_file:
+            file_path = "wallet_address.txt"
+            try:
+                with open(file_path, 'r') as f:
+                    wallets = [line.strip() for line in f if line.strip()]
+            except FileNotFoundError:
+                pass
+            
+        leaderboard_data = await get_db_leaderboard(db, wallet_addresses=wallets, limit=limit, metric="final_score")
+        
+        entries = [LeaderboardEntry(**e) for e in leaderboard_data]
+        
+        return LeaderboardResponse(
+            period="all",
+            metric="final_score",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error generating DB final score leaderboard: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating DB final score leaderboard: {str(e)}"
+        )
+
+
+@router.get(
+    "/db/all",
+    response_model=AllLeaderboardsResponse,
+    summary="Get All Database Leaderboards with Advanced Percentile Logic",
+    description="Get all database-backed leaderboards (W_shrunk, ROI_shrunk, etc.) using advanced formulas"
+)
+async def get_all_db_leaderboards(
+    use_file: bool = Query(False, description="Whether to limit to wallets in wallet_address.txt"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate all database-backed leaderboards with percentile information.
+    Uses the advanced formulas (shrinkage, whale penalty, percentiles).
+    """
+    try:
+        from app.services.db_scoring_service import get_advanced_db_analytics
+        
+        wallets = None
+        if use_file:
+            file_path = "wallet_address.txt"
+            try:
+                with open(file_path, 'r') as f:
+                    wallets = [line.strip() for line in f if line.strip()]
+            except FileNotFoundError:
+                pass
+
+        result = await get_advanced_db_analytics(db, wallet_addresses=wallets)
+        traders = result.get("traders", [])
+        percentiles_data = result.get("percentiles", {})
+        medians_data = result.get("medians", {})
+        
+        # Create all different leaderboards (same as in view_all_leaderboards)
+        leaderboards = {}
+        
+        # 1. W_shrunk leaderboard (ascending)
+        w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
+        for i, t in enumerate(w_shrunk_sorted, 1):
+            t['rank'] = i
+        leaderboards["w_shrunk"] = [LeaderboardEntry(**t) for t in w_shrunk_sorted]
+        
+        # 2. ROI raw leaderboard (descending)
+        roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        for i, t in enumerate(roi_raw_sorted, 1):
+            t['rank'] = i
+        leaderboards["roi_raw"] = [LeaderboardEntry(**t) for t in roi_raw_sorted]
+        
+        # 3. ROI shrunk leaderboard (ascending)
+        roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
+        for i, t in enumerate(roi_shrunk_sorted, 1):
+            t['rank'] = i
+        leaderboards["roi_shrunk"] = [LeaderboardEntry(**t) for t in roi_shrunk_sorted]
+        
+        # 4. PNL shrunk leaderboard (ascending)
+        pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
+        for i, t in enumerate(pnl_shrunk_sorted, 1):
+            t['rank'] = i
+        leaderboards["pnl_shrunk"] = [LeaderboardEntry(**t) for t in pnl_shrunk_sorted]
+        
+        # 5. Score leaderboards (descending)
+        for score_metric in ["score_win_rate", "score_roi", "score_pnl", "score_risk", "final_score"]:
+            sorted_traders = sorted(traders, key=lambda x: x.get(score_metric, 0), reverse=True)
+            for i, t in enumerate(sorted_traders, 1):
+                t['rank'] = i
+            leaderboards[score_metric] = [LeaderboardEntry(**t) for t in sorted_traders]
+            
+        return AllLeaderboardsResponse(
+            percentiles=PercentileInfo(
+                w_shrunk_1_percent=percentiles_data.get("w_shrunk_1_percent", 0.0),
+                w_shrunk_99_percent=percentiles_data.get("w_shrunk_99_percent", 0.0),
+                roi_shrunk_1_percent=percentiles_data.get("roi_shrunk_1_percent", 0.0),
+                roi_shrunk_99_percent=percentiles_data.get("roi_shrunk_99_percent", 0.0),
+                pnl_shrunk_1_percent=percentiles_data.get("pnl_shrunk_1_percent", 0.0),
+                pnl_shrunk_99_percent=percentiles_data.get("pnl_shrunk_99_percent", 0.0),
+                population_size=result.get("population_size", 0)
+            ),
+            medians=MedianInfo(
+                roi_median=medians_data.get("roi_median", 0.0),
+                pnl_median=medians_data.get("pnl_median", 0.0)
+            ),
+            leaderboards=leaderboards,
+            total_traders=len(traders),
+            population_traders=result.get("population_size", 0)
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error generating all DB leaderboards: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating all DB leaderboards: {str(e)}"
+        )
+
 
 
 @router.get(
@@ -964,10 +1110,12 @@ async def view_all_leaderboards():
             ),
             leaderboards=leaderboards,
             total_traders=result["total_traders"],
-            population_traders=result["population_size"]
-        )
+            )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating all leaderboards: {str(e)}"
         )
+
+
+# Force reload trigger
