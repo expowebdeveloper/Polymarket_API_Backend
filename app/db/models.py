@@ -248,6 +248,24 @@ class ClosedPosition(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint('proxy_wallet', 'asset', 'condition_id', 'timestamp', name='uq_closed_position_unique'),
-    )
+
+class Market(Base):
+    __tablename__ = "markets"
+
+    id = Column(String, primary_key=True, index=True)  # Polymarket Market ID or Slug
+    slug = Column(String(255), unique=True, index=True)
+    question = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(50), index=True)  # active, closed, resolved
+    end_date = Column(DateTime, nullable=True)
+    creation_date = Column(DateTime, nullable=True)
+    volume = Column(Numeric(20, 8), default=0)
+    liquidity = Column(Numeric(20, 8), default=0)
+    open_interest = Column(Numeric(20, 8), default=0)
+    image = Column(Text, nullable=True)
+    icon = Column(Text, nullable=True)
+    category = Column(String(255), nullable=True)
+    tags = Column(Text, nullable=True)  # Comma-separated or JSON string
+    outcome_prices = Column(Text, nullable=True)  # JSON string of outcomes and prices
+    last_updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

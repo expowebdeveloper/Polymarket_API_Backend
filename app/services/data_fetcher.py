@@ -66,134 +66,145 @@ async def fetch_markets(
         elif status == "archived":
             archived = True
         
-        # Build query parameters
-        # Optimize: Only fetch what we need (limit + offset) but cap at reasonable size
-        # For better performance, we fetch only the required amount
-        fetch_limit = min(offset + limit, 200)  # Cap at 200 to avoid huge requests
-        
-        params = {
-            "limit": fetch_limit,
-        }
-        
-        if active is not None:
-            params["active"] = str(active).lower()
-        if closed is not None:
-            params["closed"] = str(closed).lower()
-        if archived is not None:
-            params["archived"] = str(archived).lower()
-        if tag_slug:
-            params["tag_slug"] = tag_slug
-        
-        # Add ordering by volume (descending) for better results
-        params["order"] = "volume"
-        params["ascending"] = "false"
-        
-        # Use async HTTP client for better performance
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-                
-        # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
-        events = data.get("data", [])
-        pagination = data.get("pagination", {})
-        
-        # Convert events to market format efficiently
-        # IMPORTANT: Don't include nested markets array to keep response size small
+        # Initialize results container
         all_markets = []
-        for event in events:
-            # Create a market object from the event
-            tags = event.get("tags", [])
-            market = {
-                "id": event.get("id"),
-                "slug": event.get("slug"),
-                "ticker": event.get("ticker"),
-                "question": event.get("title"),
-                "title": event.get("title"),
-                "description": event.get("description"),
-                "status": "active" if event.get("active") else ("closed" if event.get("closed") else "archived"),
-                "volume": float(event.get("volume", 0)),
-                "liquidity": float(event.get("liquidity", 0)),
-                "openInterest": float(event.get("openInterest", 0)),
-                "image": event.get("image"),
-                "icon": event.get("icon"),
-                "startDate": event.get("startDate"),
-                "endDate": event.get("endDate"),
-                "end_date": event.get("endDate"),  # Also include snake_case for compatibility
-                "creationDate": event.get("creationDate"),
-                "createdAt": event.get("createdAt"),
-                "updatedAt": event.get("updatedAt"),
-                "volume24hr": float(event.get("volume24hr", 0)),
-                "volume1wk": float(event.get("volume1wk", 0)),
-                "volume1mo": float(event.get("volume1mo", 0)),
-                "volume1yr": float(event.get("volume1yr", 0)),
-                "competitive": event.get("competitive"),
-                "tags": [tag.get("slug") for tag in tags] if tags else [],
-                "category": tags[0].get("label", "Uncategorized") if tags else "Uncategorized",
-                # Don't include nested markets array - it makes response too large
-                # "markets": event.get("markets", []),  # Removed to reduce response size
-                "markets_count": len(event.get("markets", [])),  # Just include count instead
-                "featured": event.get("featured", False),
-                "restricted": event.get("restricted", False),
+        
+        # Pagination loop
+        current_offset = offset
+        items_to_fetch = limit if limit is not None else float('inf')
+        fetched_so_far = 0
+        
+        # Fetch in chunks (default 100 for safety and speed)
+        chunk_size = 100 
+        
+        while fetched_so_far < items_to_fetch:
+            # Determine current limit
+            current_limit = min(chunk_size, items_to_fetch - fetched_so_far)
+            # The API might be finicky with very large limits, so stick to reasonable chunks
+            if current_limit > 100: 
+                current_limit = 100
+
+            params = {
+                "limit": current_limit,
+                "offset": current_offset
             }
             
-            # Extract outcome prices from the first nested market if available
-            # This fixes the issue where all probabilities show as 50%
-            event_markets = event.get("markets", [])
-            if event_markets and isinstance(event_markets, list) and len(event_markets) > 0:
-                primary_market = event_markets[0]
+            if active is not None:
+                params["active"] = str(active).lower()
+            if closed is not None:
+                params["closed"] = str(closed).lower()
+            if archived is not None:
+                params["archived"] = str(archived).lower()
+            if tag_slug:
+                params["tag_slug"] = tag_slug
+            
+            # Add ordering by volume (descending) for better results
+            params["order"] = "volume"
+            params["ascending"] = "false"
+            
+            # Use async HTTP client for better performance
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+                    
+            # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
+            events = data.get("data", [])
+            pagination = data.get("pagination", {})
+            
+            if not events:
+                break
                 
-                # Extract outcomes and prices
-                outcomes = primary_market.get("outcomes", [])
-                outcome_prices = primary_market.get("outcomePrices", [])
+            # Convert events to market format efficiently
+            for event in events:
+                # Create a market object from the event
+                tags = event.get("tags", [])
+                market = {
+                    "id": event.get("id"),
+                    "slug": event.get("slug"),
+                    "ticker": event.get("ticker"),
+                    "question": event.get("title"),
+                    "title": event.get("title"),
+                    "description": event.get("description"),
+                    "status": "active" if event.get("active") else ("closed" if event.get("closed") else "archived"),
+                    "volume": float(event.get("volume", 0)),
+                    "liquidity": float(event.get("liquidity", 0)),
+                    "openInterest": float(event.get("openInterest", 0)),
+                    "image": event.get("image"),
+                    "icon": event.get("icon"),
+                    "startDate": event.get("startDate"),
+                    "endDate": event.get("endDate"),
+                    "end_date": event.get("endDate"),  # Also include snake_case for compatibility
+                    "creationDate": event.get("creationDate"),
+                    "createdAt": event.get("createdAt"),
+                    "updatedAt": event.get("updatedAt"),
+                    "volume24hr": float(event.get("volume24hr", 0)),
+                    "volume1wk": float(event.get("volume1wk", 0)),
+                    "volume1mo": float(event.get("volume1mo", 0)),
+                    "volume1yr": float(event.get("volume1yr", 0)),
+                    "competitive": event.get("competitive"),
+                    "tags": [tag.get("slug") for tag in tags] if tags else [],
+                    "category": tags[0].get("label", "Uncategorized") if tags else "Uncategorized",
+                    "markets_count": len(event.get("markets", [])),  # Just include count instead
+                    "featured": event.get("featured", False),
+                    "restricted": event.get("restricted", False),
+                }
                 
-                # Create outcomePrices map if both lists exist and have same length
-                if outcomes and outcome_prices and len(outcomes) == len(outcome_prices):
-                    try:
-                        prices_map = {}
-                        for i, outcome in enumerate(outcomes):
-                            # Clean outcome name (sometimes valid JSON string) and price
-                            name = str(outcome).strip()
-                            price = float(outcome_prices[i])
-                            prices_map[name] = price
-                        
-                        market["outcomePrices"] = prices_map
-                        
-                        # Set main price (usually the first outcome's price, e.g., Yes)
-                        if len(outcome_prices) > 0:
-                            market["price"] = float(outcome_prices[0])
+                # Extract outcome prices from the first nested market if available
+                # This fixes the issue where all probabilities show as 50%
+                event_markets = event.get("markets", [])
+                if event_markets and isinstance(event_markets, list) and len(event_markets) > 0:
+                    primary_market = event_markets[0]
+                    
+                    # Extract outcomes and prices
+                    outcomes = primary_market.get("outcomes", [])
+                    outcome_prices = primary_market.get("outcomePrices", [])
+                    
+                    # Create outcomePrices map if both lists exist and have same length
+                    if outcomes and outcome_prices and len(outcomes) == len(outcome_prices):
+                        try:
+                            prices_map = {}
+                            for i, outcome in enumerate(outcomes):
+                                # Clean outcome name (sometimes valid JSON string) and price
+                                name = str(outcome).strip()
+                                price = float(outcome_prices[i])
+                                prices_map[name] = price
                             
-                    except (ValueError, TypeError):
-                        pass
+                            market["outcomePrices"] = prices_map
+                            
+                            # Set main price (usually the first outcome's price, e.g., Yes)
+                            if len(outcome_prices) > 0:
+                                market["price"] = float(outcome_prices[0])
+                                
+                        except (ValueError, TypeError):
+                            pass
+                
+                all_markets.append(market)
             
-            all_markets.append(market)
-        
-        # Apply offset and limit to the fetched results
-        # IMPORTANT: Only return the requested number of markets (limit)
+            # Update counters
+            fetched_so_far += len(events)
+            current_offset += len(events)
+            
+            # Check if we're done
+            if not pagination.get("hasMore", False) or len(events) < current_limit:
+                break
+                
+            # If explicit limit was provided and we reached it
+            if limit is not None and fetched_so_far >= limit:
+                break
+
         total_results = pagination.get("totalResults", len(all_markets))
-        
-        # Slice the array to get only the requested page
-        if offset < len(all_markets):
-            paginated_markets = all_markets[offset:offset + limit]
-        else:
-            paginated_markets = []
-        
-        # Ensure we don't return more than requested
-        if len(paginated_markets) > limit:
-            paginated_markets = paginated_markets[:limit]
-            
-        # Determine if there are more results
-        has_more = pagination.get("hasMore", False) or (offset + limit < total_results)
+        has_more = pagination.get("hasMore", False) or (current_offset < total_results)
             
         pagination_info = {
-            "limit": limit,
+            "limit": limit if limit else len(all_markets),
             "offset": offset,
             "total": total_results,
             "has_more": has_more
         }
             
-        print(f"✓ Successfully fetched {len(paginated_markets)} markets from Gamma API (offset: {offset}, limit: {limit}, total: {total_results}, fetched: {len(all_markets)})")
-        return paginated_markets, pagination_info
+        print(f"✓ Successfully fetched {len(all_markets)} markets from Gamma API (total requested: {limit if limit else 'ALL'}, available: {total_results})")
+        return all_markets, pagination_info
     
     except httpx.HTTPStatusError as e:
         print(f"✗ HTTP error fetching markets from Gamma API: {e}")
@@ -507,9 +518,11 @@ def fetch_positions_for_wallet(
         return all_positions
 
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching positions from Polymarket API: {str(e)}")
+        print(f"Error fetching positions from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Unexpected error fetching positions: {str(e)}")
+        print(f"Unexpected error fetching positions: {str(e)}")
+        return []
 
 
 def fetch_orders_from_dome(
@@ -557,9 +570,11 @@ def fetch_user_pnl(
             return pnl_data
         return []
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching user PnL from Polymarket API: {str(e)}")
+        print(f"Error fetching user PnL from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Unexpected error fetching user PnL: {str(e)}")
+        print(f"Unexpected error fetching user PnL: {str(e)}")
+        return []
 
 
 def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> Optional[Dict]:
@@ -587,9 +602,11 @@ def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> O
             return data
         return None
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching profile stats from Polymarket API: {str(e)}")
+        print(f"Error fetching profile stats from Polymarket API: {str(e)}")
+        return None
     except Exception as e:
-        raise Exception(f"Unexpected error fetching profile stats: {str(e)}")
+        print(f"Unexpected error fetching profile stats: {str(e)}")
+        return None
 
 
 
@@ -630,9 +647,11 @@ def fetch_user_activity(
             return activity
         return []
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching user activity from Polymarket API: {str(e)}")
+        print(f"Error fetching user activity from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Unexpected error fetching user activity: {str(e)}")
+        print(f"Unexpected error fetching user activity: {str(e)}")
+        return []
 
 
 async def fetch_user_trades(wallet_address: str) -> List[Dict]:
@@ -658,9 +677,11 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
                 return trades
             return []
     except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching user trades from Polymarket API: {str(e)}")
+        print(f"Error fetching user trades from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Unexpected error fetching user trades: {str(e)}")
+        print(f"Unexpected error fetching user trades: {str(e)}")
+        return []
 
 
 def fetch_closed_positions(
@@ -724,9 +745,11 @@ def fetch_closed_positions(
         return all_positions
 
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching closed positions from Polymarket API: {str(e)}")
+        print(f"Error fetching closed positions from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
-        raise Exception(f"Unexpected error fetching closed positions: {str(e)}")
+        print(f"Unexpected error fetching closed positions: {str(e)}")
+        return []
 
 
 def fetch_portfolio_value(wallet_address: str) -> float:
@@ -752,9 +775,11 @@ def fetch_portfolio_value(wallet_address: str) -> float:
             return float(data[0].get("value", 0.0))
         return 0.0
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching portfolio value from Polymarket API: {str(e)}")
+        print(f"Error fetching portfolio value from Polymarket API: {str(e)}")
+        return 0.0
     except Exception as e:
-        raise Exception(f"Unexpected error fetching portfolio value: {str(e)}")
+        print(f"Unexpected error fetching portfolio value: {str(e)}")
+        return 0.0
 
 
 def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
@@ -791,9 +816,11 @@ def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
             return stats
         return stats
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
+        print(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
+        return {"volume": 0.0, "pnl": 0.0}
     except Exception as e:
-        raise Exception(f"Unexpected error fetching leaderboard stats: {str(e)}")
+        print(f"Unexpected error fetching leaderboard stats: {str(e)}")
+        return {"volume": 0.0, "pnl": 0.0}
 
 
 def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:

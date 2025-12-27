@@ -87,11 +87,19 @@ def cli_mode():
         sys.exit(1)
 
 
+
 if __name__ == "__main__":
     # Check if running as server (with --server flag) or CLI mode
     if len(sys.argv) > 1 and sys.argv[1] == "--server":
         import uvicorn
         from app.main import app
+        from app.scheduler import start_scheduler
+        
+        # Start the scheduler
+        @app.on_event("startup")
+        async def startup_event():
+            start_scheduler()
+            
         uvicorn.run(app, host=settings.HOST, port=settings.PORT, reload=settings.RELOAD)
     else:
         # CLI mode: validate with sample wallet
