@@ -2,12 +2,134 @@
 Data fetcher service for Polymarket API with authentication support.
 """
 
-import requests
-import httpx
-from typing import List, Dict, Optional, Any
 
+# import requests  # We will use httpx instead
+import httpx
+import dns.resolver
+from typing import List, Dict, Optional, Any, Set
+import asyncio
 from app.core.config import settings
 
+# List of domains known to be hijacked/blocked by some ISPs (e.g., Jio)
+HIJACKED_DOMAINS = {
+    "data-api.polymarket.com",
+    "api.polymarket.com",
+    "gamma-api.polymarket.com",
+    "user-pnl-api.polymarket.com",
+    "clob.polymarket.com",
+    "polymarket.com"
+}
+
+# Cache for resolved IPs to avoid repeated DNS queries
+DNS_CACHE: Dict[str, str] = {}
+
+def resolve_domain_securely(domain: str) -> str:
+    """Resolve a domain using Google DNS (8.8.8.8) to bypass local hijacking."""
+    if domain in DNS_CACHE:
+        return DNS_CACHE[domain]
+    
+    try:
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = ['8.8.8.8', '1.1.1.1']
+        answers = resolver.resolve(domain, 'A')
+        if answers:
+            ip = str(answers[0])
+            DNS_CACHE[domain] = ip
+            print(f"📡 DNS Bypass: Resolved {domain} to {ip} via 8.8.8.8")
+            return ip
+    except Exception as e:
+        print(f"⚠️ DNS Bypass Error for {domain}: {e}")
+    
+    return domain
+
+class DNSAwareAsyncClient(httpx.AsyncClient):
+    """
+    HTTPX AsyncClient that automatically resolves problematic domains 
+    via secure DNS to bypass local hijacking.
+    """
+    async def request(self, method: str, url: httpx.URL | str, **kwargs) -> httpx.Response:
+        url_obj = httpx.URL(url)
+        if url_obj.host in HIJACKED_DOMAINS:
+            resolved_ip = resolve_domain_securely(url_obj.host)
+            if resolved_ip != url_obj.host:
+                # Store original host for the 'Host' header
+                original_host = url_obj.host
+                # Update URL to use the IP address
+                new_url = url_obj.copy_with(host=resolved_ip)
+                
+                # Add Host header if not present
+                headers = kwargs.get("headers")
+                if headers is None:
+                    headers = {}
+                else:
+                    headers = dict(headers) # Create a copy to avoid mutating original
+                
+                if "Host" not in headers:
+                    headers["Host"] = original_host
+                kwargs["headers"] = headers
+                
+                # Disable SSL verification for IP-based requests if needed, 
+                # but better to use 'verify=False' with caution or properly 
+                # use the 'extensions' or 'mounts' for better SNI support.
+                # Actually, providing the 'Host' header and 'verify=True' 
+                # usually works if the library supports it, but httpx 
+                # might need more help with SNI when using IP.
+                
+                # To handle SNI correctly, we should use a custom transport 
+                # or just set the 'verify' to the original host's cert.
+                # A simpler way is to use extensions:
+                extensions = kwargs.get("extensions")
+                if extensions is None:
+                    extensions = {}
+                else:
+                    extensions = dict(extensions)
+                
+                extensions["sni_hostname"] = original_host
+                kwargs["extensions"] = extensions
+                
+                return await super().request(method, new_url, **kwargs)
+        
+        return await super().request(method, url, **kwargs)
+
+class DNSAwareClient(httpx.Client):
+    """
+    HTTPX Sync Client that automatically resolves problematic domains 
+    via secure DNS to bypass local hijacking.
+    """
+    def request(self, method: str, url: httpx.URL | str, **kwargs) -> httpx.Response:
+        url_obj = httpx.URL(url)
+        if url_obj.host in HIJACKED_DOMAINS:
+            resolved_ip = resolve_domain_securely(url_obj.host)
+            if resolved_ip != url_obj.host:
+                original_host = url_obj.host
+                new_url = url_obj.copy_with(host=resolved_ip)
+                
+                # Ensure headers is a dictionary and add Host header
+                headers = kwargs.get("headers")
+                if headers is None:
+                    headers = {}
+                else:
+                    headers = dict(headers)
+                
+                if "Host" not in headers:
+                    headers["Host"] = original_host
+                kwargs["headers"] = headers
+                
+                # Set SNI hostname via extensions
+                extensions = kwargs.get("extensions")
+                if extensions is None:
+                    extensions = {}
+                else:
+                    extensions = dict(extensions)
+                extensions["sni_hostname"] = original_host
+                kwargs["extensions"] = extensions
+                
+                return super().request(method, new_url, **kwargs)
+        
+        return super().request(method, url, **kwargs)
+
+# Shared sync client instance
+sync_client = DNSAwareClient(timeout=30.0)
 
 def get_polymarket_headers() -> Dict[str, str]:
     """Get authenticated headers for Polymarket API."""
@@ -89,7 +211,7 @@ async def fetch_markets(
         params["ascending"] = "false"
         
         # Use async HTTP client for better performance
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -296,13 +418,13 @@ def get_market_by_id(market_id: str, markets: List[Dict]) -> Optional[Dict]:
     return None
 
 
-def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
+async def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
     """Get the resolution (YES/NO) for a given market ID."""
     market = get_market_by_id(market_id, markets)
     
     # If market not found in our list, try fetching from Polymarket API
     if not market:
-        market = fetch_market_by_slug(market_id)
+        market = await fetch_market_by_slug(market_id)
         if market:
             # Add to markets list for future lookups
             markets.append(market)
@@ -378,7 +500,7 @@ async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
             "https://data-api.polymarket.com",
         ]
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with DNSAwareAsyncClient(timeout=10.0) as client:
             for base_url in api_endpoints:
                 try:
                     # Try /markets/{slug} endpoint
@@ -437,7 +559,7 @@ def get_market_category(market: Dict) -> str:
     return DEFAULT_CATEGORY
 
 
-def fetch_positions_for_wallet(
+async def fetch_positions_for_wallet(
     wallet_address: str,
     sort_by: Optional[str] = None,
     sort_direction: Optional[str] = None,
@@ -470,43 +592,44 @@ def fetch_positions_for_wallet(
         if size_threshold is not None:
             params["sizeThreshold"] = size_threshold
             
-        # If limit is specified, just fetch that single page
-        if limit is not None:
-            params["limit"] = limit
-            if offset is not None:
-                params["offset"] = offset
-            
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            positions = response.json()
-            return positions if isinstance(positions, list) else []
-            
-        # If limit is None, fetch ALL data using pagination
-        all_positions = []
-        fetch_limit = 10  # Fetch in chunks of 100
-        current_offset = offset or 0
-        
-        while True:
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
-            
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                break
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            # If limit is specified, just fetch that single page
+            if limit is not None:
+                params["limit"] = limit
+                if offset is not None:
+                    params["offset"] = offset
                 
-            all_positions.extend(data)
-            
-            if len(data) < fetch_limit:
-                break
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                positions = response.json()
+                return positions if isinstance(positions, list) else []
                 
-            current_offset += fetch_limit
+            # If limit is None, fetch ALL data using pagination
+            all_positions = []
+            fetch_limit = 1000  # Fetch in chunks
+            current_offset = offset or 0
             
-        return all_positions
+            while True:
+                params["limit"] = fetch_limit
+                params["offset"] = current_offset
+                
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                if not isinstance(data, list) or not data:
+                    break
+                    
+                all_positions.extend(data)
+                
+                if len(data) < fetch_limit:
+                    break
+                    
+                current_offset += len(data)
+                
+            return all_positions
 
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching positions from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching positions: {str(e)}")
@@ -525,7 +648,7 @@ def fetch_orders_from_dome(
     return {"orders": [], "pagination": {}}
 
 
-def fetch_user_pnl(
+async def fetch_user_pnl(
     user_address: str,
     interval: str = "1m",
     fidelity: str = "1d"
@@ -549,20 +672,21 @@ def fetch_user_pnl(
             "fidelity": fidelity
         }
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        pnl_data = response.json()
-        if isinstance(pnl_data, list):
-            return pnl_data
-        return []
-    except requests.exceptions.RequestException as e:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            pnl_data = response.json()
+            if isinstance(pnl_data, list):
+                return pnl_data
+            return []
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching user PnL from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching user PnL: {str(e)}")
 
 
-def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> Optional[Dict]:
+async def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> Optional[Dict]:
     """
     Fetch profile stats from Polymarket API.
     
@@ -579,21 +703,22 @@ def fetch_profile_stats(proxy_address: str, username: Optional[str] = None) -> O
         if username:
             params["username"] = username
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        if isinstance(data, dict):
-            return data
-        return None
-    except requests.exceptions.RequestException as e:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            if isinstance(data, dict):
+                return data
+            return None
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching profile stats from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching profile stats: {str(e)}")
 
 
 
-def fetch_user_activity(
+async def fetch_user_activity(
     wallet_address: str, 
     activity_type: Optional[str] = None,
     limit: Optional[int] = None,
@@ -622,14 +747,15 @@ def fetch_user_activity(
         if offset:
             params["offset"] = offset
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        activity = response.json()
-        if isinstance(activity, list):
-            return activity
-        return []
-    except requests.exceptions.RequestException as e:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            activity = response.json()
+            if isinstance(activity, list):
+                return activity
+            return []
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching user activity from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching user activity: {str(e)}")
@@ -649,7 +775,7 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         params = {"user": wallet_address}
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             
@@ -663,7 +789,7 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
         raise Exception(f"Unexpected error fetching user trades: {str(e)}")
 
 
-def fetch_closed_positions(
+async def fetch_closed_positions(
     wallet_address: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None
@@ -683,53 +809,47 @@ def fetch_closed_positions(
         url = f"{settings.POLYMARKET_DATA_API_URL}/closed-positions"
         params = {"user": wallet_address}
         
-        # If limit is specified, just fetch that single page
-        if limit is not None:
-            params["limit"] = limit
-            if offset is not None:
-                params["offset"] = offset
-            
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            positions = response.json()
-            return positions if isinstance(positions, list) else []
-
-        # If limit is None, fetch ALL data using pagination
-        all_positions = []
-        fetch_limit = 1000  # Fetch in chunks of 100
-        current_offset = offset or 0
-        
-        while True:
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
-            
-            response = requests.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                break
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            # If limit is specified, just fetch that single page
+            if limit is not None:
+                params["limit"] = limit
+                if offset is not None:
+                    params["offset"] = offset
                 
-            all_positions.extend(data)
-            
-            # Increment offset by the number of received items
-            # Polymarket API might cap limit at 50 even if we ask for 100
-            # So we only stop if we get 0 items (handled above)
-            current_offset += len(data)
-            
-            # Safety break if we receive fewer items than a very small threshold
-            # e.g., if we get less than 1 item, which is covered by 'not data' check
-            # We remove the < fetch_limit check to support server-side limit capping
-            
-        return all_positions
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                positions = response.json()
+                return positions if isinstance(positions, list) else []
 
-    except requests.exceptions.RequestException as e:
+            # If limit is None, fetch ALL data using pagination
+            all_positions = []
+            fetch_limit = 1000  # Fetch in chunks
+            current_offset = offset or 0
+            
+            while True:
+                params["limit"] = fetch_limit
+                params["offset"] = current_offset
+                
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                
+                data = response.json()
+                if not isinstance(data, list) or not data:
+                    break
+                    
+                all_positions.extend(data)
+                
+                current_offset += len(data)
+                
+            return all_positions
+
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching closed positions from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching closed positions: {str(e)}")
 
 
-def fetch_portfolio_value(wallet_address: str) -> float:
+async def fetch_portfolio_value(wallet_address: str) -> float:
     """
     Fetch current portfolio value for a wallet address from Polymarket Data API.
     
@@ -743,21 +863,22 @@ def fetch_portfolio_value(wallet_address: str) -> float:
         url = f"{settings.POLYMARKET_DATA_API_URL}/value"
         params = {"user": wallet_address}
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        # API returns list of objects: [{"user": "...", "value": 0.041534}]
-        if isinstance(data, list) and len(data) > 0:
-            return float(data[0].get("value", 0.0))
-        return 0.0
-    except requests.exceptions.RequestException as e:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            # API returns list of objects: [{"user": "...", "value": 0.041534}]
+            if isinstance(data, list) and len(data) > 0:
+                return float(data[0].get("value", 0.0))
+            return 0.0
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching portfolio value from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching portfolio value: {str(e)}")
 
 
-def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
+async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
     """
     Fetch all-time stats (volume, pnl) for a user from the Leaderboard API.
     
@@ -778,19 +899,20 @@ def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
             "user": wallet_address
         }
         
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        # Example: [{"user": "...", "vol": 12345.67, "pnl": -353.01...}]
-        stats = {"volume": 0.0, "pnl": 0.0}
-        if isinstance(data, list) and len(data) > 0:
-            item = data[0]
-            stats["volume"] = float(item.get("vol", 0.0))
-            stats["pnl"] = float(item.get("pnl", 0.0))
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            # Example: [{"user": "...", "vol": 12345.67, "pnl": -353.01...}]
+            stats = {"volume": 0.0, "pnl": 0.0}
+            if isinstance(data, list) and len(data) > 0:
+                item = data[0]
+                stats["volume"] = float(item.get("vol", 0.0))
+                stats["pnl"] = float(item.get("pnl", 0.0))
+                return stats
             return stats
-        return stats
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching leaderboard stats: {str(e)}")
@@ -823,7 +945,7 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
             "limit": fetch_limit
         }
         
-        response = requests.get(trades_url, params=trades_params, timeout=30)
+        response = sync_client.get(trades_url, params=trades_params)
         response.raise_for_status()
         
         trades_data = response.json()
@@ -937,7 +1059,7 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
             }
         }
         
-    except requests.exceptions.HTTPError as e:
+    except httpx.HTTPStatusError as e:
         # Handle specific HTTP errors
         if e.response and e.response.status_code == 404:
             # Market not found - return empty result
@@ -951,7 +1073,7 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
                 }
             }
         raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
-    except requests.exceptions.RequestException as e:
+    except httpx.RequestError as e:
         raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching market orders: {str(e)}")
@@ -987,7 +1109,7 @@ async def fetch_traders_from_leaderboard(
             "category": category
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -1084,7 +1206,7 @@ def fetch_user_leaderboard_data(wallet_address: str, category: str = "politics")
                 "user": wallet_address
             }
             
-            response = requests.get(url, params=params, timeout=30)
+            response = sync_client.get(url, params=params)
             response.raise_for_status()
             
             data = response.json()
@@ -1100,7 +1222,7 @@ def fetch_user_leaderboard_data(wallet_address: str, category: str = "politics")
                     "pnl": float(item.get("pnl", 0.0)),
                     "profileImage": item.get("profileImage")
                 }
-        except requests.exceptions.RequestException:
+        except httpx.RequestError:
             # Continue to next category if this one fails
             continue
         except Exception:

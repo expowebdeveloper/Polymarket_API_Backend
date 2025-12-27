@@ -123,7 +123,7 @@ def calculate_trade_pnl(trade: Dict, market_resolution: str) -> Tuple[float, boo
         return loss, False
 
 
-def calculate_consistency(trades: List[Dict], markets: List[Dict]) -> float:
+async def calculate_consistency(trades: List[Dict], markets: List[Dict]) -> float:
     """
     Calculate consistency as weighted average of last 10 trades.
     Weights: 10, 9, 8, ..., 1 for most to least recent.
@@ -169,7 +169,7 @@ def calculate_consistency(trades: List[Dict], markets: List[Dict]) -> float:
         if not market_id:
             continue
         
-        market_resolution = get_market_resolution(market_id, markets)
+        market_resolution = await get_market_resolution(market_id, markets)
         if not market_resolution:
             continue
         
@@ -223,7 +223,7 @@ def calculate_roi(total_profit: float, total_volume: float) -> float:
     return (total_profit / total_volume) * 100
 
 
-def calculate_metrics(wallet_address: str, trades: List[Dict], markets: List[Dict]) -> Dict:
+async def calculate_metrics(wallet_address: str, trades: List[Dict], markets: List[Dict]) -> Dict:
     """
     Calculate all performance metrics for a wallet.
     Returns a dictionary with all metrics including category breakdown.
@@ -296,7 +296,7 @@ def calculate_metrics(wallet_address: str, trades: List[Dict], markets: List[Dic
             continue
         
         # Check if market is resolved
-        market_resolution = get_market_resolution(market_id, markets)
+        market_resolution = await get_market_resolution(market_id, markets)
         is_resolved = market_resolution is not None
         
         if not is_resolved:
@@ -375,7 +375,7 @@ def calculate_metrics(wallet_address: str, trades: List[Dict], markets: List[Dic
             if market_id_sample:
                 found_market = get_market_by_id(market_id_sample, markets)
                 if found_market:
-                    resolution = get_market_resolution(market_id_sample, markets)
+                    resolution = await get_market_resolution(market_id_sample, markets)
                     print(f"  Market found: {found_market.get('slug') or found_market.get('id')}, resolution: {resolution}")
                 else:
                     print(f"  Market NOT found in {len(markets)} markets")
@@ -399,7 +399,7 @@ def calculate_metrics(wallet_address: str, trades: List[Dict], markets: List[Dic
     roi = calculate_roi(overall_pnl, total_volume)
     
     # Calculate consistency and recency
-    consistency = calculate_consistency(trades, markets)
+    consistency = await calculate_consistency(trades, markets)
     recency = calculate_recency(trades)
     
     # Calculate final score

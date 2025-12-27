@@ -283,14 +283,14 @@ class UserScoringService:
         }
 
     @staticmethod
-    def calculate_all_scores(user_address: str) -> Dict[str, Any]:
+    async def calculate_all_scores(user_address: str) -> Dict[str, Any]:
         """
         Aggregate all scores for a user.
         """
         # 1. Fetch Data
-        closed_positions = fetch_closed_positions(user_address)
-        leaderboard = fetch_leaderboard_stats(user_address)
-        portfolio_val = fetch_portfolio_value(user_address)
+        closed_positions = await fetch_closed_positions(user_address)
+        leaderboard = await fetch_leaderboard_stats(user_address)
+        portfolio_val = await fetch_portfolio_value(user_address)
         
         total_pnl = leaderboard.get("pnl", 0.0)
         total_vol = leaderboard.get("volume", 0.0)

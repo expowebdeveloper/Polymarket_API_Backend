@@ -213,6 +213,7 @@ class AggregatedMetrics(Base):
     largest_win = Column(Numeric(20, 8), nullable=False, default=0)  # Largest winning trade
     largest_loss = Column(Numeric(20, 8), nullable=False, default=0)  # Largest losing trade
     total_volume = Column(Numeric(20, 8), nullable=False, default=0)  # Total trading volume
+    portfolio_value = Column(Numeric(20, 8), nullable=False, default=0)  # Current portfolio value (including cash)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

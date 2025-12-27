@@ -26,9 +26,8 @@ async def fetch_live_leaderboard(wallets: List[str]) -> List[Dict]:
     async def fetch_wallet_safe(wallet: str):
         async with semaphore:
             try:
-                # PolymarketService.calculate_portfolio_stats is synchronous (requests)
-                # Run in thread pool to not block event loop
-                stats = await asyncio.to_thread(PolymarketService.calculate_portfolio_stats, wallet)
+                # PolymarketService.calculate_portfolio_stats is now async
+                stats = await PolymarketService.calculate_portfolio_stats(wallet)
                 return transform_stats_for_scoring(stats)
             except Exception as e:
                 print(f"Error fetching stats for {wallet}: {e}")
@@ -110,9 +109,8 @@ async def fetch_raw_metrics_for_scoring(file_path: str) -> List[Dict]:
     async def fetch_wallet_safe(wallet: str):
         async with semaphore:
             try:
-                # PolymarketService.calculate_portfolio_stats is synchronous (requests)
-                # Run in thread pool to not block event loop
-                stats = await asyncio.to_thread(PolymarketService.calculate_portfolio_stats, wallet)
+                # PolymarketService.calculate_portfolio_stats is now async
+                stats = await PolymarketService.calculate_portfolio_stats(wallet)
                 return transform_stats_for_scoring(stats)
             except Exception as e:
                 print(f"Error fetching stats for {wallet}: {e}")

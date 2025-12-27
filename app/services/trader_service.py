@@ -204,7 +204,7 @@ async def get_trader_detail(wallet_address: str) -> Dict:
                 markets.append(dome_market)
                 markets_found[slug] = dome_market
     
-    metrics = calculate_metrics(wallet_address, trades, markets)
+    metrics = await calculate_metrics(wallet_address, trades, markets)
 
     # Derive total trades from raw trades list so it reflects what Dome returned
     total_trades = len(trades) if trades else 0
@@ -338,106 +338,99 @@ async def get_traders_list(limit: int = 50) -> List[Dict]:
 
 async def sync_traders_to_db(limit: int = 50) -> Dict[str, int]:
     """
-    Fetch traders from Leaderboard API and save/update them in the database.
+    Fetch traders from Leaderboard API and comprehensively sync ALL data to the database.
     
     Args:
-        limit: Number of traders to fetch and sync
+        limit: Number of traders to fetch and sync. Use 0 or -1 for 'all available'.
         
     Returns:
         Dict with stats (added, updated, failed)
     """
-    stats = {"added": 0, "updated": 0, "failed": 0}
+    from app.services.sync_service import sync_trader_full_data
+    import asyncio
     
-    try:
-        # Fetch from Polymarket Leaderboard API
-        traders_data, _ = await fetch_traders_from_leaderboard(
-            limit=limit,
-            time_period="all",
-            order_by="VOL"
-        )
+    stats = {
+        "processed": 0, 
+        "failed": 0, 
+        "details": defaultdict(int) 
+    }
+    
+    semaphore = asyncio.Semaphore(10) # Limit concurrent syncs
+    
+    async def sync_single_trader(i: int, trader_info: Dict, total: int):
+        wallet = trader_info.get("wallet_address")
+        if not wallet:
+            return None
         
-        if not traders_data:
+        async with semaphore:
+            if (i + 1) % 10 == 0 or i == 0 or i == total - 1:
+                print(f"[{i+1}/{total}] Syncing full data for {wallet}...")
+            try:
+                metadata = {
+                    "name": trader_info.get("userName") or trader_info.get("name"),
+                    "profile_image": trader_info.get("profileImage") or trader_info.get("image")
+                }
+                return await sync_trader_full_data(wallet, trader_metadata=metadata)
+            except Exception as e:
+                print(f"Error syncing trader {wallet}: {e}")
+                return None
+
+    try:
+        # Phase 1: Discovery
+        all_traders_data = []
+        current_offset = 0
+        fetch_batch_size = 50 
+        sync_all = limit <= 0 or limit > 5000 # Treat 0 or very high as sync all
+        max_limit = limit if not sync_all else 10000 
+        
+        print(f"📡 Discovery Phase: Fetching top traders (Target: {'All' if sync_all else limit})...")
+        
+        while len(all_traders_data) < max_limit:
+            batch_limit = min(fetch_batch_size, max_limit - len(all_traders_data))
+            traders_batch, pagination = await fetch_traders_from_leaderboard(
+                limit=batch_limit,
+                offset=current_offset,
+                time_period="all",
+                order_by="VOL"
+            )
+            
+            if not traders_batch:
+                break
+                
+            all_traders_data.extend(traders_batch)
+            if not pagination.get("has_more"):
+                break
+                
+            current_offset += len(traders_batch)
+            print(f"   Fetched {len(all_traders_data)} traders so far...")
+
+        if not all_traders_data:
             print("⚠ No traders fetched from Leaderboard API to sync.")
             return stats
             
-        async with AsyncSessionLocal() as session:
-            for trader_info in traders_data:
-                wallet = trader_info.get("wallet_address")
-                if not wallet:
-                    continue
-                    
-                try:
-                    # Check if trader exists
-                    result = await session.execute(select(Trader).where(Trader.wallet_address == wallet))
-                    existing_trader = result.scalar_one_or_none()
-                    
-                    if existing_trader:
-                        # Update existing trader fields
-                        existing_trader.name = trader_info.get("userName") or existing_trader.name
-                        existing_trader.profile_image = trader_info.get("profileImage") or existing_trader.profile_image
-                        # existing_trader.updated_at = datetime.utcnow() # handled by onupdate
-                        stats["updated"] += 1
-                        trader_obj = existing_trader
-                    else:
-                        # Create new trader
-                        trader_obj = Trader(
-                            wallet_address=wallet,
-                            name=trader_info.get("userName"),
-                            profile_image=trader_info.get("profileImage"),
-                            created_at=datetime.utcnow()
-                        )
-                        session.add(trader_obj)
-                        # Flush to get the ID for metrics
-                        await session.flush()
-                        stats["added"] += 1
-                    
-                    # Update or Create AggregatedMetrics
-                    # We need to await flush to ensure trader_obj.id is available if it's new
-                    if not trader_obj.id:
-                        await session.flush()
-                        
-                    metrics_result = await session.execute(
-                        select(AggregatedMetrics).where(AggregatedMetrics.trader_id == trader_obj.id)
-                    )
-                    existing_metrics = metrics_result.scalar_one_or_none()
-                    
-                    # Extract values from API response
-                    vol = float(trader_info.get("vol", 0))
-                    pnl = float(trader_info.get("pnl", 0))
-                    roi = float(trader_info.get("roi", 0)) if trader_info.get("roi") is not None else 0
-                    win_rate = float(trader_info.get("winRate", 0)) if trader_info.get("winRate") is not None else 0
-                    total_trades = int(trader_info.get("totalTrades", 0)) if trader_info.get("totalTrades") is not None else 0
-                    
-                    if existing_metrics:
-                        existing_metrics.total_volume = vol
-                        existing_metrics.total_pnl = pnl
-                        # Start with existing values if API doesn't provide them, or use API values
-                        # Note: AggregatedMetrics has specific fields that might not map 1:1 to Leaderboard basics
-                        # We map what we can
-                        existing_metrics.win_rate = win_rate
-                        existing_metrics.total_trades = total_trades
-                        # existing_metrics.updated_at = datetime.utcnow()
-                    else:
-                        new_metrics = AggregatedMetrics(
-                            trader_id=trader_obj.id,
-                            total_volume=vol,
-                            total_pnl=pnl,
-                            win_rate=win_rate,
-                            total_trades=total_trades,
-                            created_at=datetime.utcnow()
-                        )
-                        session.add(new_metrics)
-                        
-                except Exception as e:
-                    print(f"Error syncing trader {wallet}: {e}")
-                    stats["failed"] += 1
-            
-            await session.commit()
+        print(f"✅ Discovery complete. Found {len(all_traders_data)} traders. Starting Sync Phase...")
+        
+        # Phase 2: Concurrent Sync
+        tasks = [sync_single_trader(i, t, len(all_traders_data)) for i, t in enumerate(all_traders_data)]
+        results = await asyncio.gather(*tasks)
+        
+        # Aggregate results
+        for res in results:
+            if res:
+                stats["processed"] += 1
+                for k, v in res.items():
+                    if isinstance(v, int):
+                        stats["details"][k] += v
+            else:
+                stats["failed"] += 1
             
     except Exception as e:
         print(f"Error in sync_traders_to_db: {e}")
+        import traceback
+        traceback.print_exc()
         
-    print(f"Sync complete: {stats}")
+    print(f"🏁 Full Sync complete: {stats}")
+    stats["details"] = dict(stats["details"])
     return stats
 
 
@@ -488,3 +481,124 @@ async def get_traders_from_db(limit: int = 50, offset: int = 0) -> List[Dict]:
             trader_list.append(trader_dict)
             
         return trader_list
+
+
+async def get_traders_analytics_from_db() -> Dict:
+    """
+    Get all leaderboards and analytics from the database.
+    Returns data in the format expected by AllLeaderboardsResponse.
+    """
+    from app.services.leaderboard_service import (
+        calculate_trader_metrics_with_time_filter,
+        calculate_scores_and_rank_with_percentiles,
+        get_unique_wallet_addresses
+    )
+    
+    async with AsyncSessionLocal() as session:
+        # 1. Get all unique wallet addresses from DB
+        wallets = await get_unique_wallet_addresses(session)
+        
+        # 2. Calculate metrics for each wallet from raw data
+        traders_metrics = []
+        for wallet in wallets:
+            try:
+                metrics = await calculate_trader_metrics_with_time_filter(
+                    session, wallet, period='all'
+                )
+                if metrics:
+                    traders_metrics.append(metrics)
+            except Exception as e:
+                print(f"Error calculating DB metrics for {wallet}: {e}")
+                continue
+        
+        # 3. Calculate scores, ranks, and percentiles
+        # This adds W_shrunk, roi_shrunk, pnl_shrunk, final_score, etc.
+        result = calculate_scores_and_rank_with_percentiles(traders_metrics)
+        traders = result["traders"]
+        
+        # 4. Construct the specific sorted leaderboards
+        leaderboards = {}
+        
+        # 1. W_shrunk (ascending)
+        w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
+        for i, t in enumerate(w_shrunk_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            w_shrunk_sorted[i-1] = t_copy
+        leaderboards["w_shrunk"] = w_shrunk_sorted
+        
+        # 2. ROI Raw (descending)
+        roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
+        for i, t in enumerate(roi_raw_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            roi_raw_sorted[i-1] = t_copy
+        leaderboards["roi_raw"] = roi_raw_sorted
+        
+        # 3. ROI Shrunk (ascending)
+        roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
+        for i, t in enumerate(roi_shrunk_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            roi_shrunk_sorted[i-1] = t_copy
+        leaderboards["roi_shrunk"] = roi_shrunk_sorted
+
+        # 4. PNL Shrunk (ascending)
+        pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
+        for i, t in enumerate(pnl_shrunk_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            pnl_shrunk_sorted[i-1] = t_copy
+        leaderboards["pnl_shrunk"] = pnl_shrunk_sorted
+        
+        # 5. Score Leaderboards (descending)
+        # Win Rate Score
+        score_win_sorted = sorted(traders, key=lambda x: x.get('score_win_rate', 0), reverse=True)
+        for i, t in enumerate(score_win_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            score_win_sorted[i-1] = t_copy
+        leaderboards["score_win_rate"] = score_win_sorted
+        
+        # ROI Score
+        score_roi_sorted = sorted(traders, key=lambda x: x.get('score_roi', 0), reverse=True)
+        for i, t in enumerate(score_roi_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            score_roi_sorted[i-1] = t_copy
+        leaderboards["score_roi"] = score_roi_sorted
+        
+        # PnL Score
+        score_pnl_sorted = sorted(traders, key=lambda x: x.get('score_pnl', 0), reverse=True)
+        for i, t in enumerate(score_pnl_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            score_pnl_sorted[i-1] = t_copy
+        leaderboards["score_pnl"] = score_pnl_sorted
+        
+        # Risk Score (descending - usually risk score is higher = riskier, but for leaderboard we might want low risk?)
+        # Wait, View-All sorts Risk Score descending? Let's check leaderboard.py
+        # leaderboard.py: sorted(..., key=lambda x: x.get('score_risk', 0), reverse=True)
+        # So yes, descending.
+        score_risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
+        for i, t in enumerate(score_risk_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            score_risk_sorted[i-1] = t_copy
+        leaderboards["score_risk"] = score_risk_sorted
+        
+        # Final Score (descending)
+        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
+        for i, t in enumerate(final_score_sorted, 1):
+            t_copy = t.copy()
+            t_copy['rank'] = i
+            final_score_sorted[i-1] = t_copy
+        leaderboards["final_score"] = final_score_sorted
+        
+        return {
+            "percentiles": result["percentiles"],
+            "medians": result["medians"],
+            "leaderboards": leaderboards,
+            "total_traders": result["total_traders"],
+            "population_traders": result["population_size"]
+        }
