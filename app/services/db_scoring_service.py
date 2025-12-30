@@ -48,6 +48,7 @@ async def get_advanced_db_analytics(
 
     # 2. Calculate raw metrics for each wallet using async batching for better performance
     traders_metrics = []
+    failed_wallets = []
     semaphore = asyncio.Semaphore(20)  # Process up to 20 traders concurrently for better performance
     batch_size = 50  # Process in batches to avoid memory issues
     
@@ -57,9 +58,20 @@ async def get_advanced_db_analytics(
                 metrics = await calculate_trader_metrics_with_time_filter(
                     session, wallet, period='all'
                 )
+                if metrics is None:
+                    failed_wallets.append(wallet)
                 return metrics
             except Exception as e:
-                pass  # Silently skip errors
+                failed_wallets.append(wallet)
+                # Log first few errors to understand what's failing
+                import logging
+                logger = logging.getLogger(__name__)
+                # Only log first 5 errors per batch to avoid spam
+                if not hasattr(process_wallet, '_error_count'):
+                    process_wallet._error_count = 0
+                if process_wallet._error_count < 5:
+                    logger.warning(f"Error calculating metrics for wallet {wallet}: {str(e)}")
+                    process_wallet._error_count += 1
                 return None
     
     # Process wallets in batches to avoid overwhelming the system
@@ -76,6 +88,12 @@ async def get_advanced_db_analytics(
         # Small delay between batches to avoid overwhelming the database
         if i + batch_size < len(traders_to_process):
             await asyncio.sleep(0.1)  # 100ms delay between batches
+    
+    # Log summary of failures
+    if failed_wallets:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to calculate metrics for {len(failed_wallets)} out of {len(traders_to_process)} wallets")
             
     if not traders_metrics:
         return {

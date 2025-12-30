@@ -49,6 +49,14 @@ async def startup_event():
         print("✅ Periodic leaderboard recalculation scheduler started (every 6.5 hours)")
     except Exception as e:
         print(f"⚠️  Failed to start leaderboard scheduler: {e}")
+    
+    # Start periodic view-all leaderboard recalculation (every 2 hours)
+    try:
+        from app.services.view_all_leaderboard_scheduler import start_periodic_view_all_recalculation
+        await start_periodic_view_all_recalculation(interval_hours=2.0)
+        print("✅ Periodic view-all leaderboard recalculation scheduler started (every 2 hours)")
+    except Exception as e:
+        print(f"⚠️  Failed to start view-all leaderboard scheduler: {e}")
 
 # Include routers
 app.include_router(general.router)

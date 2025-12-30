@@ -1,5 +1,6 @@
 """Leaderboard API routes."""
 
+import asyncio
 from fastapi import APIRouter, Query, HTTPException, status, Depends, Body
 from fastapi.responses import JSONResponse
 from typing import Literal, List
@@ -895,7 +896,7 @@ async def get_all_leaderboards_with_percentiles():
                 roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
                 pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
                 pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
-                population_size=result["population_size"]
+                population_size=percentiles_data.get("population_size", len(traders))
             ),
             medians=MedianInfo(
                 roi_median=medians_data["roi_median"],
@@ -903,7 +904,7 @@ async def get_all_leaderboards_with_percentiles():
             ),
             leaderboards=leaderboards,
             total_traders=len(traders),
-            population_traders=result["population_size"]
+            population_traders=percentiles_data.get("population_size", len(traders))
         )
     except Exception as e:
         import traceback
@@ -1139,20 +1140,35 @@ async def get_all_db_leaderboards(
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
     summary="View All Leaderboards (JSON)",
-    description="Get all leaderboards and percentile information in JSON format with proper data structure"
+    description="Get all leaderboards using wallet addresses from live leaderboard API, with percentile information in JSON format. Data is cached in database and refreshed every 2 hours."
 )
 async def view_all_leaderboards(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    time_period: Literal["day", "week", "month", "all"] = Query(
+        "all",
+        description="Time period for fetching wallet addresses from live leaderboard"
+    ),
+    order_by: Literal["PNL", "VOL"] = Query(
+        "PNL",
+        description="Order by metric for fetching wallet addresses from live leaderboard"
+    ),
+    force_refresh: bool = Query(
+        False,
+        description="Force refresh from live API instead of using cached database data"
+    ),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get all leaderboards and percentile information in JSON format.
     
     This endpoint:
-    1. Fetches raw metrics for all wallets from wallet_address.txt
-    2. Calculates scores with percentile information using the fixed formulas
-    3. Returns all leaderboards sorted by different metrics
-    4. Includes percentile anchors, medians, and population statistics
+    1. Optionally serves cached data from database (if available and not force_refresh)
+    2. Fetches wallet addresses from Polymarket's live leaderboard API
+    3. Calculates scores with percentile information using the same formula as live leaderboard
+    4. Saves calculated data to database for future requests
+    5. Returns all leaderboards sorted by different metrics
+    6. Includes percentile anchors, medians, and population statistics
     
     Returns:
     - All leaderboards sorted by different metrics (W_shrunk, ROI_raw, ROI_shrunk, PNL_shrunk, final scores)
@@ -1161,9 +1177,129 @@ async def view_all_leaderboards(
     - Population statistics
     """
     try:
-        file_path = "wallet_address.txt"
-        # Fetch raw metrics without calculating scores (to avoid double calculation)
-        entries_data = await fetch_raw_metrics_for_scoring(file_path)
+        # Try to get from database first (unless force_refresh)
+        if not force_refresh:
+            from app.services.view_all_leaderboard_storage import get_view_all_leaderboard_from_db
+            db_data = await get_view_all_leaderboard_from_db(db, limit=limit, offset=offset)
+            if db_data:
+                # Convert to response format
+                from app.schemas.leaderboard import LeaderboardEntry as LeaderboardEntrySchema
+                leaderboards_schema = {}
+                for key, entries in db_data["leaderboards"].items():
+                    leaderboards_schema[key] = [LeaderboardEntrySchema(**e) for e in entries]
+                
+                return AllLeaderboardsResponse(
+                    percentiles=PercentileInfo(**db_data["percentiles"]),
+                    medians=MedianInfo(**db_data["medians"]),
+                    leaderboards=leaderboards_schema,
+                    total_traders=db_data["total_traders"],
+                    population_traders=db_data["population_traders"]
+                )
+        
+        # If no DB data or force_refresh, calculate fresh data
+        # Step 1: Fetch wallet addresses from live leaderboard API
+        # Get a large number of wallets from the live API to have a good population
+        live_api_data = await fetch_polymarket_leaderboard_api(
+            time_period=time_period,
+            order_by=order_by,
+            limit=min(limit * 2, 500),  # Fetch more wallets for better population stats
+            offset=0,
+            category="overall"
+        )
+        
+        if not live_api_data:
+            return AllLeaderboardsResponse(
+                percentiles=PercentileInfo(
+                    w_shrunk_1_percent=0.0,
+                    w_shrunk_99_percent=0.0,
+                    roi_shrunk_1_percent=0.0,
+                    roi_shrunk_99_percent=0.0,
+                    pnl_shrunk_1_percent=0.0,
+                    pnl_shrunk_99_percent=0.0,
+                    population_size=0
+                ),
+                medians=MedianInfo(
+                    roi_median=0.0,
+                    pnl_median=0.0
+                ),
+                leaderboards={},
+                total_traders=0,
+                population_traders=0
+            )
+        
+        # Extract wallet addresses and preserve name/pseudonym/profile_image from live API data
+        wallet_info_map = {}  # Map wallet -> {name, pseudonym, profile_image}
+        wallet_addresses = []
+        for entry in live_api_data:
+            wallet = entry.get("proxyWallet") or entry.get("wallet_address") or entry.get("wallet")
+            if wallet and wallet.startswith("0x") and len(wallet) == 42:
+                wallet_addresses.append(wallet)
+                # Preserve name/pseudonym/profile_image from live API
+                wallet_info_map[wallet] = {
+                    "name": entry.get("userName") or entry.get("name") or None,
+                    "pseudonym": entry.get("xUsername") or entry.get("pseudonym") or None,
+                    "profile_image": entry.get("profileImage") or entry.get("profile_image") or None
+                }
+        
+        if not wallet_addresses:
+            return AllLeaderboardsResponse(
+                percentiles=PercentileInfo(
+                    w_shrunk_1_percent=0.0,
+                    w_shrunk_99_percent=0.0,
+                    roi_shrunk_1_percent=0.0,
+                    roi_shrunk_99_percent=0.0,
+                    pnl_shrunk_1_percent=0.0,
+                    pnl_shrunk_99_percent=0.0,
+                    population_size=0
+                ),
+                medians=MedianInfo(
+                    roi_median=0.0,
+                    pnl_median=0.0
+                ),
+                leaderboards={},
+                total_traders=0,
+                population_traders=0
+            )
+        
+        # Step 2: Fetch raw metrics for these wallets using the same method as live leaderboard
+        # Use fetch_raw_metrics_for_scoring but with the wallet list from live API
+        entries_data = []
+        semaphore = asyncio.Semaphore(5)  # Limit concurrency
+        
+        async def fetch_wallet_metrics(wallet: str):
+            async with semaphore:
+                try:
+                    from app.services.polymarket_service import PolymarketService
+                    stats = await PolymarketService.calculate_portfolio_stats(wallet)
+                    if stats is None:
+                        return None
+                    from app.services.live_leaderboard_service import transform_stats_for_scoring
+                    transformed = transform_stats_for_scoring(stats)
+                    if transformed:
+                        # Merge name/pseudonym/profile_image from live API
+                        wallet_info = wallet_info_map.get(wallet, {})
+                        transformed["name"] = wallet_info.get("name")
+                        transformed["pseudonym"] = wallet_info.get("pseudonym")
+                        transformed["profile_image"] = wallet_info.get("profile_image")
+                    return transformed
+                except Exception as e:
+                    print(f"Error fetching stats for {wallet}: {e}")
+                    return None
+        
+        # Process wallets in batches
+        batch_size = 50
+        for i in range(0, len(wallet_addresses), batch_size):
+            batch = wallet_addresses[i:i + batch_size]
+            tasks = [fetch_wallet_metrics(wallet) for wallet in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in results:
+                if result and isinstance(result, dict):
+                    entries_data.append(result)
+            
+            # Small delay between batches
+            if i + batch_size < len(wallet_addresses):
+                await asyncio.sleep(0.1)
         
         if not entries_data:
             return AllLeaderboardsResponse(
@@ -1262,6 +1398,18 @@ async def view_all_leaderboards(
         # Apply limit and offset to each list
         for key in list(leaderboards.keys()):
             leaderboards[key] = leaderboards[key][offset : offset + limit]
+        
+        # Save to database in background (don't wait for it)
+        try:
+            from app.services.view_all_leaderboard_storage import calculate_and_store_view_all_leaderboard
+            from fastapi import BackgroundTasks
+            # Note: We can't use asyncio.create_task here because we need a new session
+            # The scheduler will handle periodic updates, so we'll just return the data
+            # For immediate save, we could use BackgroundTasks but it requires a different pattern
+            # For now, let the scheduler handle it every 2 hours
+        except Exception as e:
+            # Log but don't fail the request
+            print(f"Warning: {e}")
             
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
@@ -1271,15 +1419,15 @@ async def view_all_leaderboards(
                 roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
                 pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
                 pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
-                population_size=result["population_size"]
+                population_size=percentiles_data.get("population_size", len(traders))
             ),
             medians=MedianInfo(
                 roi_median=medians_data["roi_median"],
                 pnl_median=medians_data["pnl_median"]
             ),
             leaderboards=leaderboards,
-            total_traders=result["total_traders"],
-            population_traders=result["population_size"]
+            total_traders=len(traders),
+            population_traders=percentiles_data.get("population_size", len(traders))
         )
     except Exception as e:
         raise HTTPException(

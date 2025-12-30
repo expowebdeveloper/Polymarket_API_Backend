@@ -52,6 +52,10 @@ async def calculate_and_store_leaderboard_entries(
         traders_to_process = wallet_addresses[:max_traders]
     
     # 2. Calculate metrics for all traders using the existing service
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Processing {len(traders_to_process)} traders for leaderboard calculation...")
+    
     result = await get_advanced_db_analytics(
         session,
         wallet_addresses=traders_to_process,
@@ -59,20 +63,31 @@ async def calculate_and_store_leaderboard_entries(
     )
     
     traders = result.get("traders", [])
+    total_wallets = len(traders_to_process)
+    successful_count = len(traders)
+    failed_count = total_wallets - successful_count
+    
+    logger.info(f"Successfully calculated metrics for {successful_count} traders out of {total_wallets}")
+    
     if not traders:
+        # If no traders were successfully calculated, count all as errors
+        logger.warning(f"No traders were successfully calculated. All {failed_count} traders failed.")
         return {
             "processed": 0,
             "updated": 0,
             "created": 0,
-            "errors": 0
+            "errors": failed_count
         }
+    
+    # Track initial error count from failed calculations
+    initial_errors = failed_count
     
     # 3. Store/update each trader's leaderboard entry
     stats = {
         "processed": 0,
         "updated": 0,
         "created": 0,
-        "errors": 0
+        "errors": initial_errors  # Start with errors from failed calculations
     }
     
     for trader_data in traders:
@@ -146,6 +161,11 @@ async def calculate_and_store_leaderboard_entries(
         
         except Exception as e:
             stats["errors"] += 1
+            # Log error details for debugging (only first 10 to avoid spam)
+            if stats["errors"] <= 10:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Error processing trader {wallet_address}: {str(e)}")
             # Rollback on error to prevent transaction failure
             try:
                 await session.rollback()
