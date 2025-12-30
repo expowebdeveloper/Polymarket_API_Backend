@@ -178,6 +178,10 @@ async def fetch_and_save_positions(
         offset
     )
     
+    # Ensure positions is always a list
+    if positions is None:
+        positions = []
+    
     # Save to database
     saved_count = await save_positions_to_db(session, wallet_address, positions)
     

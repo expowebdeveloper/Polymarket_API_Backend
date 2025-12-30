@@ -6,9 +6,9 @@ from app.db.base import Base
 engine = create_async_engine(
     settings.DATABASE_URL, 
     echo=False,
-    pool_size=10,          # Reduced from 20 to 10 to avoid connection limits
-    max_overflow=5,        # Reduced from 10 to 5
-    pool_timeout=30        # Timeout for getting a connection
+    pool_size=50,          # Increased for extreme concurrency
+    max_overflow=20,       # Increased for peak loads
+    pool_timeout=60        # Increased timeout for high contention
 )
 
 AsyncSessionLocal = sessionmaker(

@@ -252,3 +252,86 @@ class ClosedPosition(Base):
     __table_args__ = (
         UniqueConstraint('proxy_wallet', 'asset', 'condition_id', 'timestamp', name='uq_closed_position_unique'),
     )
+
+
+class LeaderboardEntry(Base):
+    __tablename__ = "leaderboard_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    wallet_address = Column(String(42), nullable=False, unique=True, index=True)  # Wallet address (unique)
+    
+    # Basic trader info
+    name = Column(String(255), nullable=True)  # User name
+    pseudonym = Column(String(255), nullable=True)  # User pseudonym
+    profile_image = Column(Text, nullable=True)  # Profile image URL
+    
+    # Core metrics
+    total_pnl = Column(Numeric(20, 8), nullable=False, default=0)  # Total Profit and Loss
+    roi = Column(Numeric(10, 4), nullable=False, default=0)  # Return on Investment (%)
+    win_rate = Column(Numeric(10, 4), nullable=False, default=0)  # Win Rate (%)
+    total_trades = Column(Integer, nullable=False, default=0)  # Total number of trades
+    total_trades_with_pnl = Column(Integer, nullable=False, default=0)  # Total trades with calculated PnL
+    winning_trades = Column(Integer, nullable=False, default=0)  # Number of winning trades
+    
+    # Shrunk values
+    w_shrunk = Column(Numeric(20, 10), nullable=False, default=0)  # W_shrunk (Win Rate shrunk)
+    roi_shrunk = Column(Numeric(20, 10), nullable=False, default=0)  # ROI_shrunk
+    pnl_shrunk = Column(Numeric(20, 10), nullable=False, default=0)  # PNL_shrunk
+    
+    # Score values
+    score_win_rate = Column(Numeric(10, 6), nullable=False, default=0)  # W_Score
+    score_roi = Column(Numeric(10, 6), nullable=False, default=0)  # ROI_Score
+    score_pnl = Column(Numeric(10, 6), nullable=False, default=0)  # PNL_Score
+    score_risk = Column(Numeric(10, 6), nullable=False, default=0)  # Risk_Score
+    final_score = Column(Numeric(10, 4), nullable=False, default=0)  # Final_Score
+    
+    # Additional metrics for calculations
+    total_stakes = Column(Numeric(20, 8), nullable=False, default=0)  # Total stakes
+    winning_stakes = Column(Numeric(20, 8), nullable=False, default=0)  # Winning stakes
+    sum_sq_stakes = Column(Numeric(20, 8), nullable=False, default=0)  # Sum of squared stakes
+    max_stake = Column(Numeric(20, 8), nullable=False, default=0)  # Max stake
+    worst_loss = Column(Numeric(20, 8), nullable=False, default=0)  # Worst loss
+    
+    # Population info (for percentile calculations)
+    population_size = Column(Integer, nullable=False, default=0)  # Total population size when calculated
+    
+    # Timestamps
+    calculated_at = Column(DateTime, default=datetime.utcnow, nullable=False)  # When this entry was calculated
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        # Index on final_score for fast sorting
+        # Index on wallet_address is already created above
+    )
+
+
+class LeaderboardMetadata(Base):
+    __tablename__ = "leaderboard_metadata"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Percentiles
+    w_shrunk_1_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    w_shrunk_99_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    roi_shrunk_1_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    roi_shrunk_99_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    pnl_shrunk_1_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    pnl_shrunk_99_percent = Column(Numeric(20, 10), nullable=False, default=0)
+    
+    # Medians
+    roi_median = Column(Numeric(20, 10), nullable=False, default=0)
+    pnl_median = Column(Numeric(20, 10), nullable=False, default=0)
+    
+    # Population info
+    population_size = Column(Integer, nullable=False, default=0)
+    total_traders = Column(Integer, nullable=False, default=0)
+    
+    # Timestamps
+    calculated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        # Only one metadata record
+    )

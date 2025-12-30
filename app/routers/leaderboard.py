@@ -13,12 +13,15 @@ from app.services.leaderboard_service import (
 from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
-    fetch_raw_metrics_for_scoring
+    fetch_raw_metrics_for_scoring,
+    fetch_polymarket_leaderboard_api,
+    fetch_polymarket_biggest_winners,
+    transform_polymarket_api_entry
 )
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
-from app.services.db_scoring_service import get_db_leaderboard
+# Removed db_scoring_service - now using Polymarket API directly
 from app.db.session import get_db
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboards"])
@@ -423,28 +426,57 @@ async def add_wallets_to_leaderboard(
 @router.post(
     "/live",
     response_model=LeaderboardResponse,
-    summary="Get Live Leaderboard from wallet_address.txt",
-    description="Calculate live leaderboard scores for wallets listed in wallet_address.txt"
+    summary="Get Live Leaderboard from Polymarket API",
+    description="Get live leaderboard data directly from Polymarket API (day leaderboard by PNL by default)"
 )
-async def get_live_leaderboard_from_file():
+async def get_live_leaderboard_from_file(
+    time_period: Literal["day", "week", "month", "all"] = Query(
+        "day",
+        description="Time period: day, week, month, or all"
+    ),
+    order_by: Literal["PNL", "VOL"] = Query(
+        "PNL",
+        description="Order by metric: PNL or VOL"
+    ),
+    limit: int = Query(
+        20,
+        ge=1,
+        le=100,
+        description="Maximum number of traders to return"
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Offset for pagination"
+    )
+):
     """
-    Generate a live leaderboard using the wallet_address.txt file.
+    Get live leaderboard data directly from Polymarket API.
     
-    This endpoint:
-    1. Reads wallet_address.txt from the server.
-    2. Fetches LIVE data from Polymarket API (bypassing DB).
-    3. Calculates advanced scores (Win Rate, ROI, PnL, Risk).
-    4. Returns ranked results.
+    This endpoint fetches data from Polymarket's live API:
+    - Default: Day leaderboard by PNL
+    - Can be configured for week by VOL, day by VOL, etc.
+    
+    Returns ranked results from Polymarket's live API.
     """
     try:
-        file_path = "wallet_address.txt" # Relative to root where app runs
-        entries_data = await fetch_live_leaderboard_from_file(file_path)
+        # Fetch from Polymarket API
+        api_data = await fetch_polymarket_leaderboard_api(
+            time_period=time_period,
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
+            category="overall"
+        )
+        
+        # Transform API entries to LeaderboardEntry format
+        entries_data = [transform_polymarket_api_entry(entry, "leaderboard") for entry in api_data]
         
         entries = [LeaderboardEntry(**e) for e in entries_data]
         
         return LeaderboardResponse(
-            period="all",
-            metric="score_pnl",
+            period=time_period,
+            metric=order_by.lower(),
             count=len(entries),
             entries=entries
         )
@@ -452,6 +484,61 @@ async def get_live_leaderboard_from_file():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating live leaderboard: {str(e)}"
+        )
+
+
+@router.get(
+    "/live/biggest-winners",
+    response_model=LeaderboardResponse,
+    summary="Get Biggest Winners from Polymarket API",
+    description="Get biggest winners data directly from Polymarket API (day by default)"
+)
+async def get_live_biggest_winners(
+    time_period: Literal["day", "week", "month", "all"] = Query(
+        "day",
+        description="Time period: day, week, month, or all"
+    ),
+    limit: int = Query(
+        20,
+        ge=1,
+        le=100,
+        description="Maximum number of traders to return"
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Offset for pagination"
+    )
+):
+    """
+    Get biggest winners data directly from Polymarket API.
+    
+    Returns the biggest individual wins from Polymarket's live API.
+    """
+    try:
+        # Fetch from Polymarket API
+        api_data = await fetch_polymarket_biggest_winners(
+            time_period=time_period,
+            limit=limit,
+            offset=offset,
+            category="overall"
+        )
+        
+        # Transform API entries to LeaderboardEntry format
+        entries_data = [transform_polymarket_api_entry(entry, "biggest_winners") for entry in api_data]
+        
+        entries = [LeaderboardEntry(**e) for e in entries_data]
+        
+        return LeaderboardResponse(
+            period=time_period,
+            metric="biggest_winners",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating biggest winners leaderboard: {str(e)}"
         )
 
 
@@ -834,36 +921,55 @@ async def get_all_leaderboards_with_percentiles():
     responses={
         500: {"model": ErrorResponse, "description": "Internal server error"}
     },
-    summary="Get Database Leaderboard by Final Score",
-    description="Calculate leaderboard scores for ALL wallets in database using advanced formula"
+    summary="Get Leaderboard by Final Score from Polymarket API",
+    description="Calculate leaderboard scores using Polymarket API with advanced formula. Same as /view-all but sorted by final score only."
 )
 async def get_db_final_score_leaderboard(
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
-    use_file: bool = Query(False, description="Whether to limit to wallets in wallet_address.txt"),
-    db: AsyncSession = Depends(get_db)
+    offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
     """
-    Generate a database-backed leaderboard using the advanced scoring logic.
-    By default, calculates for all wallets in DB.
+    Get leaderboard sorted by final score from Polymarket API.
+    Uses the advanced scoring formula with shrinkage and percentiles.
+    Now uses Polymarket API directly instead of database.
     """
     try:
-        wallets = None
-        if use_file:
-            file_path = "wallet_address.txt"
-            try:
-                with open(file_path, 'r') as f:
-                    wallets = [line.strip() for line in f if line.strip()]
-            except FileNotFoundError:
-                pass
-            
-        leaderboard_data = await get_db_leaderboard(db, wallet_addresses=wallets, limit=limit, metric="final_score")
+        from app.services.live_leaderboard_service import fetch_raw_metrics_for_scoring
+        from app.services.leaderboard_service import calculate_scores_and_rank_with_percentiles
+        from app.services.pnl_median_service import get_pnl_median_from_population
         
-        entries = [LeaderboardEntry(**e) for e in leaderboard_data]
+        file_path = "wallet_address.txt"
+        # Fetch raw metrics from Polymarket API
+        entries_data = await fetch_raw_metrics_for_scoring(file_path)
+        
+        if not entries_data:
+            return LeaderboardResponse(
+                period="all",
+                entries=[]
+            )
+        
+        # Get medians from Polymarket API
+        pnl_median_api = await get_pnl_median_from_population()
+        
+        # Calculate scores with percentile information
+        result = calculate_scores_and_rank_with_percentiles(
+            entries_data,
+            pnl_median=pnl_median_api
+        )
+        traders = result["traders"]
+        
+        # Sort by final score (descending - best = highest)
+        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
+        for i, trader in enumerate(final_score_sorted, 1):
+            trader['rank'] = i
+        
+        # Apply limit and offset
+        paginated_traders = final_score_sorted[offset : offset + limit]
+        
+        entries = [LeaderboardEntry(**t) for t in paginated_traders]
         
         return LeaderboardResponse(
             period="all",
-            metric="final_score",
-            count=len(entries),
             entries=entries
         )
     except Exception as e:
@@ -879,68 +985,124 @@ async def get_db_final_score_leaderboard(
 @router.get(
     "/db/all",
     response_model=AllLeaderboardsResponse,
-    summary="Get All Database Leaderboards with Advanced Percentile Logic",
-    description="Get all database-backed leaderboards (W_shrunk, ROI_shrunk, etc.) using advanced formulas"
+    summary="Get All Leaderboards from Polymarket API",
+    description="Get all leaderboards (W_shrunk, ROI_shrunk, etc.) using Polymarket API with advanced formulas. Same as /view-all endpoint."
 )
 async def get_all_db_leaderboards(
-    use_file: bool = Query(False, description="Whether to limit to wallets in wallet_address.txt"),
-    db: AsyncSession = Depends(get_db)
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
     """
-    Generate all database-backed leaderboards with percentile information.
+    Generate all leaderboards with percentile information using Polymarket API.
     Uses the advanced formulas (shrinkage, whale penalty, percentiles).
+    Now uses Polymarket API directly instead of database.
     """
     try:
-        from app.services.db_scoring_service import get_advanced_db_analytics
+        from app.services.live_leaderboard_service import fetch_raw_metrics_for_scoring
+        from app.services.leaderboard_service import calculate_scores_and_rank_with_percentiles
+        from app.services.pnl_median_service import get_pnl_median_from_population
         
-        wallets = None
-        if use_file:
-            file_path = "wallet_address.txt"
-            try:
-                with open(file_path, 'r') as f:
-                    wallets = [line.strip() for line in f if line.strip()]
-            except FileNotFoundError:
-                pass
-
-        result = await get_advanced_db_analytics(db, wallet_addresses=wallets)
-        traders = result.get("traders", [])
-        percentiles_data = result.get("percentiles", {})
-        medians_data = result.get("medians", {})
+        file_path = "wallet_address.txt"
+        # Fetch raw metrics from Polymarket API (same as view-all endpoint)
+        entries_data = await fetch_raw_metrics_for_scoring(file_path)
         
-        # Create all different leaderboards (same as in view_all_leaderboards)
+        if not entries_data:
+            return AllLeaderboardsResponse(
+                percentiles=PercentileInfo(
+                    w_shrunk_1_percent=0.0,
+                    w_shrunk_99_percent=0.0,
+                    roi_shrunk_1_percent=0.0,
+                    roi_shrunk_99_percent=0.0,
+                    pnl_shrunk_1_percent=0.0,
+                    pnl_shrunk_99_percent=0.0,
+                    population_size=0
+                ),
+                medians=MedianInfo(
+                    roi_median=0.0,
+                    pnl_median=0.0
+                ),
+                leaderboards={},
+                total_traders=0,
+                population_traders=0
+            )
+        
+        # Get medians from Polymarket API
+        pnl_median_api = await get_pnl_median_from_population()
+        
+        # Calculate scores with percentile information
+        result = calculate_scores_and_rank_with_percentiles(
+            entries_data,
+            pnl_median=pnl_median_api
+        )
+        traders = result["traders"]
+        percentiles_data = result["percentiles"]
+        medians_data = result["medians"]
+        
+        # Override PnL median with API value
+        medians_data["pnl_median"] = pnl_median_api
+        
+        # Create all different leaderboards (same as view-all endpoint)
         leaderboards = {}
         
-        # 1. W_shrunk leaderboard (ascending)
+        # 1. W_shrunk leaderboard (ascending - best = lowest)
         w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
-        for i, t in enumerate(w_shrunk_sorted, 1):
-            t['rank'] = i
+        for i, trader in enumerate(w_shrunk_sorted, 1):
+            trader['rank'] = i
         leaderboards["w_shrunk"] = [LeaderboardEntry(**t) for t in w_shrunk_sorted]
         
-        # 2. ROI raw leaderboard (descending)
+        # 2. ROI raw leaderboard (descending - best = highest)
         roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
-        for i, t in enumerate(roi_raw_sorted, 1):
-            t['rank'] = i
+        for i, trader in enumerate(roi_raw_sorted, 1):
+            trader['rank'] = i
         leaderboards["roi_raw"] = [LeaderboardEntry(**t) for t in roi_raw_sorted]
         
-        # 3. ROI shrunk leaderboard (ascending)
+        # 3. ROI shrunk leaderboard (ascending - best = lowest)
         roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
-        for i, t in enumerate(roi_shrunk_sorted, 1):
-            t['rank'] = i
+        for i, trader in enumerate(roi_shrunk_sorted, 1):
+            trader['rank'] = i
         leaderboards["roi_shrunk"] = [LeaderboardEntry(**t) for t in roi_shrunk_sorted]
         
-        # 4. PNL shrunk leaderboard (ascending)
+        # 4. PNL shrunk leaderboard (ascending - best = lowest)
         pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
-        for i, t in enumerate(pnl_shrunk_sorted, 1):
-            t['rank'] = i
+        for i, trader in enumerate(pnl_shrunk_sorted, 1):
+            trader['rank'] = i
         leaderboards["pnl_shrunk"] = [LeaderboardEntry(**t) for t in pnl_shrunk_sorted]
         
-        # 5. Score leaderboards (descending)
-        for score_metric in ["score_win_rate", "score_roi", "score_pnl", "score_risk", "final_score"]:
-            sorted_traders = sorted(traders, key=lambda x: x.get(score_metric, 0), reverse=True)
-            for i, t in enumerate(sorted_traders, 1):
-                t['rank'] = i
-            leaderboards[score_metric] = [LeaderboardEntry(**t) for t in sorted_traders]
-            
+        # 5. Final Score leaderboards (descending - best = highest)
+        # Win Rate Score
+        win_rate_sorted = sorted(traders, key=lambda x: x.get('score_win_rate', 0), reverse=True)
+        for i, trader in enumerate(win_rate_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_win_rate"] = [LeaderboardEntry(**t) for t in win_rate_sorted]
+        
+        # ROI Score
+        roi_score_sorted = sorted(traders, key=lambda x: x.get('score_roi', 0), reverse=True)
+        for i, trader in enumerate(roi_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_roi"] = [LeaderboardEntry(**t) for t in roi_score_sorted]
+        
+        # PNL Score
+        pnl_score_sorted = sorted(traders, key=lambda x: x.get('score_pnl', 0), reverse=True)
+        for i, trader in enumerate(pnl_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
+        
+        # Risk Score
+        risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
+        for i, trader in enumerate(risk_sorted, 1):
+            trader['rank'] = i
+        leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
+        
+        # Final Score (descending - best = highest)
+        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
+        for i, trader in enumerate(final_score_sorted, 1):
+            trader['rank'] = i
+        leaderboards["final_score"] = [LeaderboardEntry(**t) for t in final_score_sorted]
+        
+        # Apply limit and offset to each list
+        for key in list(leaderboards.keys()):
+            leaderboards[key] = leaderboards[key][offset : offset + limit]
+        
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
                 w_shrunk_1_percent=percentiles_data.get("w_shrunk_1_percent", 0.0),
@@ -956,7 +1118,7 @@ async def get_all_db_leaderboards(
                 pnl_median=medians_data.get("pnl_median", 0.0)
             ),
             leaderboards=leaderboards,
-            total_traders=len(traders),
+            total_traders=result.get("total_traders", len(traders)),
             population_traders=result.get("population_size", 0)
         )
     except Exception as e:
@@ -979,7 +1141,10 @@ async def get_all_db_leaderboards(
     summary="View All Leaderboards (JSON)",
     description="Get all leaderboards and percentile information in JSON format with proper data structure"
 )
-async def view_all_leaderboards():
+async def view_all_leaderboards(
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination")
+):
     """
     Get all leaderboards and percentile information in JSON format.
     
@@ -1094,6 +1259,10 @@ async def view_all_leaderboards():
             trader['rank'] = i
         leaderboards["final_score"] = [LeaderboardEntry(**t) for t in final_score_sorted]
         
+        # Apply limit and offset to each list
+        for key in list(leaderboards.keys()):
+            leaderboards[key] = leaderboards[key][offset : offset + limit]
+            
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
                 w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
@@ -1110,7 +1279,8 @@ async def view_all_leaderboards():
             ),
             leaderboards=leaderboards,
             total_traders=result["total_traders"],
-            )
+            population_traders=result["population_size"]
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

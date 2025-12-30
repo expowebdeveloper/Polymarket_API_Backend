@@ -4,20 +4,30 @@ Uses the same formulas as the live leaderboards (shrunk values, percentiles).
 """
 
 from typing import List, Dict, Optional, Any
+import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.leaderboard_service import (
     calculate_trader_metrics_with_time_filter,
     calculate_scores_and_rank_with_percentiles,
     get_unique_wallet_addresses
 )
+from app.services.pnl_median_service import calculate_pnl_median_from_traders
 
 async def get_advanced_db_analytics(
     session: AsyncSession, 
-    wallet_addresses: Optional[List[str]] = None
+    wallet_addresses: Optional[List[str]] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    max_traders: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Calculate advanced metrics for wallets in DB using the full scoring logic.
     If wallet_addresses is None, it processes all unique wallets in the DB.
+    Uses async batching for concurrent processing to improve performance.
+    
+    Args:
+        max_traders: Optional limit on number of traders to process for faster response.
+                    If None, processes all traders.
     """
     # 1. Get wallet addresses
     if not wallet_addresses:
@@ -29,19 +39,43 @@ async def get_advanced_db_analytics(
             "percentiles": {},
             "medians": {}
         }
+    
+    # Limit traders for processing if specified (for faster response)
+    # If max_traders is None, process all traders (no limit)
+    traders_to_process = wallet_addresses
+    if max_traders is not None and len(wallet_addresses) > max_traders:
+        traders_to_process = wallet_addresses[:max_traders]
 
-    # 2. Calculate raw metrics for each wallet
+    # 2. Calculate raw metrics for each wallet using async batching for better performance
     traders_metrics = []
-    for wallet in wallet_addresses:
-        try:
-            metrics = await calculate_trader_metrics_with_time_filter(
-                session, wallet, period='all'
-            )
-            if metrics:
-                traders_metrics.append(metrics)
-        except Exception as e:
-            print(f"Error calculating DB metrics for {wallet}: {e}")
-            continue
+    semaphore = asyncio.Semaphore(20)  # Process up to 20 traders concurrently for better performance
+    batch_size = 50  # Process in batches to avoid memory issues
+    
+    async def process_wallet(wallet: str):
+        async with semaphore:
+            try:
+                metrics = await calculate_trader_metrics_with_time_filter(
+                    session, wallet, period='all'
+                )
+                return metrics
+            except Exception as e:
+                pass  # Silently skip errors
+                return None
+    
+    # Process wallets in batches to avoid overwhelming the system
+    for i in range(0, len(traders_to_process), batch_size):
+        batch = traders_to_process[i:i + batch_size]
+        tasks = [process_wallet(wallet) for wallet in batch]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out None results and exceptions
+        for result in results:
+            if result and isinstance(result, dict):
+                traders_metrics.append(result)
+        
+        # Small delay between batches to avoid overwhelming the database
+        if i + batch_size < len(traders_to_process):
+            await asyncio.sleep(0.1)  # 100ms delay between batches
             
     if not traders_metrics:
         return {
@@ -50,15 +84,24 @@ async def get_advanced_db_analytics(
             "medians": {}
         }
 
-    # 3. Calculate scores, ranks, and percentiles (The "Advanced" part)
+    # 3. Calculate PnL median from DB population (same as view-all does from API)
+    # This is critical for correct PnL shrinkage calculations
+    pnl_median_db = await calculate_pnl_median_from_traders(traders_metrics)
+
+    # 4. Calculate scores, ranks, and percentiles (The "Advanced" part)
     # This uses calculate_scores_and_rank_with_percentiles from leaderboard_service
-    result = calculate_scores_and_rank_with_percentiles(traders_metrics)
+    # Pass the PnL median from DB population (same as view-all passes API median)
+    result = calculate_scores_and_rank_with_percentiles(
+        traders_metrics,
+        pnl_median=pnl_median_db
+    )
     return result
 
 async def get_db_leaderboard(
     session: AsyncSession, 
     wallet_addresses: Optional[List[str]] = None,
     limit: int = 100,
+    offset: int = 0,
     metric: str = "final_score"
 ) -> List[Dict[str, Any]]:
     """
@@ -72,26 +115,25 @@ async def get_db_leaderboard(
         return []
 
     # Sort based on metric
-    # Note: Some metrics are ascending (lower is better for shrunk values)
-    # but the user screenshot shows "ROI Score" etc which are descending (higher is better).
-    # We'll follow the same sorting logic as in leaderboard_service or router.
+    # User requested descending order (highest is better)
+    # Most metrics like final_score, score_win_rate, win_rate, roi, pnl are better when higher.
+    # Shrunk values (W_shrunk, roi_shrunk, pnl_shrunk) are also better when higher in our scoring logic.
     
-    ascending_metrics = ["w_shrunk", "roi_shrunk", "pnl_shrunk", "W_shrunk"]
-    is_reverse = metric not in ascending_metrics
+    # We'll default to descending unless specifically known otherwise
+    is_reverse = True # Higher is better across the board now
     
-    # Map metrics if needed (e.g. final_score is in the dict)
     try:
-        traders.sort(key=lambda x: x.get(metric, 0) if x.get(metric) is not None else (float('inf') if not is_reverse else float('-inf')), reverse=is_reverse)
+        traders.sort(key=lambda x: x.get(metric, 0) if x.get(metric) is not None else (float('-inf')), reverse=is_reverse)
     except Exception as e:
-        print(f"Sorting error for metric {metric}: {e}")
+        pass  # Silently skip sorting errors
         # Fallback to final_score
         traders.sort(key=lambda x: x.get("final_score", 0), reverse=True)
 
-    # Apply limit
-    leaderboard = traders[:limit]
+    # Apply limit and offset
+    leaderboard = traders[offset : offset + limit]
     
     # Add rank
-    for i, entry in enumerate(leaderboard, 1):
+    for i, entry in enumerate(leaderboard, offset + 1):
         entry["rank"] = i
         
     return leaderboard

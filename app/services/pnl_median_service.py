@@ -164,36 +164,5 @@ async def calculate_pnl_median_from_traders(
         mid2_index = n // 2
         pnl_m = (sorted_pnl_adjs[mid1_index] + sorted_pnl_adjs[mid2_index]) / 2.0
     
-    # Debug logging with detailed calculation steps
-    print(f"\n=== PnL Median Calculation (Exact Formula) ===")
-    print(f"Number of traders with >=5 trades: {len(population_metrics)}")
-    print(f"Number of valid PnL_adj values: {n}")
-    print(f"PnL_adj values (sorted): {[round(v, 2) for v in sorted_pnl_adjs]}")
-    print(f"\nMedian Formula Application:")
-    print(f"  n = {n} ({'Odd' if n % 2 == 1 else 'Even'})")
-    
-    if n % 2 == 1:
-        # Case A: Odd
-        # Median = ((n + 1) / 2)^th term (1-indexed)
-        term_position = (n + 1) // 2
-        print(f"  Case A (Odd): Median = (({n} + 1) / 2)^th term = {term_position}^th term (1-indexed)")
-        print(f"  In 0-indexed: index = {n} // 2 = {median_index}")
-        print(f"  Median = sorted_pnl_adjs[{median_index}] = {sorted_pnl_adjs[median_index]:.2f}")
-    else:
-        # Case B: Even
-        # Median = average of (n/2)^th and (n/2 + 1)^th terms (1-indexed)
-        term1_position = n // 2
-        term2_position = (n // 2) + 1
-        print(f"  Case B (Even): Median = average of ({n}/2)^th and ({n}/2 + 1)^th terms")
-        print(f"  = average of {term1_position}^th and {term2_position}^th terms (1-indexed)")
-        print(f"  In 0-indexed: indices = ({n}//2 - 1) = {mid1_index} and ({n}//2) = {mid2_index}")
-        print(f"  Median = (sorted_pnl_adjs[{mid1_index}] + sorted_pnl_adjs[{mid2_index}]) / 2")
-        print(f"  Median = ({sorted_pnl_adjs[mid1_index]:.2f} + {sorted_pnl_adjs[mid2_index]:.2f}) / 2")
-        print(f"  Median = {pnl_m:.2f}")
-    
-    print(f"\nFinal PnL Median: ${pnl_m:.2f}")
-    print(f"Min PnL_adj: ${min(sorted_pnl_adjs):.2f}, Max PnL_adj: ${max(sorted_pnl_adjs):.2f}")
-    print(f"==============================================\n")
-    
     return pnl_m
 

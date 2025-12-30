@@ -1,3 +1,4 @@
+
 """
 Test trader service basic info with Dome trade format.
 """

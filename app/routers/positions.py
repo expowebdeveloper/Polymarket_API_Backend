@@ -139,7 +139,7 @@ async def fetch_and_save_positions_endpoint(
                 outcome=pos.get("outcome"),
                 outcome_index=pos.get("outcomeIndex"),
                 opposite_outcome=pos.get("oppositeOutcome"),
-                opposite_asset=str(pos.get("oppositeAsset", "")) if pos.get("oppositeAsset") else None,
+                opposite_asset=str(pos.get("oppositeAsset")) if pos.get("oppositeAsset") else None,
                 end_date=pos.get("endDate"),
                 negative_risk=pos.get("negativeRisk", False),
             ))
@@ -155,6 +155,10 @@ async def fetch_and_save_positions_endpoint(
             detail=str(e)
         )
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in fetch_and_save_positions_endpoint: {str(e)}")
+        print(error_trace)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching and saving positions: {str(e)}"

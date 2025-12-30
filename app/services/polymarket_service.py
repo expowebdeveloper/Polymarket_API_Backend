@@ -21,23 +21,48 @@ class PolymarketService:
         Returns:
             Dictionary containing PnL, Win Rate, ROI, and other metrics
         """
-        # Fetch data (AWAITING all async calls)
-        positions = await fetch_positions_for_wallet(user_address)
-        closed_positions = await fetch_closed_positions(user_address)
-        portfolio_value = await fetch_portfolio_value(user_address)
-        leaderboard_stats = await fetch_leaderboard_stats(user_address)
+        # Fetch data (AWAITING all async calls) with error handling
+        try:
+            positions = await fetch_positions_for_wallet(user_address)
+        except Exception:
+            positions = []
+        
+        try:
+            closed_positions = await fetch_closed_positions(user_address)
+        except Exception:
+            closed_positions = []
+        
+        try:
+            portfolio_value = await fetch_portfolio_value(user_address)
+        except Exception:
+            portfolio_value = 0.0
+        
+        try:
+            leaderboard_stats = await fetch_leaderboard_stats(user_address)
+        except Exception:
+            leaderboard_stats = {}
+        
+        # Ensure we have valid data structures (handle None returns)
+        if positions is None:
+            positions = []
+        if closed_positions is None:
+            closed_positions = []
+        if leaderboard_stats is None:
+            leaderboard_stats = {}
+        if portfolio_value is None:
+            portfolio_value = 0.0
         
         # Core Metrics from Leaderboard (Source of Truth for Profile Stats)
         total_pnl = leaderboard_stats.get("pnl", 0.0)
         total_volume = leaderboard_stats.get("volume", 0.0) # Previously "total_investment"
         
         # Breakdown Metrics
-        unrealized_pnl = sum(float(p.get("cashPnl", 0.0)) for p in positions)
-        reailzed_pnl_sum = sum(float(c.get("realizedPnl", 0.0)) for c in closed_positions)
+        unrealized_pnl = sum(float(p.get("cashPnl", 0.0)) for p in positions) if positions else 0.0
+        reailzed_pnl_sum = sum(float(c.get("realizedPnl", 0.0)) for c in closed_positions) if closed_positions else 0.0
         total_calculated_pnl = unrealized_pnl + reailzed_pnl_sum
 
         # Win Rate Calculations
-        total_closed_count = len(closed_positions)
+        total_closed_count = len(closed_positions) if closed_positions else 0
         wins = 0
         winning_stakes = 0.0
         total_stakes = 0.0 # This is closed trades investment
@@ -45,6 +70,10 @@ class PolymarketService:
         max_stake = 0.0
         worst_loss = 0.0
         all_losses = []  # Collect all losses for average calculation (future enhancement)
+        
+        # Ensure closed_positions is iterable
+        if not closed_positions:
+            closed_positions = []
         
         for c in closed_positions:
             # Calculating Stake for Closed Position
@@ -82,6 +111,10 @@ class PolymarketService:
         
         # Calculate Investment for Open Positions
         total_investment_open = 0.0
+        # Ensure positions is iterable
+        if not positions:
+            positions = []
+        
         for p in positions:
              # For open positions: size * avgPrice (buyPrice)
              size = float(p.get("size", 0.0))

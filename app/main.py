@@ -41,6 +41,14 @@ app.add_middleware(
 async def startup_event():
     """Initialize database on application startup."""
     await init_db()
+    
+    # Start periodic leaderboard recalculation (every 6.5 hours)
+    try:
+        from app.services.leaderboard_scheduler import start_periodic_recalculation
+        await start_periodic_recalculation(interval_hours=6.5)
+        print("✅ Periodic leaderboard recalculation scheduler started (every 6.5 hours)")
+    except Exception as e:
+        print(f"⚠️  Failed to start leaderboard scheduler: {e}")
 
 # Include routers
 app.include_router(general.router)
