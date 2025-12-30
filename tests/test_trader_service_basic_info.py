@@ -70,7 +70,3 @@ def test_get_trader_basic_info_with_dome_trades(monkeypatch):
     assert info["last_trade_date"] is not None
     print(f"✓ Test passed: Basic info correctly extracted {info['total_trades']} trades and {info['total_positions']} positions")
 
-
-
-
-

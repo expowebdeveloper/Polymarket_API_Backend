@@ -8,6 +8,7 @@ import httpx
 import dns.resolver
 from typing import List, Dict, Optional, Any, Set
 import asyncio
+from datetime import datetime, timedelta
 from app.core.config import settings
 
 # List of domains known to be hijacked/blocked by some ISPs (e.g., Jio)
@@ -796,7 +797,8 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
 async def fetch_closed_positions(
     wallet_address: str,
     limit: Optional[int] = None,
-    offset: Optional[int] = None
+    offset: Optional[int] = None,
+    time_period: Optional[str] = None
 ) -> List[Dict]:
     """
     Fetch closed positions for a wallet address from Polymarket Data API.
@@ -805,6 +807,8 @@ async def fetch_closed_positions(
         wallet_address: Ethereum wallet address (0x...)
         limit: Maximum number of positions to return
         offset: Offset for pagination
+        time_period: Optional time period filter ("day", "week", "month", "all")
+                     If provided, filters positions by timestamp
     
     Returns:
         List of closed position dictionaries
@@ -822,9 +826,31 @@ async def fetch_closed_positions(
             response = await async_client.get(url, params=params)
             response.raise_for_status()
             positions = response.json()
-            return positions if isinstance(positions, list) else []
+            positions = positions if isinstance(positions, list) else []
+            
+            # Apply time period filter if specified
+            if time_period and time_period != "all":
+                cutoff_timestamp = _get_cutoff_timestamp(time_period)
+                filtered_positions = []
+                for pos in positions:
+                    timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
+                    if timestamp:
+                        if isinstance(timestamp, str):
+                            try:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                pos_timestamp = int(dt.timestamp())
+                            except:
+                                continue
+                        else:
+                            pos_timestamp = int(timestamp)
+                        
+                        if pos_timestamp >= cutoff_timestamp:
+                            filtered_positions.append(pos)
+                positions = filtered_positions
+            
+            return positions
 
-        # If limit is None, fetch ALL data using pagination
+        # If limit is None, fetch ALL data using pagination (no maximum limit)
         all_positions = []
         fetch_limit = 1000  # Fetch in chunks
         current_offset = offset or 0
@@ -842,14 +868,63 @@ async def fetch_closed_positions(
                 
             all_positions.extend(data)
             
-            current_offset += len(data)
+            # If we got fewer results than requested, we've reached the end
+            if len(data) < fetch_limit:
+                break
             
+            current_offset += len(data)
+        
+        # Apply time period filter if specified
+        if time_period and time_period != "all":
+            cutoff_timestamp = _get_cutoff_timestamp(time_period)
+            filtered_positions = []
+            for pos in all_positions:
+                # Check various timestamp fields that might exist
+                timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
+                if timestamp:
+                    # Handle both Unix timestamp (int) and ISO string
+                    if isinstance(timestamp, str):
+                        try:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            pos_timestamp = int(dt.timestamp())
+                        except:
+                            continue
+                    else:
+                        pos_timestamp = int(timestamp)
+                    
+                    if pos_timestamp >= cutoff_timestamp:
+                        filtered_positions.append(pos)
+            all_positions = filtered_positions
+        
         return all_positions
 
     except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching closed positions from Polymarket API: {str(e)}")
     except Exception as e:
         raise Exception(f"Unexpected error fetching closed positions: {str(e)}")
+
+
+def _get_cutoff_timestamp(time_period: str) -> int:
+    """
+    Get cutoff timestamp for a time period.
+    
+    Args:
+        time_period: Time period ("day", "week", "month")
+    
+    Returns:
+        Unix timestamp cutoff
+    """
+    now = datetime.utcnow()
+    if time_period == "day":
+        cutoff = now - timedelta(days=1)
+    elif time_period == "week":
+        cutoff = now - timedelta(days=7)
+    elif time_period == "month":
+        cutoff = now - timedelta(days=30)
+    else:
+        return 0  # No cutoff for "all"
+    
+    return int(cutoff.timestamp())
 
 
 async def fetch_portfolio_value(wallet_address: str) -> float:
@@ -880,12 +955,13 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         raise Exception(f"Unexpected error fetching portfolio value: {str(e)}")
 
 
-async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
+async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all") -> Dict[str, float]:
     """
-    Fetch all-time stats (volume, pnl) for a user from the Leaderboard API.
+    Fetch stats (volume, pnl) for a user from the Leaderboard API for a specific time period.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
+        time_period: Time period ("day", "week", "month", "all")
     
     Returns:
         Dictionary with "volume" and "pnl" keys
@@ -893,7 +969,7 @@ async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
     try:
         url = "https://data-api.polymarket.com/v1/leaderboard"
         params = {
-            "timePeriod": "all",
+            "timePeriod": time_period,
             "orderBy": "VOL",
             "limit": 1,
             "offset": 0,

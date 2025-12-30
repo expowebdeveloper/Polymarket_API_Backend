@@ -1,6 +1,8 @@
 
 from typing import List, Dict
 import asyncio
+import json
+import os
 from app.services.polymarket_service import PolymarketService
 from app.services.leaderboard_service import calculate_scores_and_rank
 from app.services.data_fetcher import async_client
@@ -172,6 +174,117 @@ async def fetch_polymarket_leaderboard_api(
     except Exception as e:
         print(f"Error fetching Polymarket leaderboard API: {e}")
         return []
+
+
+async def fetch_wallet_addresses_from_live_leaderboard(
+    time_period: str = "all",
+    order_by: str = "PNL",
+    limit: int = 100
+) -> tuple[List[str], Dict[str, Dict]]:
+    """
+    Fetch wallet addresses from Polymarket live leaderboard API.
+    Uses the same API call as /leaderboard/live endpoint - fetches only the wallets
+    returned by the live leaderboard API, no additional fetching.
+    
+    Args:
+        time_period: Time period for fetching wallets (day, week, month, all)
+        order_by: Order by metric (PNL, VOL)
+        limit: Maximum number of wallets to fetch from live API (default: 100, max: 100)
+    
+    Returns:
+        Tuple of (list of unique wallet addresses, dict mapping wallet -> user info)
+    """
+    wallet_addresses = []
+    wallet_info_map = {}
+    seen_wallets = set()
+    
+    try:
+        # Fetch from Polymarket API - single call, no batching
+        # Use the same limit as the live leaderboard endpoint (max 100)
+        api_data = await fetch_polymarket_leaderboard_api(
+            time_period=time_period,
+            order_by=order_by,
+            limit=min(limit, 100),  # API max is 100
+            offset=0,
+            category="overall"
+        )
+        
+        if not api_data:
+            return [], {}
+        
+        # Extract wallet addresses from the API response
+        for entry in api_data:
+            wallet = entry.get("proxyWallet") or entry.get("wallet_address") or entry.get("wallet")
+            
+            if wallet and wallet.startswith("0x") and len(wallet) == 42:
+                # Convert to lowercase and deduplicate
+                wallet_lower = wallet.lower()
+                
+                if wallet_lower not in seen_wallets:
+                    seen_wallets.add(wallet_lower)
+                    wallet_addresses.append(wallet_lower)
+                    
+                    # Preserve user info from live API
+                    wallet_info_map[wallet_lower] = {
+                        "name": entry.get("userName") or entry.get("name") or None,
+                        "pseudonym": entry.get("xUsername") or entry.get("pseudonym") or None,
+                        "profile_image": entry.get("profileImage") or entry.get("profile_image") or None
+                    }
+                
+    except Exception as e:
+        print(f"Error fetching wallet addresses from live leaderboard: {e}")
+        return [], {}
+    
+    return wallet_addresses, wallet_info_map
+
+
+def save_wallet_addresses_to_json(wallet_addresses: List[str], wallet_info_map: Dict[str, Dict], file_path: str = "wallet_input.json"):
+    """
+    Save wallet addresses and their info to wallet_input.json file.
+    
+    Args:
+        wallet_addresses: List of wallet addresses
+        wallet_info_map: Dict mapping wallet -> user info (name, pseudonym, profile_image)
+        file_path: Path to JSON file (default: wallet_input.json)
+    """
+    try:
+        data = {
+            "wallet_addresses": wallet_addresses,
+            "wallet_info": wallet_info_map
+        }
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        print(f"✅ Saved {len(wallet_addresses)} wallet addresses to {file_path}")
+    except Exception as e:
+        print(f"⚠️  Error saving wallet addresses to {file_path}: {e}")
+
+
+def load_wallet_addresses_from_json(file_path: str = "wallet_input.json") -> tuple[List[str], Dict[str, Dict]]:
+    """
+    Load wallet addresses and their info from wallet_input.json file.
+    
+    Args:
+        file_path: Path to JSON file (default: wallet_input.json)
+    
+    Returns:
+        Tuple of (list of wallet addresses, dict mapping wallet -> user info)
+    """
+    try:
+        if not os.path.exists(file_path):
+            print(f"⚠️  {file_path} not found, returning empty list")
+            return [], {}
+        
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        wallet_addresses = data.get("wallet_addresses", [])
+        wallet_info_map = data.get("wallet_info", {})
+        
+        print(f"✅ Loaded {len(wallet_addresses)} wallet addresses from {file_path}")
+        return wallet_addresses, wallet_info_map
+    except Exception as e:
+        print(f"⚠️  Error loading wallet addresses from {file_path}: {e}")
+        return [], {}
 
 
 async def fetch_polymarket_biggest_winners(

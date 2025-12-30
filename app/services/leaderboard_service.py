@@ -656,24 +656,27 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
     p_99 = get_percentile_value(pnl_shrunk_pop, upper_percentile)
     
     # Final Normalization
+    # Note: For W_shrunk, ROI_shrunk, and PNL_shrunk, LOWER is BETTER (ascending order)
+    # So we need to invert the normalization: (p99 - value) / (p99 - p1)
+    # This way: lower value → higher score, higher value → lower score
     for t in traders_metrics:
-        # W score
+        # W score (inverted: lower W_shrunk = better = higher score)
         if w_99 - w_1 != 0:
-            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+            w_score = (w_99 - t['W_shrunk']) / (w_99 - w_1)
         else:
             w_score = 0.5 
         t['score_win_rate'] = clamp(w_score, 0, 1)
         
-        # R score
+        # R score (inverted: lower ROI_shrunk = better = higher score)
         if r_99 - r_1 != 0:
-            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+            r_score = (r_99 - t['roi_shrunk']) / (r_99 - r_1)
         else:
             r_score = 0.5
         t['score_roi'] = clamp(r_score, 0, 1)
         
-        # P score
+        # P score (inverted: lower PNL_shrunk = better = higher score)
         if p_99 - p_1 != 0:
-            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+            p_score = (p_99 - t['pnl_shrunk']) / (p_99 - p_1)
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)
@@ -845,24 +848,27 @@ def calculate_scores_and_rank_with_percentiles(
     p_99 = get_percentile_value(pnl_shrunk_pop, upper_percentile)
     
     # Final Normalization
+    # Note: For W_shrunk, ROI_shrunk, and PNL_shrunk, LOWER is BETTER (ascending order)
+    # So we need to invert the normalization: (p99 - value) / (p99 - p1)
+    # This way: lower value → higher score, higher value → lower score
     for t in traders_metrics:
-        # W score
+        # W score (inverted: lower W_shrunk = better = higher score)
         if w_99 - w_1 != 0:
-            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+            w_score = (w_99 - t['W_shrunk']) / (w_99 - w_1)
         else:
             w_score = 0.5 
         t['score_win_rate'] = clamp(w_score, 0, 1)
         
-        # R score
+        # R score (inverted: lower ROI_shrunk = better = higher score)
         if r_99 - r_1 != 0:
-            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+            r_score = (r_99 - t['roi_shrunk']) / (r_99 - r_1)
         else:
             r_score = 0.5
         t['score_roi'] = clamp(r_score, 0, 1)
         
-        # P score
+        # P score (inverted: lower PNL_shrunk = better = higher score)
         if p_99 - p_1 != 0:
-            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+            p_score = (p_99 - t['pnl_shrunk']) / (p_99 - p_1)
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)

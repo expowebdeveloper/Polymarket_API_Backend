@@ -11,12 +11,13 @@ from app.services.data_fetcher import (
 
 class PolymarketService:
     @staticmethod
-    async def calculate_portfolio_stats(user_address: str) -> Dict[str, Any]:
+    async def calculate_portfolio_stats(user_address: str, time_period: str = "all") -> Dict[str, Any]:
         """
         Calculate comprehensive portfolio statistics including PnL, Win Rates, and ROI.
         
         Args:
             user_address: Wallet address
+            time_period: Time period for filtering data ("day", "week", "month", "all")
             
         Returns:
             Dictionary containing PnL, Win Rate, ROI, and other metrics
@@ -28,7 +29,12 @@ class PolymarketService:
             positions = []
         
         try:
-            closed_positions = await fetch_closed_positions(user_address)
+            # Fetch ALL closed positions (no limit) - user requested all data
+            closed_positions = await fetch_closed_positions(
+                user_address, 
+                time_period=time_period,
+                limit=None  # Fetch all positions
+            )
         except Exception:
             closed_positions = []
         
@@ -38,7 +44,7 @@ class PolymarketService:
             portfolio_value = 0.0
         
         try:
-            leaderboard_stats = await fetch_leaderboard_stats(user_address)
+            leaderboard_stats = await fetch_leaderboard_stats(user_address, time_period=time_period)
         except Exception:
             leaderboard_stats = {}
         

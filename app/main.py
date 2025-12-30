@@ -5,7 +5,7 @@ FastAPI application main file.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard
+from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth
 from app.db.session import init_db
 
 app = FastAPI(
@@ -43,6 +43,7 @@ async def startup_event():
     await init_db()
     
     # Start periodic leaderboard recalculation (every 6.5 hours)
+    # This calculates leaderboard metrics for traders in the database
     try:
         from app.services.leaderboard_scheduler import start_periodic_recalculation
         await start_periodic_recalculation(interval_hours=6.5)
@@ -50,15 +51,18 @@ async def startup_event():
     except Exception as e:
         print(f"⚠️  Failed to start leaderboard scheduler: {e}")
     
-    # Start periodic view-all leaderboard recalculation (every 2 hours)
-    try:
-        from app.services.view_all_leaderboard_scheduler import start_periodic_view_all_recalculation
-        await start_periodic_view_all_recalculation(interval_hours=2.0)
-        print("✅ Periodic view-all leaderboard recalculation scheduler started (every 2 hours)")
-    except Exception as e:
-        print(f"⚠️  Failed to start view-all leaderboard scheduler: {e}")
+    # NOTE: View-all leaderboard scheduler is DISABLED
+    # View-all endpoint now computes fresh data on-demand from live API (no caching)
+    # No background jobs needed for view-all since it doesn't use database caching
+    # try:
+    #     from app.services.view_all_leaderboard_scheduler import start_periodic_view_all_recalculation
+    #     await start_periodic_view_all_recalculation(interval_hours=2.0)
+    #     print("✅ Periodic view-all leaderboard recalculation scheduler started (every 2 hours)")
+    # except Exception as e:
+    #     print(f"⚠️  Failed to start view-all leaderboard scheduler: {e}")
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(general.router)
 app.include_router(markets.router)
 # app.include_router(analytics.router)

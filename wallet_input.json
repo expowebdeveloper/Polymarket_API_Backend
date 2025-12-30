@@ -1,0 +1,126 @@
+{
+  "wallet_addresses": [
+    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b",
+    "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee",
+    "0xafbacaeeda63f31202759eff7f8126e49adfe61b",
+    "0x91654fd592ea5339fc0b1b2f2b30bfffa5e75b98",
+    "0xb889590a2fab0c810584a660518c4c020325a430",
+    "0x14964aefa2cd7caff7878b3820a690a03c5aa429",
+    "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563",
+    "0x84dbb7103982e3617704a2ed7d5b39691952aeeb",
+    "0x26437896ed9dfeb2f69765edcafe8fdceaab39ae",
+    "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
+    "0xf1ffa0a8bc7cdeb0240027e623b026ced4d0e56a",
+    "0x14ae1d1679fc048eaafadea39646755d528a0459",
+    "0xd0b4c4c020abdc88ad9a884f999f3d8cff8ffed6",
+    "0xdb27bf2ac5d428a9c63dbc914611036855a6c56e",
+    "0x9fefb57d21e15950df03246cde50ddbc521b361b",
+    "0xaa075924e1dc7cff3b9fab67401126338c4d2125",
+    "0xee613b3fc183ee44f9da9c05f53e2da107e3debf",
+    "0x68dd6269bb89d27a850dcde0d59ee824a227f0b2",
+    "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28",
+    "0xe73ee729fc8ac69c3ee6ca70dedb3875070574fe"
+  ],
+  "wallet_info": {
+    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b": {
+      "name": "bossoskil",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee": {
+      "name": "kch123",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xafbacaeeda63f31202759eff7f8126e49adfe61b": {
+      "name": "SammySledge",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x91654fd592ea5339fc0b1b2f2b30bfffa5e75b98": {
+      "name": "C.SIN",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xb889590a2fab0c810584a660518c4c020325a430": {
+      "name": "Ems123",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x14964aefa2cd7caff7878b3820a690a03c5aa429": {
+      "name": "gmpm",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x2c335066fe58fe9237c3d3dc7b275c2a034a0563": {
+      "name": "0x2c335066FE58fe9237c3d3Dc7b275C2a034a0563-1759935795465",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x84dbb7103982e3617704a2ed7d5b39691952aeeb": {
+      "name": "ShucksIt69",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x26437896ed9dfeb2f69765edcafe8fdceaab39ae": {
+      "name": "Latina",
+      "pseudonym": "thicccandjuiicy",
+      "profile_image": null
+    },
+    "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2": {
+      "name": "gmanas",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xf1ffa0a8bc7cdeb0240027e623b026ced4d0e56a": {
+      "name": "0x2E9821a4234AG3",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x14ae1d1679fc048eaafadea39646755d528a0459": {
+      "name": "dahndahn",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xd0b4c4c020abdc88ad9a884f999f3d8cff8ffed6": {
+      "name": "MrSparklySimpsons",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xdb27bf2ac5d428a9c63dbc914611036855a6c56e": {
+      "name": "DrPufferfish",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x9fefb57d21e15950df03246cde50ddbc521b361b": {
+      "name": "oijafowejfoawejif",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xaa075924e1dc7cff3b9fab67401126338c4d2125": {
+      "name": "rustin",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xee613b3fc183ee44f9da9c05f53e2da107e3debf": {
+      "name": "sovereign2013",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x68dd6269bb89d27a850dcde0d59ee824a227f0b2": {
+      "name": "Sharpyyy",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xc660ae71765d0d9eaf5fa8328c1c959841d2bd28": {
+      "name": "ChangoChango",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xe73ee729fc8ac69c3ee6ca70dedb3875070574fe": {
+      "name": "crossfire154",
+      "pseudonym": null,
+      "profile_image": null
+    }
+  }
+}
