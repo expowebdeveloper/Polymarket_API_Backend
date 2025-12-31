@@ -338,3 +338,38 @@ class LeaderboardMetadata(Base):
     __table_args__ = (
         # Only one metadata record
     )
+
+
+class TraderLeaderboard(Base):
+    """Table to store all traders from Polymarket leaderboard API."""
+    __tablename__ = "trader_leaderboard"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    wallet_address = Column(String(42), nullable=False, unique=True, index=True)  # Wallet address (unique, indexed)
+    
+    # Basic trader info
+    rank = Column(Integer, nullable=True)  # Rank from API
+    name = Column(String(255), nullable=True)  # User name (userName)
+    pseudonym = Column(String(255), nullable=True)  # User pseudonym (xUsername)
+    profile_image = Column(Text, nullable=True)  # Profile image URL (profileImage)
+    
+    # Core metrics from API
+    pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
+    volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
+    roi = Column(Numeric(10, 4), nullable=True)  # Return on Investment (%)
+    win_rate = Column(Numeric(10, 4), nullable=True)  # Win Rate (%)
+    trades_count = Column(Integer, nullable=True)  # Total number of trades
+    
+    # Additional fields from API (stored in raw_data, but extracted for convenience)
+    verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status
+    
+    # Store full API response as JSON
+    raw_data = Column(Text, nullable=True)  # Full API response as JSON string
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        # Index on wallet_address is already created above
+    )
