@@ -3,7 +3,7 @@
 import asyncio
 from fastapi import APIRouter, Query, HTTPException, status, Depends, Body
 from fastapi.responses import JSONResponse
-from typing import Literal, List
+from typing import Literal, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from app.schemas.leaderboard import LeaderboardResponse, LeaderboardEntry, AllLeaderboardsResponse, PercentileInfo, MedianInfo
@@ -1466,6 +1466,112 @@ async def view_all_leaderboards(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating all leaderboards: {str(e)}"
+        )
+
+
+@router.post(
+    "/fetch-trader-details",
+    summary="Fetch and Store Detailed Trader Data",
+    description="Fetch detailed data (profile, value, positions, activity, closed positions, trades) for traders from trader_leaderboard and store in respective tables"
+)
+async def fetch_trader_details(
+    trader_id: Optional[int] = Query(None, description="Trader ID from trader_leaderboard table"),
+    wallet_address: Optional[str] = Query(None, description="Wallet address (used if trader_id not provided)"),
+    fetch_all: bool = Query(False, description="Fetch details for all traders in trader_leaderboard"),
+    limit: Optional[int] = Query(None, ge=1, description="Limit number of traders when fetch_all=true"),
+    offset: int = Query(0, ge=0, description="Offset for pagination when fetch_all=true"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fetch and store detailed trader data from Polymarket APIs.
+    
+    Fetches:
+    1. Profile stats (trades, largestWin, views, joinDate)
+    2. Value (user value)
+    3. Positions (open positions)
+    4. Activity (trading activity)
+    5. Closed positions
+    6. Trades
+    
+    Stores data in:
+    - trader_profile
+    - trader_value
+    - trader_positions
+    - trader_activity
+    - trader_closed_positions
+    - trader_trades
+    
+    Args:
+        trader_id: Specific trader ID to fetch (optional)
+        wallet_address: Specific wallet address to fetch (optional)
+        fetch_all: If True, fetch for all traders in trader_leaderboard
+        limit: Maximum number of traders when fetch_all=true
+        offset: Offset for pagination when fetch_all=true
+        db: Database session
+    """
+    try:
+        from app.services.trader_detail_service import (
+            fetch_and_save_trader_details,
+            fetch_and_save_all_traders_details
+        )
+        
+        if fetch_all:
+            # Fetch for all traders
+            result = await fetch_and_save_all_traders_details(
+                session=db,
+                limit=limit,
+                offset=offset
+            )
+            
+            return {
+                "success": True,
+                "message": f"Fetched details for {result['processed']} traders",
+                "total_traders": result["total_traders"],
+                "processed": result["processed"],
+                "summary": result["summary"]
+            }
+        else:
+            # Fetch for specific trader
+            if not trader_id and not wallet_address:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Either trader_id or wallet_address must be provided when fetch_all=false"
+                )
+            
+            result = await fetch_and_save_trader_details(
+                session=db,
+                trader_id=trader_id,
+                wallet_address=wallet_address
+            )
+            
+            if "error" in result:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=result["error"]
+                )
+            
+            await db.commit()
+            
+            return {
+                "success": True,
+                "trader_id": result["trader_id"],
+                "wallet_address": result["wallet_address"],
+                "profile_saved": result["profile_saved"],
+                "value_saved": result["value_saved"],
+                "positions_saved": result["positions_saved"],
+                "activities_saved": result["activities_saved"],
+                "closed_positions_saved": result["closed_positions_saved"],
+                "trades_saved": result["trades_saved"],
+                "errors": result.get("errors", [])
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching trader details: {str(e)}"
         )
 
 
