@@ -13,7 +13,7 @@ import asyncio
 import json
 import sys
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -238,7 +238,7 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
             "trades_count": trades_count,
             "verified_badge": verified_badge if verified_badge is not None else False,
             "raw_data": raw_data,
-            "updated_at": datetime.utcnow()
+                    "updated_at": datetime.now(timezone.utc)
         }
         
         if existing:
@@ -265,7 +265,7 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
             return False, True
         else:
             # Insert new record
-            data["created_at"] = datetime.utcnow()
+            data["created_at"] = datetime.now(timezone.utc)
             await session.execute(
                 text("""
                     INSERT INTO trader_leaderboard 
@@ -302,45 +302,6 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
     
     print(f"\n🚀 Starting to fetch leaderboard data...")
     print(f"📋 Configuration: limit={LIMIT}, timePeriod=all, orderBy=PNL, category=overall\n")
-    
-    # First, let's check what the API actually returns at different offsets
-    # This will help us understand if the API is cycling
-    print("🔍 Testing API response at different offsets to detect cycling...")
-    test_offsets = [0, 1000, 10000, 100000]
-    test_wallets = {}
-    for test_offset in test_offsets:
-        test_result = await fetch_leaderboard_page(
-            time_period="all",
-            order_by="PNL",
-            category="overall",
-            limit=5,  # Just get 5 for testing
-            offset=test_offset
-        )
-        if test_result:
-            test_traders, _ = test_result
-            wallets_at_offset = []
-            for t in test_traders:
-                wallet = (
-                    t.get("user") or
-                    t.get("proxyWallet") or 
-                    t.get("proxy_wallet") or
-                    t.get("wallet_address") or 
-                    t.get("wallet")
-                )
-                if wallet and wallet.startswith("0x") and len(wallet) == 42:
-                    wallets_at_offset.append(wallet.lower())
-            test_wallets[test_offset] = wallets_at_offset
-            print(f"   Offset {test_offset}: {len(wallets_at_offset)} valid wallets")
-    
-    # Check if any wallets overlap between test offsets
-    all_test_wallets = set()
-    for offset, wallets in test_wallets.items():
-        for wallet in wallets:
-            if wallet in all_test_wallets:
-                print(f"   ⚠️  WARNING: Wallet {wallet[:10]}... appears at multiple offsets!")
-            all_test_wallets.add(wallet)
-    
-    print(f"   ✅ Test complete: {len(all_test_wallets)} unique wallets across test offsets\n")
     
     while True:
         print(f"📥 Fetching offset {offset}...", end=" ")
@@ -424,8 +385,8 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
         if invalid_wallets > 0:
             print(f"   ⚠️  Warning: {invalid_wallets} trader(s) with invalid/missing wallet address")
         
-        # Every 100 batches, show statistics
-        if (offset // LIMIT) % 100 == 0 and offset > 0:
+        # Every 20 batches, show statistics
+        if (offset // LIMIT) % 20 == 0 and offset > 0:
             print(f"   📊 Progress: {len(seen_wallets_this_run)} unique wallets seen so far at offset {offset}")
         
         # Process each trader
@@ -604,11 +565,16 @@ async def main():
             
             # Check if we hit the limit
             if stats["total_inserted"] == 0 and stats["total_updated"] > 0:
-                print(f"\n⚠️  ANALYSIS:")
-                print(f"   The API appears to only have ~{unique_wallets} unique traders.")
-                print(f"   After offset ~{unique_wallets // LIMIT * LIMIT}, the API cycles through the same traders.")
-                print(f"   This is why you see '0 inserted, 50 updated' - all traders already exist in DB.")
-                print(f"   Polymarket leaderboard likely only tracks traders with significant activity.")
+                print(f"\n📊 ANALYSIS:")
+                print(f"   The Polymarket leaderboard API only returns traders who QUALIFY for the leaderboard.")
+                print(f"   This means traders must meet minimum criteria (volume, trades, activity, etc.).")
+                print(f"   Total unique traders available: {unique_wallets}")
+                print(f"   After fetching these {unique_wallets} traders, the API cycles through them.")
+                print(f"   This is why you see '0 inserted, X updated' - all unique traders are already in DB.")
+                print(f"   Note: Polymarket has millions of users, but only {unique_wallets} qualify for the leaderboard.")
+            elif stats["total_inserted"] > 0:
+                print(f"\n✅ Successfully fetched {stats['total_inserted']} new unique traders from the API.")
+                print(f"   Total unique traders in database: {unique_wallets}")
         
         print("\n✅ Script completed successfully!")
         
