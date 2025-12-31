@@ -179,11 +179,19 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
             trader_data.get("address")
         )
         
-        if not wallet_address or not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        if not wallet_address:
             # Log first few failures for debugging
-            if not hasattr(process_trader_record, '_debug_logged'):
-                print(f"   ⚠️  Warning: Invalid wallet address in trader data. Keys: {list(trader_data.keys())[:10]}")
-                process_trader_record._debug_logged = True
+            if not hasattr(process_trader_record, '_wallet_missing_logged'):
+                print(f"   ⚠️  Warning: No wallet address found in trader data. Keys: {list(trader_data.keys())[:10]}")
+                print(f"      Sample trader data: {str(trader_data)[:200]}")
+                process_trader_record._wallet_missing_logged = True
+            return False, False
+        
+        if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+            # Log first few failures for debugging
+            if not hasattr(process_trader_record, '_wallet_invalid_logged'):
+                print(f"   ⚠️  Warning: Invalid wallet address format: '{wallet_address}' (length: {len(wallet_address) if wallet_address else 0})")
+                process_trader_record._wallet_invalid_logged = True
             return False, False
         
         wallet_address = wallet_address.lower()
@@ -238,7 +246,7 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
             "trades_count": trades_count,
             "verified_badge": verified_badge if verified_badge is not None else False,
             "raw_data": raw_data,
-                    "updated_at": datetime.now(timezone.utc)
+            "updated_at": datetime.now(timezone.utc)
         }
         
         if existing:
@@ -266,21 +274,34 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
         else:
             # Insert new record
             data["created_at"] = datetime.now(timezone.utc)
-            await session.execute(
-                text("""
-                    INSERT INTO trader_leaderboard 
-                    (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
-                     roi, win_rate, trades_count, verified_badge, raw_data, created_at, updated_at)
-                    VALUES 
-                    (:wallet, :rank, :name, :pseudonym, :profile_image, :pnl, :volume,
-                     :roi, :win_rate, :trades_count, :verified_badge, :raw_data, :created_at, :updated_at)
-                """),
-                data
-            )
-            return True, False
+            try:
+                await session.execute(
+                    text("""
+                        INSERT INTO trader_leaderboard 
+                        (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
+                         roi, win_rate, trades_count, verified_badge, raw_data, created_at, updated_at)
+                        VALUES 
+                        (:wallet, :rank, :name, :pseudonym, :profile_image, :pnl, :volume,
+                         :roi, :win_rate, :trades_count, :verified_badge, :raw_data, :created_at, :updated_at)
+                    """),
+                    data
+                )
+                return True, False
+            except Exception as insert_error:
+                # Log first insert error for debugging
+                if not hasattr(process_trader_record, '_insert_error_logged'):
+                    print(f"   ⚠️  Error inserting record: {insert_error}")
+                    print(f"      Wallet: {wallet_address}")
+                    print(f"      Data keys: {list(data.keys())}")
+                    process_trader_record._insert_error_logged = True
+                raise  # Re-raise to be caught by outer exception handler
             
     except Exception as e:
-        print(f"⚠️  Error processing trader record: {e}")
+        import traceback
+        if not hasattr(process_trader_record, '_error_logged'):
+            print(f"⚠️  Error processing trader record: {e}")
+            print(f"   Traceback: {traceback.format_exc()}")
+            process_trader_record._error_logged = True
         return False, False
 
 
@@ -391,15 +412,22 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
         
         # Process each trader
         for trader in traders:
-            inserted, updated = await process_trader_record(session, trader)
-            if inserted:
-                batch_inserted += 1
-                total_inserted += 1
-            elif updated:
-                batch_updated += 1
-                total_updated += 1
-            else:
-                batch_skipped += 1  # Invalid wallet address or other issue
+            try:
+                inserted, updated = await process_trader_record(session, trader)
+                if inserted:
+                    batch_inserted += 1
+                    total_inserted += 1
+                elif updated:
+                    batch_updated += 1
+                    total_updated += 1
+                else:
+                    batch_skipped += 1  # Invalid wallet address or other issue
+            except Exception as e:
+                batch_skipped += 1
+                # Log first few errors for debugging
+                if batch_skipped <= 3:
+                    wallet = trader.get("user") or trader.get("proxyWallet") or trader.get("wallet_address") or "unknown"
+                    print(f"      ⚠️  Error processing trader {wallet[:10]}...: {e}")
         
         # Commit batch
         try:
@@ -410,8 +438,24 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
             if batch_duplicates_in_response > 0:
                 status_msg += f" (⚠️ {batch_duplicates_in_response} duplicates from API)"
             print(status_msg)
+            
+            # Debug: If we're skipping all records, show why
+            if batch_inserted == 0 and batch_updated == 0 and batch_skipped == len(traders) and offset == 0:
+                print(f"   🔍 Debug: All {len(traders)} traders were skipped. Checking first trader...")
+                if traders:
+                    first_trader = traders[0]
+                    wallet = (
+                        first_trader.get("user") or
+                        first_trader.get("proxyWallet") or 
+                        first_trader.get("wallet_address") or 
+                        "NOT_FOUND"
+                    )
+                    print(f"      First trader wallet: {wallet}")
+                    print(f"      First trader keys: {list(first_trader.keys())[:10]}")
         except Exception as e:
+            import traceback
             print(f"   ❌ Error committing batch: {e}")
+            print(f"   Traceback: {traceback.format_exc()}")
             await session.rollback()
         
         # Check if we're seeing wallets we've already processed (API cycling)
@@ -524,20 +568,34 @@ async def main():
         )
         
         async with AsyncSessionLocal() as session:
-            # Check current database state
-            result = await session.execute(
-                text("SELECT COUNT(*) FROM trader_leaderboard")
-            )
-            existing_count = result.scalar()
+            # Test database connection and table
+            try:
+                result = await session.execute(text("SELECT 1"))
+                result.scalar()
+                print("✅ Database connection successful")
+            except Exception as e:
+                print(f"❌ Database connection failed: {e}")
+                raise
             
-            result_unique = await session.execute(
-                text("SELECT COUNT(DISTINCT wallet_address) FROM trader_leaderboard")
-            )
-            existing_unique = result_unique.scalar()
-            
-            print(f"📊 Current database state:")
-            print(f"   Total records: {existing_count}")
-            print(f"   Unique wallets: {existing_unique}\n")
+            # Verify table exists and is accessible
+            try:
+                result = await session.execute(
+                    text("SELECT COUNT(*) FROM trader_leaderboard")
+                )
+                existing_count = result.scalar()
+                
+                result_unique = await session.execute(
+                    text("SELECT COUNT(DISTINCT wallet_address) FROM trader_leaderboard")
+                )
+                existing_unique = result_unique.scalar()
+                
+                print(f"📊 Current database state:")
+                print(f"   Total records: {existing_count}")
+                print(f"   Unique wallets: {existing_unique}\n")
+            except Exception as e:
+                print(f"❌ Error accessing trader_leaderboard table: {e}")
+                print(f"   Make sure the table exists and is accessible")
+                raise
             
             # Fetch all data
             stats = await fetch_all_leaderboard_data(session)
