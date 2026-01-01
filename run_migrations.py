@@ -48,6 +48,22 @@ async def create_all_tables(engine):
 async def migrate_users_table(session):
     """Add missing columns to users table if needed."""
     try:
+        # First check if table exists
+        table_check = await session.execute(
+            text("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'users'
+                )
+            """)
+        )
+        table_exists = table_check.scalar()
+        
+        if not table_exists:
+            print("⚠️  Users table doesn't exist. It will be created in Step 1.")
+            return
+        
         # Check if password_hash column exists
         result = await session.execute(
             text("""

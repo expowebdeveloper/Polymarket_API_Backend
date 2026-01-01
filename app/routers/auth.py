@@ -21,33 +21,51 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     Creates a new user account with email, name, and password.
     Password is hashed before storage.
     """
-    # Check if user already exists
-    result = await db.execute(select(User).where(User.email == user_data.email))
-    existing_user = result.scalar_one_or_none()
-    
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+    try:
+        # Check if user already exists
+        result = await db.execute(select(User).where(User.email == user_data.email))
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Create new user
+        hashed_password = get_password_hash(user_data.password)
+        new_user = User(
+            email=user_data.email,
+            name=user_data.name,
+            password_hash=hashed_password
         )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_data.password)
-    new_user = User(
-        email=user_data.email,
-        name=user_data.name,
-        password_hash=hashed_password
-    )
-    
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    
-    return UserResponse(
-        id=new_user.id,
-        email=new_user.email,
-        name=new_user.name
-    )
+        
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        
+        return UserResponse(
+            id=new_user.id,
+            email=new_user.email,
+            name=new_user.name
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        # Check if it's a database column error
+        error_str = str(e).lower()
+        if "column" in error_str and "does not exist" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database schema error. Please run migrations: python run_migrations.py"
+            )
+        # Log the actual error for debugging
+        print(f"Registration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 
 @router.post("/login", response_model=Token)
