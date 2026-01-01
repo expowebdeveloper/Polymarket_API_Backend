@@ -102,7 +102,7 @@ async def main():
         # Check and create tables
         await check_tables_exist(engine)
         
-        # Check how many traders we have
+        # Create session factory for individual trader sessions
         AsyncSessionLocal = sessionmaker(
             autocommit=False,
             autoflush=False,
@@ -110,6 +110,11 @@ async def main():
             class_=AsyncSession
         )
         
+        # Create a session factory function that returns a context manager
+        def create_trader_session():
+            return AsyncSessionLocal()
+        
+        # Use a single session for reading trader list
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 text("SELECT COUNT(*) FROM trader_leaderboard")
@@ -122,8 +127,16 @@ async def main():
                 print("⚠️  No traders found in trader_leaderboard. Run fetch_leaderboard_data.py first.")
                 return
             
-            # Ask user if they want to process all or specific number
+            # Check command line arguments
+            force_refresh = '--force' in sys.argv or '--refresh-all' in sys.argv
+            
             print(f"\n🚀 Starting to fetch detailed data for all traders...")
+            if force_refresh:
+                print(f"   ⚠️  FORCE REFRESH MODE: Will fetch all data regardless of what exists")
+            else:
+                print(f"   ✅ INCREMENTAL MODE: Will only fetch new/updated data")
+                print(f"      - Profile/Value: Only if missing or older than 24 hours")
+                print(f"      - Activities/Closed Positions/Trades: Only new records after latest timestamp")
             print(f"   This will fetch: profile, value, positions, activity, closed positions, trades")
             print(f"   Processing {total_traders} traders...\n")
             
@@ -131,22 +144,37 @@ async def main():
             result = await fetch_and_save_all_traders_details(
                 session=session,
                 limit=None,  # Process all
-                offset=0
+                offset=0,
+                force_refresh=force_refresh,
+                session_factory=create_trader_session
             )
-            
-            await session.commit()
             
             # Print results
             print(f"\n{'='*60}")
             print(f"📊 FINAL STATISTICS")
             print(f"{'='*60}")
             print(f"Total traders processed:     {result['processed']}")
-            print(f"Profile stats saved:         {result['summary']['profile_saved']}")
-            print(f"Value data saved:            {result['summary']['value_saved']}")
-            print(f"Positions saved:             {result['summary']['total_positions_saved']}")
-            print(f"Activities saved:            {result['summary']['total_activities_saved']}")
-            print(f"Closed positions saved:      {result['summary']['total_closed_positions_saved']}")
-            print(f"Trades saved:                {result['summary']['total_trades_saved']}")
+            print(f"\n📥 Data Saved:")
+            print(f"   Profile stats saved:         {result['summary']['profile_saved']}")
+            print(f"   Value data saved:            {result['summary']['value_saved']}")
+            print(f"   Positions saved:             {result['summary']['total_positions_saved']}")
+            print(f"   Activities saved:            {result['summary']['total_activities_saved']}")
+            print(f"   Closed positions saved:      {result['summary']['total_closed_positions_saved']}")
+            print(f"   Trades saved:                {result['summary']['total_trades_saved']}")
+            
+            if not force_refresh and result['summary'].get('skipped'):
+                skipped = result['summary']['skipped']
+                print(f"\n⏭️  Skipped (already up-to-date):")
+                if skipped.get('profile', 0) > 0:
+                    print(f"   Profiles skipped:             {skipped['profile']}")
+                if skipped.get('value', 0) > 0:
+                    print(f"   Values skipped:               {skipped['value']}")
+                if skipped.get('activities', 0) > 0:
+                    print(f"   Activities skipped (no new):   {skipped['activities']}")
+                if skipped.get('closed_positions', 0) > 0:
+                    print(f"   Closed positions skipped:     {skipped['closed_positions']}")
+                if skipped.get('trades', 0) > 0:
+                    print(f"   Trades skipped (no new):       {skipped['trades']}")
             
             if result['summary']['errors']:
                 print(f"\n⚠️  Errors encountered: {len(result['summary']['errors'])}")

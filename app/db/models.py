@@ -565,3 +565,89 @@ class TraderTrade(Base):
     __table_args__ = (
         UniqueConstraint('trader_id', 'transaction_hash', 'timestamp', 'asset', name='uq_trader_trade_unique'),
     )
+
+
+class TraderCalculatedScore(Base):
+    """Table to store calculated scores for traders from trader_leaderboard."""
+    __tablename__ = "trader_calculated_scores"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    trader_id = Column(Integer, ForeignKey("trader_leaderboard.id"), nullable=False, index=True)
+    wallet_address = Column(String(42), nullable=False, index=True)  # For quick lookup
+    
+    # Basic metrics
+    rank = Column(Integer, nullable=True, index=True)
+    total_pnl = Column(Numeric(20, 8), nullable=True)
+    roi = Column(Numeric(10, 4), nullable=True)
+    win_rate = Column(Numeric(10, 4), nullable=True)
+    trades = Column(Integer, nullable=True)
+    
+    # Shrunk values
+    w_shrunk = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk = Column(Numeric(20, 10), nullable=True)
+    
+    # Scores
+    w_score = Column(Numeric(10, 6), nullable=True)
+    roi_score = Column(Numeric(10, 6), nullable=True)
+    pnl_score = Column(Numeric(10, 6), nullable=True)
+    risk_score = Column(Numeric(10, 6), nullable=True)
+    final_score = Column(Numeric(10, 4), nullable=True, index=True)
+    
+    # Additional metrics for reference
+    total_stakes = Column(Numeric(20, 8), nullable=True)
+    winning_stakes = Column(Numeric(20, 8), nullable=True)
+    sum_sq_stakes = Column(Numeric(20, 8), nullable=True)
+    max_stake = Column(Numeric(20, 8), nullable=True)
+    worst_loss = Column(Numeric(20, 8), nullable=True)
+    total_trades_with_pnl = Column(Integer, nullable=True)
+    winning_trades = Column(Integer, nullable=True)
+    
+    # Percentile anchors (for reference)
+    w_shrunk_1_percent = Column(Numeric(20, 10), nullable=True)
+    w_shrunk_99_percent = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk_1_percent = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk_99_percent = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk_1_percent = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk_99_percent = Column(Numeric(20, 10), nullable=True)
+    
+    # Timestamps
+    calculated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint('trader_id', name='uq_trader_calculated_score_trader'),
+    )
+
+
+class DailyVolumeLeaderboard(Base):
+    """Table to store daily volume leaderboard data from Polymarket API."""
+    __tablename__ = "daily_volume_leaderboard"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    wallet_address = Column(String(42), nullable=False, index=True)  # Wallet address (not unique, can have multiple entries)
+    
+    # Basic trader info
+    rank = Column(Integer, nullable=True)  # Rank from API
+    name = Column(String(255), nullable=True)  # User name (userName)
+    pseudonym = Column(String(255), nullable=True)  # User pseudonym (xUsername)
+    profile_image = Column(Text, nullable=True)  # Profile image URL (profileImage)
+    
+    # Core metrics from API
+    pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
+    volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
+    
+    # Additional fields from API
+    verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status
+    
+    # Store full API response as JSON
+    raw_data = Column(Text, nullable=True)  # Full API response as JSON string
+    
+    # Timestamps
+    fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        # Index on wallet_address and fetched_at for efficient queries
+    )

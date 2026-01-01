@@ -234,12 +234,15 @@ async def save_trader_value(session: AsyncSession, trader_id: int, value_data: D
 
 
 async def save_trader_positions(session: AsyncSession, trader_id: int, positions: List[Dict]) -> int:
-    """Save trader positions to database. Returns count of saved positions."""
-    saved_count = 0
+    """Save trader positions to database using batch insert. Returns count of saved positions."""
+    if not positions:
+        return 0
     
-    for pos_data in positions:
-        try:
-            pos_dict = {
+    try:
+        # Prepare all position dicts
+        pos_dicts = []
+        for pos_data in positions:
+            pos_dicts.append({
                 "trader_id": trader_id,
                 "asset": pos_data.get("asset", ""),
                 "condition_id": pos_data.get("conditionId", ""),
@@ -267,55 +270,65 @@ async def save_trader_positions(session: AsyncSession, trader_id: int, positions
                 "end_date": pos_data.get("endDate"),
                 "negative_risk": pos_data.get("negativeRisk", False),
                 "raw_data": json.dumps(pos_data)
-            }
-            
-            stmt = pg_insert(TraderPosition).values(**pos_dict)
+            })
+        
+        # Batch insert - process in chunks to avoid datetime issues
+        # SQLAlchemy batch insert can have issues with large lists and datetime defaults
+        chunk_size = 100
+        total_saved = 0
+        
+        for i in range(0, len(pos_dicts), chunk_size):
+            chunk = pos_dicts[i:i + chunk_size]
+            stmt = pg_insert(TraderPosition).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_trader_position_trader_asset_condition",
                 set_={
-                    "size": stmt.excluded.size,
-                    "avg_price": stmt.excluded.avg_price,
-                    "initial_value": stmt.excluded.initial_value,
-                    "current_value": stmt.excluded.current_value,
-                    "cash_pnl": stmt.excluded.cash_pnl,
-                    "percent_pnl": stmt.excluded.percent_pnl,
-                    "total_bought": stmt.excluded.total_bought,
-                    "realized_pnl": stmt.excluded.realized_pnl,
-                    "percent_realized_pnl": stmt.excluded.percent_realized_pnl,
-                    "cur_price": stmt.excluded.cur_price,
-                    "redeemable": stmt.excluded.redeemable,
-                    "mergeable": stmt.excluded.mergeable,
-                    "title": stmt.excluded.title,
-                    "slug": stmt.excluded.slug,
-                    "icon": stmt.excluded.icon,
-                    "event_id": stmt.excluded.event_id,
-                    "event_slug": stmt.excluded.event_slug,
-                    "outcome": stmt.excluded.outcome,
-                    "outcome_index": stmt.excluded.outcome_index,
-                    "opposite_outcome": stmt.excluded.opposite_outcome,
-                    "opposite_asset": stmt.excluded.opposite_asset,
-                    "end_date": stmt.excluded.end_date,
-                    "negative_risk": stmt.excluded.negative_risk,
-                    "raw_data": stmt.excluded.raw_data,
-                    "updated_at": text("NOW()")
-                }
+                "size": stmt.excluded.size,
+                "avg_price": stmt.excluded.avg_price,
+                "initial_value": stmt.excluded.initial_value,
+                "current_value": stmt.excluded.current_value,
+                "cash_pnl": stmt.excluded.cash_pnl,
+                "percent_pnl": stmt.excluded.percent_pnl,
+                "total_bought": stmt.excluded.total_bought,
+                "realized_pnl": stmt.excluded.realized_pnl,
+                "percent_realized_pnl": stmt.excluded.percent_realized_pnl,
+                "cur_price": stmt.excluded.cur_price,
+                "redeemable": stmt.excluded.redeemable,
+                "mergeable": stmt.excluded.mergeable,
+                "title": stmt.excluded.title,
+                "slug": stmt.excluded.slug,
+                "icon": stmt.excluded.icon,
+                "event_id": stmt.excluded.event_id,
+                "event_slug": stmt.excluded.event_slug,
+                "outcome": stmt.excluded.outcome,
+                "outcome_index": stmt.excluded.outcome_index,
+                "opposite_outcome": stmt.excluded.opposite_outcome,
+                "opposite_asset": stmt.excluded.opposite_asset,
+                "end_date": stmt.excluded.end_date,
+                "negative_risk": stmt.excluded.negative_risk,
+                "raw_data": stmt.excluded.raw_data,
+                "updated_at": text("NOW()")
+            }
             )
             await session.execute(stmt)
-            saved_count += 1
-        except Exception as e:
-            print(f"Error saving position: {e}")
-            continue
-    
-    return saved_count
+            total_saved += len(chunk)
+        
+        return total_saved
+    except Exception as e:
+        print(f"Error saving positions: {e}")
+        return 0
 
 
 async def save_trader_activities(session: AsyncSession, trader_id: int, activities: List[Dict]) -> int:
-    """Save trader activities to database. Returns count of saved activities."""
-    saved_count = 0
+    """Save trader activities to database using batch insert. Returns count of saved activities."""
+    if not activities:
+        return 0
     
-    for activity_data in activities:
-        try:
-            activity_dict = {
+    try:
+        # Prepare all activity dicts
+        activity_dicts = []
+        for activity_data in activities:
+            activity_dicts.append({
                 "trader_id": trader_id,
                 "timestamp": activity_data.get("timestamp", 0),
                 "condition_id": activity_data.get("conditionId") or None,
@@ -338,49 +351,58 @@ async def save_trader_activities(session: AsyncSession, trader_id: int, activiti
                 "profile_image": activity_data.get("profileImage"),
                 "profile_image_optimized": activity_data.get("profileImageOptimized"),
                 "raw_data": json.dumps(activity_data)
-            }
-            
-            stmt = pg_insert(TraderActivity).values(**activity_dict)
+            })
+        
+        # Batch insert - process in chunks to avoid datetime issues
+        chunk_size = 100
+        total_saved = 0
+        
+        for i in range(0, len(activity_dicts), chunk_size):
+            chunk = activity_dicts[i:i + chunk_size]
+            stmt = pg_insert(TraderActivity).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_trader_activity_unique",
                 set_={
-                    "type": stmt.excluded.type,
-                    "size": stmt.excluded.size,
-                    "usdc_size": stmt.excluded.usdc_size,
-                    "price": stmt.excluded.price,
-                    "asset": stmt.excluded.asset,
-                    "side": stmt.excluded.side,
-                    "outcome_index": stmt.excluded.outcome_index,
-                    "title": stmt.excluded.title,
-                    "slug": stmt.excluded.slug,
-                    "icon": stmt.excluded.icon,
-                    "event_slug": stmt.excluded.event_slug,
-                    "outcome": stmt.excluded.outcome,
-                    "name": stmt.excluded.name,
-                    "pseudonym": stmt.excluded.pseudonym,
-                    "bio": stmt.excluded.bio,
-                    "profile_image": stmt.excluded.profile_image,
-                    "profile_image_optimized": stmt.excluded.profile_image_optimized,
-                    "raw_data": stmt.excluded.raw_data,
-                    "updated_at": text("NOW()")
-                }
+                "type": stmt.excluded.type,
+                "size": stmt.excluded.size,
+                "usdc_size": stmt.excluded.usdc_size,
+                "price": stmt.excluded.price,
+                "asset": stmt.excluded.asset,
+                "side": stmt.excluded.side,
+                "outcome_index": stmt.excluded.outcome_index,
+                "title": stmt.excluded.title,
+                "slug": stmt.excluded.slug,
+                "icon": stmt.excluded.icon,
+                "event_slug": stmt.excluded.event_slug,
+                "outcome": stmt.excluded.outcome,
+                "name": stmt.excluded.name,
+                "pseudonym": stmt.excluded.pseudonym,
+                "bio": stmt.excluded.bio,
+                "profile_image": stmt.excluded.profile_image,
+                "profile_image_optimized": stmt.excluded.profile_image_optimized,
+                "raw_data": stmt.excluded.raw_data,
+                "updated_at": text("NOW()")
+            }
             )
             await session.execute(stmt)
-            saved_count += 1
-        except Exception as e:
-            print(f"Error saving activity: {e}")
-            continue
-    
-    return saved_count
+            total_saved += len(chunk)
+        
+        return total_saved
+    except Exception as e:
+        print(f"Error saving activities: {e}")
+        return 0
 
 
 async def save_trader_closed_positions(session: AsyncSession, trader_id: int, closed_positions: List[Dict]) -> int:
-    """Save trader closed positions to database. Returns count of saved positions."""
-    saved_count = 0
+    """Save trader closed positions to database using batch insert. Returns count of saved positions."""
+    if not closed_positions:
+        return 0
     
-    for cp_data in closed_positions:
-        try:
-            cp_dict = {
+    try:
+        # Prepare all closed position dicts
+        cp_dicts = []
+        for cp_data in closed_positions:
+            cp_dicts.append({
                 "trader_id": trader_id,
                 "asset": cp_data.get("asset", ""),
                 "condition_id": cp_data.get("conditionId", ""),
@@ -399,45 +421,54 @@ async def save_trader_closed_positions(session: AsyncSession, trader_id: int, cl
                 "end_date": cp_data.get("endDate"),
                 "timestamp": cp_data.get("timestamp", 0),
                 "raw_data": json.dumps(cp_data)
-            }
-            
-            stmt = pg_insert(TraderClosedPosition).values(**cp_dict)
+            })
+        
+        # Batch insert - process in chunks to avoid datetime issues
+        chunk_size = 100
+        total_saved = 0
+        
+        for i in range(0, len(cp_dicts), chunk_size):
+            chunk = cp_dicts[i:i + chunk_size]
+            stmt = pg_insert(TraderClosedPosition).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_trader_closed_position_unique",
                 set_={
-                    "avg_price": stmt.excluded.avg_price,
-                    "total_bought": stmt.excluded.total_bought,
-                    "realized_pnl": stmt.excluded.realized_pnl,
-                    "cur_price": stmt.excluded.cur_price,
-                    "title": stmt.excluded.title,
-                    "slug": stmt.excluded.slug,
-                    "icon": stmt.excluded.icon,
-                    "event_slug": stmt.excluded.event_slug,
-                    "outcome": stmt.excluded.outcome,
-                    "outcome_index": stmt.excluded.outcome_index,
-                    "opposite_outcome": stmt.excluded.opposite_outcome,
-                    "opposite_asset": stmt.excluded.opposite_asset,
-                    "end_date": stmt.excluded.end_date,
-                    "raw_data": stmt.excluded.raw_data,
-                    "updated_at": text("NOW()")
-                }
+                "avg_price": stmt.excluded.avg_price,
+                "total_bought": stmt.excluded.total_bought,
+                "realized_pnl": stmt.excluded.realized_pnl,
+                "cur_price": stmt.excluded.cur_price,
+                "title": stmt.excluded.title,
+                "slug": stmt.excluded.slug,
+                "icon": stmt.excluded.icon,
+                "event_slug": stmt.excluded.event_slug,
+                "outcome": stmt.excluded.outcome,
+                "outcome_index": stmt.excluded.outcome_index,
+                "opposite_outcome": stmt.excluded.opposite_outcome,
+                "opposite_asset": stmt.excluded.opposite_asset,
+                "end_date": stmt.excluded.end_date,
+                "raw_data": stmt.excluded.raw_data,
+                "updated_at": text("NOW()")
+            }
             )
             await session.execute(stmt)
-            saved_count += 1
-        except Exception as e:
-            print(f"Error saving closed position: {e}")
-            continue
-    
-    return saved_count
+            total_saved += len(chunk)
+        
+        return total_saved
+    except Exception as e:
+        print(f"Error saving closed positions: {e}")
+        return 0
 
 
 async def save_trader_trades(session: AsyncSession, trader_id: int, trades: List[Dict]) -> int:
-    """Save trader trades to database. Returns count of saved trades."""
-    saved_count = 0
+    """Save trader trades to database using batch insert. Returns count of saved trades."""
+    if not trades:
+        return 0
     
-    for trade_data in trades:
-        try:
-            trade_dict = {
+    try:
+        # Prepare all trade dicts
+        trade_dicts = []
+        for trade_data in trades:
+            trade_dicts.append({
                 "trader_id": trader_id,
                 "side": trade_data.get("side", ""),
                 "asset": trade_data.get("asset", ""),
@@ -458,51 +489,125 @@ async def save_trader_trades(session: AsyncSession, trader_id: int, trades: List
                 "profile_image_optimized": trade_data.get("profileImageOptimized"),
                 "transaction_hash": trade_data.get("transactionHash", ""),
                 "raw_data": json.dumps(trade_data)
-            }
-            
-            stmt = pg_insert(TraderTrade).values(**trade_dict)
+            })
+        
+        # Batch insert - process in chunks to avoid datetime issues
+        chunk_size = 100
+        total_saved = 0
+        
+        for i in range(0, len(trade_dicts), chunk_size):
+            chunk = trade_dicts[i:i + chunk_size]
+            stmt = pg_insert(TraderTrade).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_trader_trade_unique",
                 set_={
-                    "side": stmt.excluded.side,
-                    "size": stmt.excluded.size,
-                    "price": stmt.excluded.price,
-                    "title": stmt.excluded.title,
-                    "slug": stmt.excluded.slug,
-                    "icon": stmt.excluded.icon,
-                    "event_slug": stmt.excluded.event_slug,
-                    "outcome": stmt.excluded.outcome,
-                    "outcome_index": stmt.excluded.outcome_index,
-                    "name": stmt.excluded.name,
-                    "pseudonym": stmt.excluded.pseudonym,
-                    "bio": stmt.excluded.bio,
-                    "profile_image": stmt.excluded.profile_image,
-                    "profile_image_optimized": stmt.excluded.profile_image_optimized,
-                    "raw_data": stmt.excluded.raw_data,
-                    "updated_at": text("NOW()")
-                }
+                "side": stmt.excluded.side,
+                "size": stmt.excluded.size,
+                "price": stmt.excluded.price,
+                "title": stmt.excluded.title,
+                "slug": stmt.excluded.slug,
+                "icon": stmt.excluded.icon,
+                "event_slug": stmt.excluded.event_slug,
+                "outcome": stmt.excluded.outcome,
+                "outcome_index": stmt.excluded.outcome_index,
+                "name": stmt.excluded.name,
+                "pseudonym": stmt.excluded.pseudonym,
+                "bio": stmt.excluded.bio,
+                "profile_image": stmt.excluded.profile_image,
+                "profile_image_optimized": stmt.excluded.profile_image_optimized,
+                "raw_data": stmt.excluded.raw_data,
+                "updated_at": text("NOW()")
+            }
             )
             await session.execute(stmt)
-            saved_count += 1
-        except Exception as e:
-            print(f"Error saving trade: {e}")
-            continue
+            total_saved += len(chunk)
+        
+        return total_saved
+    except Exception as e:
+        print(f"Error saving trades: {e}")
+        return 0
+
+
+async def get_trader_data_status(session: AsyncSession, trader_id: int, max_age_hours: int = 24) -> Dict:
+    """
+    Get all trader data status in a single query for better performance.
+    Returns dict with:
+    - profile_needs_update: bool
+    - value_needs_update: bool
+    - latest_activity_ts: Optional[int]
+    - latest_closed_pos_ts: Optional[int]
+    - latest_trade_ts: Optional[int]
+    """
+    from datetime import datetime, timedelta
+    cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
     
-    return saved_count
+    result = await session.execute(
+        text("""
+            SELECT 
+                (SELECT updated_at FROM trader_profile WHERE trader_id = :trader_id) as profile_updated,
+                (SELECT updated_at FROM trader_value WHERE trader_id = :trader_id) as value_updated,
+                (SELECT MAX(timestamp) FROM trader_activity WHERE trader_id = :trader_id) as latest_activity,
+                (SELECT MAX(timestamp) FROM trader_closed_positions WHERE trader_id = :trader_id) as latest_closed_pos,
+                (SELECT MAX(timestamp) FROM trader_trades WHERE trader_id = :trader_id) as latest_trade
+        """),
+        {"trader_id": trader_id}
+    )
+    row = result.fetchone()
+    
+    profile_updated = row[0] if row else None
+    value_updated = row[1] if row else None
+    latest_activity = row[2] if row else None
+    latest_closed_pos = row[3] if row else None
+    latest_trade = row[4] if row else None
+    
+    return {
+        "profile_needs_update": profile_updated is None or (isinstance(profile_updated, datetime) and profile_updated < cutoff_time),
+        "value_needs_update": value_updated is None or (isinstance(value_updated, datetime) and value_updated < cutoff_time),
+        "latest_activity_ts": int(latest_activity) if latest_activity is not None else None,
+        "latest_closed_pos_ts": int(latest_closed_pos) if latest_closed_pos is not None else None,
+        "latest_trade_ts": int(latest_trade) if latest_trade is not None else None
+    }
+
+
+async def filter_new_activities(activities: List[Dict], latest_timestamp: Optional[int]) -> List[Dict]:
+    """Filter activities to only include new ones (after latest_timestamp)."""
+    if latest_timestamp is None:
+        return activities  # No existing data, return all
+    
+    return [a for a in activities if a.get("timestamp", 0) > latest_timestamp]
+
+
+async def filter_new_closed_positions(closed_positions: List[Dict], latest_timestamp: Optional[int]) -> List[Dict]:
+    """Filter closed positions to only include new ones (after latest_timestamp)."""
+    if latest_timestamp is None:
+        return closed_positions  # No existing data, return all
+    
+    return [cp for cp in closed_positions if cp.get("timestamp", 0) > latest_timestamp]
+
+
+async def filter_new_trades(trades: List[Dict], latest_timestamp: Optional[int]) -> List[Dict]:
+    """Filter trades to only include new ones (after latest_timestamp)."""
+    if latest_timestamp is None:
+        return trades  # No existing data, return all
+    
+    return [t for t in trades if t.get("timestamp", 0) > latest_timestamp]
 
 
 async def fetch_and_save_trader_details(
     session: AsyncSession,
     trader_id: Optional[int] = None,
-    wallet_address: Optional[str] = None
+    wallet_address: Optional[str] = None,
+    force_refresh: bool = False
 ) -> Dict[str, any]:
     """
     Fetch and save all detailed trader data from Polymarket APIs.
+    Only fetches new/updated data to avoid unnecessary API calls.
     
     Args:
         session: Database session
         trader_id: Trader ID from trader_leaderboard table
         wallet_address: Wallet address (used if trader_id not provided)
+        force_refresh: If True, fetch all data regardless of what exists
     
     Returns:
         Dict with counts of saved records for each data type
@@ -540,67 +645,138 @@ async def fetch_and_save_trader_details(
         "activities_saved": 0,
         "closed_positions_saved": 0,
         "trades_saved": 0,
+        "skipped": {
+            "profile": False,
+            "value": False,
+            "activities": False,
+            "closed_positions": False,
+            "trades": False
+        },
         "errors": []
     }
     
-    # Fetch all data in parallel
-    try:
-        profile_data, value_data, positions, activities, closed_positions, trades = await asyncio.gather(
-            fetch_trader_profile_stats(wallet_address),
-            fetch_trader_value(wallet_address),
-            fetch_trader_positions(wallet_address),
-            fetch_trader_activity(wallet_address),
-            fetch_trader_closed_positions(wallet_address),
-            fetch_trader_trades(wallet_address),
-            return_exceptions=True
-        )
+    # Get all data status in a single query (much faster than 5 separate queries)
+    if force_refresh:
+        data_status = {
+            "profile_needs_update": True,
+            "value_needs_update": True,
+            "latest_activity_ts": None,
+            "latest_closed_pos_ts": None,
+            "latest_trade_ts": None
+        }
+    else:
+        data_status = await get_trader_data_status(session, trader_id)
+    
+    fetch_profile = data_status["profile_needs_update"]
+    fetch_value = data_status["value_needs_update"]
+    latest_activity_ts = data_status["latest_activity_ts"]
+    latest_closed_pos_ts = data_status["latest_closed_pos_ts"]
+    latest_trade_ts = data_status["latest_trade_ts"]
+    
+    # Initialize data variables
+    profile_data = None
+    value_data = None
+    positions = []
+    activities = []
+    closed_positions = []
+    trades = []
+    
+    # Build fetch tasks for data that needs to be fetched
+    fetch_tasks = []
+    
+    if fetch_profile:
+        fetch_tasks.append(("profile", fetch_trader_profile_stats(wallet_address)))
+    else:
+        results["skipped"]["profile"] = True
+    
+    if fetch_value:
+        fetch_tasks.append(("value", fetch_trader_value(wallet_address)))
+    else:
+        results["skipped"]["value"] = True
+    
+    # Always fetch positions (they can change)
+    fetch_tasks.append(("positions", fetch_trader_positions(wallet_address)))
+    
+    # For time-based data, always fetch but we'll filter later
+    if latest_activity_ts is None:
+        # No existing data, fetch all
+        fetch_tasks.append(("activities", fetch_trader_activity(wallet_address)))
+    else:
+        # Have existing data, fetch all but filter to new ones only
+        fetch_tasks.append(("activities", fetch_trader_activity(wallet_address)))
+        results["skipped"]["activities"] = True  # Will filter, not skip entirely
+    
+    if latest_closed_pos_ts is None:
+        fetch_tasks.append(("closed_positions", fetch_trader_closed_positions(wallet_address)))
+    else:
+        fetch_tasks.append(("closed_positions", fetch_trader_closed_positions(wallet_address)))
+        results["skipped"]["closed_positions"] = True
+    
+    if latest_trade_ts is None:
+        fetch_tasks.append(("trades", fetch_trader_trades(wallet_address)))
+    else:
+        fetch_tasks.append(("trades", fetch_trader_trades(wallet_address)))
+        results["skipped"]["trades"] = True
+    
+    # Execute all fetch tasks in parallel
+    if fetch_tasks:
+        task_names, tasks = zip(*fetch_tasks)
+        fetched_data = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Handle exceptions
-        if isinstance(profile_data, Exception):
-            results["errors"].append(f"Profile fetch error: {profile_data}")
-            profile_data = None
-        if isinstance(value_data, Exception):
-            results["errors"].append(f"Value fetch error: {value_data}")
-            value_data = None
-        if isinstance(positions, Exception):
-            results["errors"].append(f"Positions fetch error: {positions}")
-            positions = []
-        if isinstance(activities, Exception):
-            results["errors"].append(f"Activities fetch error: {activities}")
-            activities = []
-        if isinstance(closed_positions, Exception):
-            results["errors"].append(f"Closed positions fetch error: {closed_positions}")
-            closed_positions = []
-        if isinstance(trades, Exception):
-            results["errors"].append(f"Trades fetch error: {trades}")
-            trades = []
-        
-        # Save profile
-        if profile_data:
-            results["profile_saved"] = await save_trader_profile(session, trader_id, profile_data)
-        
-        # Save value
-        if value_data:
-            results["value_saved"] = await save_trader_value(session, trader_id, value_data)
-        
-        # Save positions
-        if positions:
-            results["positions_saved"] = await save_trader_positions(session, trader_id, positions)
-        
-        # Save activities
-        if activities:
-            results["activities_saved"] = await save_trader_activities(session, trader_id, activities)
-        
-        # Save closed positions
-        if closed_positions:
-            results["closed_positions_saved"] = await save_trader_closed_positions(session, trader_id, closed_positions)
-        
-        # Save trades
-        if trades:
-            results["trades_saved"] = await save_trader_trades(session, trader_id, trades)
-        
-    except Exception as e:
-        results["errors"].append(f"Fatal error: {e}")
+        # Process results
+        for name, data in zip(task_names, fetched_data):
+            if isinstance(data, Exception):
+                results["errors"].append(f"{name} fetch error: {data}")
+                continue
+            
+            if name == "profile":
+                profile_data = data
+            elif name == "value":
+                value_data = data
+            elif name == "positions":
+                positions = data if data else []
+            elif name == "activities":
+                if latest_activity_ts is not None:
+                    # Filter to only new activities
+                    activities = await filter_new_activities(data if data else [], latest_activity_ts)
+                else:
+                    activities = data if data else []
+            elif name == "closed_positions":
+                if latest_closed_pos_ts is not None:
+                    # Filter to only new closed positions
+                    closed_positions = await filter_new_closed_positions(data if data else [], latest_closed_pos_ts)
+                else:
+                    closed_positions = data if data else []
+            elif name == "trades":
+                if latest_trade_ts is not None:
+                    # Filter to only new trades
+                    trades = await filter_new_trades(data if data else [], latest_trade_ts)
+                else:
+                    trades = data if data else []
+    
+    # Save profile
+    if profile_data:
+        results["profile_saved"] = await save_trader_profile(session, trader_id, profile_data)
+    
+    # Save value
+    if value_data:
+        results["value_saved"] = await save_trader_value(session, trader_id, value_data)
+    
+    # Save positions
+    if positions:
+        results["positions_saved"] = await save_trader_positions(session, trader_id, positions)
+    
+    # Save activities (only new ones)
+    if activities:
+        results["activities_saved"] = await save_trader_activities(session, trader_id, activities)
+    
+    # Save closed positions (only new ones)
+    if closed_positions:
+        results["closed_positions_saved"] = await save_trader_closed_positions(session, trader_id, closed_positions)
+    
+    # Save trades (only new ones)
+    if trades:
+        results["trades_saved"] = await save_trader_trades(session, trader_id, trades)
     
     return results
 
@@ -608,15 +784,18 @@ async def fetch_and_save_trader_details(
 async def fetch_and_save_all_traders_details(
     session: AsyncSession,
     limit: Optional[int] = None,
-    offset: int = 0
+    offset: int = 0,
+    force_refresh: bool = False,
+    session_factory = None
 ) -> Dict[str, any]:
     """
     Fetch and save detailed data for all traders in trader_leaderboard.
     
     Args:
-        session: Database session
+        session: Database session (used only for reading trader list)
         limit: Maximum number of traders to process (None = all)
         offset: Offset for pagination
+        session_factory: Optional session factory to create individual sessions per trader
     
     Returns:
         Dict with summary statistics
@@ -650,52 +829,99 @@ async def fetch_and_save_all_traders_details(
         "errors": []
     }
     
-    # Process traders with concurrency limit
-    semaphore = asyncio.Semaphore(5)  # Limit concurrent API calls
+    # Process traders with concurrency limit (increased for better performance)
+    semaphore = asyncio.Semaphore(15)  # Increased from 5 to 15 for faster processing
+    
+    skipped_counts = {
+        "profile": 0,
+        "value": 0,
+        "activities": 0,
+        "closed_positions": 0,
+        "trades": 0
+    }
     
     async def process_trader(trader_id: int, wallet: str):
         async with semaphore:
-            try:
-                result = await fetch_and_save_trader_details(
-                    session, trader_id=trader_id, wallet_address=wallet
-                )
+            # Create a separate session for each trader to avoid concurrent operation errors
+            if session_factory:
+                async with session_factory() as trader_session:
+                    try:
+                        result = await fetch_and_save_trader_details(
+                            trader_session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh
+                        )
+                        
+                        # Check for errors in result
+                        if "error" in result:
+                            await trader_session.rollback()
+                            summary["errors"].append(f"Error processing trader {trader_id}: {result['error']}")
+                            return False
+                        
+                        # Commit this trader's transaction
+                        await trader_session.commit()
+                    except Exception as e:
+                        await trader_session.rollback()
+                        summary["errors"].append(f"Error processing trader {trader_id}: {e}")
+                        return False
+            else:
+                # Fallback: use shared session but process sequentially
+                try:
+                    result = await fetch_and_save_trader_details(
+                        session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh
+                    )
+                    
+                    if "error" in result:
+                        summary["errors"].append(f"Error processing trader {trader_id}: {result['error']}")
+                        return False
+                except Exception as e:
+                    summary["errors"].append(f"Error processing trader {trader_id}: {e}")
+                    return False
+            
+            # If we get here, trader processed successfully
+            if result.get("profile_saved"):
+                summary["profile_saved"] += 1
+            elif result.get("skipped", {}).get("profile"):
+                skipped_counts["profile"] += 1
                 
-                if result.get("profile_saved"):
-                    summary["profile_saved"] += 1
-                if result.get("value_saved"):
-                    summary["value_saved"] += 1
-                summary["total_positions_saved"] += result.get("positions_saved", 0)
-                summary["total_activities_saved"] += result.get("activities_saved", 0)
-                summary["total_closed_positions_saved"] += result.get("closed_positions_saved", 0)
-                summary["total_trades_saved"] += result.get("trades_saved", 0)
+            if result.get("value_saved"):
+                summary["value_saved"] += 1
+            elif result.get("skipped", {}).get("value"):
+                skipped_counts["value"] += 1
                 
-                if result.get("errors"):
-                    summary["errors"].extend(result["errors"])
-                
-                return True
-            except Exception as e:
-                summary["errors"].append(f"Error processing trader {trader_id}: {e}")
-                return False
+            summary["total_positions_saved"] += result.get("positions_saved", 0)
+            
+            activities_saved = result.get("activities_saved", 0)
+            summary["total_activities_saved"] += activities_saved
+            if activities_saved == 0 and result.get("skipped", {}).get("activities"):
+                skipped_counts["activities"] += 1
+            
+            closed_pos_saved = result.get("closed_positions_saved", 0)
+            summary["total_closed_positions_saved"] += closed_pos_saved
+            if closed_pos_saved == 0 and result.get("skipped", {}).get("closed_positions"):
+                skipped_counts["closed_positions"] += 1
+            
+            trades_saved = result.get("trades_saved", 0)
+            summary["total_trades_saved"] += trades_saved
+            if trades_saved == 0 and result.get("skipped", {}).get("trades"):
+                skipped_counts["trades"] += 1
+            
+            if result.get("errors"):
+                summary["errors"].extend(result["errors"])
+            
+            return True
     
-    # Process in batches
-    batch_size = 20
+    # Process in batches (increased for better performance)
+    batch_size = 50  # Increased from 20 to 50
     for i in range(0, len(traders), batch_size):
         batch = traders[i:i + batch_size]
         tasks = [process_trader(trader_id, wallet) for trader_id, wallet in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         total_processed += sum(1 for r in results if r is True)
         
-        # Commit after each batch
-        try:
-            await session.commit()
-        except Exception as e:
-            await session.rollback()
-            summary["errors"].append(f"Batch commit error: {e}")
-        
-        # Small delay between batches
+        # Small delay between batches (reduced from 0.5s to 0.1s)
         if i + batch_size < len(traders):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
     
+    summary["skipped"] = skipped_counts
     return {
         "total_traders": len(traders),
         "processed": total_processed,

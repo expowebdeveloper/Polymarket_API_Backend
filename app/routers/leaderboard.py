@@ -1575,4 +1575,97 @@ async def fetch_trader_details(
         )
 
 
+@router.get(
+    "/daily-volume",
+    response_model=LeaderboardResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Daily Volume Leaderboard from Database",
+    description="Get daily volume leaderboard data from database with pagination, sorted by volume descending"
+)
+async def get_daily_volume_leaderboard(
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get daily volume leaderboard from database.
+    
+    Returns traders ranked by volume (descending) with pagination.
+    Data is fetched from daily_volume_leaderboard table.
+    """
+    try:
+        # Query database for daily volume leaderboard, sorted by volume descending
+        result = await db.execute(
+            text("""
+                SELECT 
+                    rank,
+                    wallet_address,
+                    name,
+                    pseudonym,
+                    profile_image,
+                    pnl,
+                    volume,
+                    verified_badge,
+                    raw_data
+                FROM daily_volume_leaderboard
+                WHERE volume IS NOT NULL
+                ORDER BY volume DESC
+                LIMIT :limit OFFSET :offset
+            """),
+            {"limit": limit, "offset": offset}
+        )
+        
+        rows = result.fetchall()
+        
+        # Get total count
+        count_result = await db.execute(
+            text("SELECT COUNT(*) FROM daily_volume_leaderboard WHERE volume IS NOT NULL")
+        )
+        total_count = count_result.scalar()
+        
+        # Transform to LeaderboardEntry format
+        entries = []
+        for idx, row in enumerate(rows):
+            # Calculate rank based on offset (since we're sorting by volume DESC)
+            actual_rank = offset + idx + 1
+            
+            entry = LeaderboardEntry(
+                rank=row.rank if row.rank is not None else actual_rank,
+                wallet_address=row.wallet_address,
+                name=row.name,
+                pseudonym=row.pseudonym,
+                profile_image=row.profile_image,
+                total_pnl=float(row.pnl) if row.pnl is not None else 0.0,
+                roi=0.0,  # Not available in daily volume leaderboard
+                win_rate=0.0,  # Not available in daily volume leaderboard
+                total_trades=0,  # Not available in daily volume leaderboard
+                total_trades_with_pnl=0,
+                winning_trades=0,
+                total_stakes=float(row.volume) if row.volume is not None else 0.0,
+                score_win_rate=0.0,
+                score_roi=0.0,
+                score_pnl=0.0,
+                score_risk=0.0,
+                final_score=0.0
+            )
+            entries.append(entry)
+        
+        return LeaderboardResponse(
+            period="day",
+            metric="volume",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error fetching daily volume leaderboard: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching daily volume leaderboard: {str(e)}"
+        )
+
+
 # Force reload trigger
