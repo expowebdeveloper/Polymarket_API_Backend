@@ -647,7 +647,32 @@ class DailyVolumeLeaderboard(Base):
     fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class MonthlyVolumeLeaderboard(Base):
+    """Table to store monthly volume leaderboard data from Polymarket API."""
+    __tablename__ = "monthly_volume_leaderboard"
     
-    __table_args__ = (
-        # Index on wallet_address and fetched_at for efficient queries
-    )
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    wallet_address = Column(String(42), nullable=False, index=True)  # Wallet address
+    
+    # Basic trader info
+    rank = Column(Integer, nullable=True)  # Rank from API
+    name = Column(String(255), nullable=True)  # User name (userName)
+    pseudonym = Column(String(255), nullable=True)  # User pseudonym (xUsername)
+    profile_image = Column(Text, nullable=True)  # Profile image URL (profileImage)
+    
+    # Core metrics from API
+    pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
+    volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
+    
+    # Additional fields from API
+    verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status
+    
+    # Store full API response as JSON
+    raw_data = Column(Text, nullable=True)  # Full API response as JSON string
+    
+    # Timestamps
+    fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

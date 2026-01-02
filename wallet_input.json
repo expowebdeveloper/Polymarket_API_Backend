@@ -1,59 +1,69 @@
 {
   "wallet_addresses": [
-    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b",
-    "0xc2e7800b5af46e6093872b177b7a5e7f0563be51",
-    "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee",
-    "0x7b6c6d1279098054b0c630a4b871002a7cd46305",
-    "0x16b29c50f2439faf627209b2ac0c7bbddaa8a881",
-    "0x060e94156048701cbf65b8e567ffe96b11742384",
-    "0xd0b4c4c020abdc88ad9a884f999f3d8cff8ffed6",
-    "0x92672c80d36dcd08172aa1e51dface0f20b70f9a",
-    "0x492442eab586f242b53bda933fd5de859c8a3782",
-    "0x98f7207b2461aaa89f89945ddc1f0bee628fb3e4",
-    "0xee613b3fc183ee44f9da9c05f53e2da107e3debf",
-    "0x03524d9d00cffe5004d1d270edfea7b3109e3292",
-    "0xff7a60d840941f4a93aef4f2f8038b72bfea4c4c",
-    "0xc65ca4755436f82d8eb461e65781584b8cadea39",
-    "0x84cb17a50bc2487e8d64029783c3d2abcba328ad",
-    "0x204f72f35326db932158cba6adff0b9a1da95e14",
-    "0xd4a39d991be98be710df1318a8f1fe70cde70848",
-    "0xa6eeff2dbfc36c9a178598b7c1e14e1f4d9a697b",
-    "0x94d71d0d28709da91fd44c7d89da272fe86dbef5",
-    "0xedc8b2023897dad9df5b2f47ce79b2cdf1b6cca9",
-    "0xab19716584931d81cd9e7763402673a64baa4876",
-    "0x3a613cdb8f00f7afe0196cbbb91bdb597383b560",
-    "0x3b5a307f9b679922a105fe9f55013b0d05babb9b",
+    "0x6480542954b70a674a74bd1a6015dec362dc8dc5",
     "0x961afce6bd9aec79c5cf09d2d4dac2b434b23361",
-    "0x2720b14efddbffce3ce75a27c1d5eae58fb61a66",
-    "0x69ea0d77ef34f1acb03aaed901df7620fc4215cd",
-    "0x8cbb318b8863898f0907dee7113453eb75faacb2",
-    "0xd538574dea2cf51f8b0168e95be0e9802ee2cc31",
-    "0x79ac5210ddb41476ba20e9be7928534593c24377",
-    "0xf705fa045201391d9632b7f3cde06a5e24453ca7",
-    "0x654d71273300544faa06940ef2f7e8be3ff58e3e",
-    "0xc257ea7e3a81ca8e16df8935d44d513959fa358e",
-    "0x8ad71d502126d9531bf0a8ba4c7ae24281e0c55b",
-    "0xb55216ed55337cf9443139e4e5cace56426694a8",
-    "0x777d9f00c2b4f7b829c9de0049ca3e707db05143",
-    "0xac75b6e590720a394364f2a1580b68a2fbe51319",
-    "0x110fbd0fe39eb16204e7f90e956cc995a64f8f39",
-    "0x3d7710f91dbc7efcaaf0a37f305c42a6deacabd5",
-    "0xe734d5a008576905ec700019e530a7cc8da88f6a",
-    "0x91654fd592ea5339fc0b1b2f2b30bfffa5e75b98",
-    "0x6b9088be3898f1bcb7add8a174bdf1c7295c2194",
-    "0xd6a3f0ec6c4a8ad680d580610c82ca57ff139489",
-    "0xa81eefec9c08fa157d855f1ac5caf8feab1903dc",
-    "0x6ade597c0e2b43c0bf3542cada8a5e330d73f5b0",
-    "0x65cdbbe0fa6975f641d37afeb32b9d9680151e0b",
-    "0x87759d85b293bc20bc360094dd512525716ba018",
-    "0x56c9fbdeccf198f1f5ad95ace39b24f5f7fb0d9e",
-    "0xead152b855effa6b5b5837f53b24c0756830c76a",
-    "0x0940a70f216e2fd077f4f01044c4152f05e13640",
-    "0x2005d16a84ceefa912d4e380cd32e7ff827875ea"
+    "0xce5bec63b40392845a9a504915f607c8e03a047a",
+    "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2",
+    "0xea8ee311382139d952087a669252252625663de0",
+    "0xc8ab97a9089a9ff7e6ef0688e6e591a066946418",
+    "0x7f69983eb28245bba0d5083502a78744a8f66162",
+    "0x9efda3d6354152901fc4706c3b1a9ce50b45ad00",
+    "0x492442eab586f242b53bda933fd5de859c8a3782",
+    "0xc2e7800b5af46e6093872b177b7a5e7f0563be51",
+    "0xdd572169e741c72227589c5cb56b9ddd638d694d",
+    "0x507e52ef684ca2dd91f90a9d26d149dd3288beae",
+    "0x16b29c50f2439faf627209b2ac0c7bbddaa8a881",
+    "0xebaa7568c8934e897856c004667b02535d52abac",
+    "0xed107a85a4585a381e48c7f7ca4144909e7dd2e5",
+    "0xdd9ed02bb67b2ec504be24b98febd651fdac49b3",
+    "0x1802555002d20d6313e22eb88e91e7473a0ad00f",
+    "0x6031b6eed1c97e853c6e0f03ad3ce3529351f96d",
+    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b",
+    "0x95074f700f93bdf6e62fc965e0832064c0877b04"
   ],
   "wallet_info": {
-    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b": {
-      "name": "bossoskil",
+    "0x6480542954b70a674a74bd1a6015dec362dc8dc5": {
+      "name": "tripping",
+      "pseudonym": null,
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-2136195-6a15a210-77e7-4450-bf86-06670c61864d.jpeg"
+    },
+    "0x961afce6bd9aec79c5cf09d2d4dac2b434b23361": {
+      "name": "CRYINGLITTLEBABY",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xce5bec63b40392845a9a504915f607c8e03a047a": {
+      "name": "Nexuus",
+      "pseudonym": null,
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3129737-dccfd038-0349-4c5a-b838-723a4d74bd46.png"
+    },
+    "0xe90bec87d9ef430f27f9dcfe72c34b76967d5da2": {
+      "name": "gmanas",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0xea8ee311382139d952087a669252252625663de0": {
+      "name": "Yukaii",
+      "pseudonym": null,
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3199909-775d82ba-9930-414d-9d6d-a839dd18f7e1.png"
+    },
+    "0xc8ab97a9089a9ff7e6ef0688e6e591a066946418": {
+      "name": "ArmageddonRewardsBilly",
+      "pseudonym": "Eltonma",
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/rewardsiconbilly_637fb65a-1112-49bc-9376-3fb6d377cde0_1738970845400.png"
+    },
+    "0x7f69983eb28245bba0d5083502a78744a8f66162": {
+      "name": "Account88888",
+      "pseudonym": null,
+      "profile_image": null
+    },
+    "0x9efda3d6354152901fc4706c3b1a9ce50b45ad00": {
+      "name": "Istaroth",
+      "pseudonym": "Iridium1911",
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-634212-8372fc4a-8aa3-41dd-9af5-282009ec88cf.jpg"
+    },
+    "0x492442eab586f242b53bda933fd5de859c8a3782": {
+      "name": "0x492442EaB586F242B53bDa933fD5dE859c8A3782-1766317541188",
       "pseudonym": null,
       "profile_image": null
     },
@@ -62,245 +72,55 @@
       "pseudonym": null,
       "profile_image": null
     },
-    "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee": {
-      "name": "kch123",
+    "0xdd572169e741c72227589c5cb56b9ddd638d694d": {
+      "name": "Igniss",
       "pseudonym": null,
-      "profile_image": null
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3239882-03365989-febf-4bdc-a29f-607a8c5a6603.jpg"
     },
-    "0x7b6c6d1279098054b0c630a4b871002a7cd46305": {
-      "name": "eschaworldchampion2026",
+    "0x507e52ef684ca2dd91f90a9d26d149dd3288beae": {
+      "name": "GamblingIsAllYouNeed",
       "pseudonym": null,
-      "profile_image": null
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-4070827-b30f95ed-6835-4ac6-a456-f066d6968f97.png"
     },
     "0x16b29c50f2439faf627209b2ac0c7bbddaa8a881": {
       "name": "SeriouslySirius",
       "pseudonym": null,
       "profile_image": null
     },
-    "0x060e94156048701cbf65b8e567ffe96b11742384": {
-      "name": "OkinawaMoongazer",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-4293594-aed245d0-e4c0-4ae0-b864-86e98f849f2d.jpg"
-    },
-    "0xd0b4c4c020abdc88ad9a884f999f3d8cff8ffed6": {
-      "name": "MrSparklySimpsons",
+    "0xebaa7568c8934e897856c004667b02535d52abac": {
+      "name": "Bomzhkolyadun",
       "pseudonym": null,
       "profile_image": null
     },
-    "0x92672c80d36dcd08172aa1e51dface0f20b70f9a": {
-      "name": "ckw",
+    "0xed107a85a4585a381e48c7f7ca4144909e7dd2e5": {
+      "name": "bobe2",
       "pseudonym": null,
       "profile_image": null
     },
-    "0x492442eab586f242b53bda933fd5de859c8a3782": {
-      "name": "0x492442EaB586F242B53bDa933fD5dE859c8A3782-1766317541188",
+    "0xdd9ed02bb67b2ec504be24b98febd651fdac49b3": {
+      "name": "ElonMuxk",
+      "pseudonym": null,
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-1281116-4273be1b-6534-43a4-99fa-e0c4b0b1fef5.webp"
+    },
+    "0x1802555002d20d6313e22eb88e91e7473a0ad00f": {
+      "name": "FadetheRockies",
       "pseudonym": null,
       "profile_image": null
     },
-    "0x98f7207b2461aaa89f89945ddc1f0bee628fb3e4": {
-      "name": "gogo12fs",
+    "0x6031b6eed1c97e853c6e0f03ad3ce3529351f96d": {
+      "name": "gabagool22",
       "pseudonym": null,
       "profile_image": null
     },
-    "0xee613b3fc183ee44f9da9c05f53e2da107e3debf": {
-      "name": "sovereign2013",
+    "0x0d3b10b8eac8b089c6e4a695e65d8e044167c46b": {
+      "name": "bossoskil",
       "pseudonym": null,
       "profile_image": null
     },
-    "0x03524d9d00cffe5004d1d270edfea7b3109e3292": {
-      "name": "Woyaofadacaila",
+    "0x95074f700f93bdf6e62fc965e0832064c0877b04": {
+      "name": "0x95074f700F93Bdf6E62fc965e0832064c0877B04-1767170389673",
       "pseudonym": null,
       "profile_image": null
-    },
-    "0xff7a60d840941f4a93aef4f2f8038b72bfea4c4c": {
-      "name": "0x4eaf7dcb9f11c58de328c77cedef77eaf",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xc65ca4755436f82d8eb461e65781584b8cadea39": {
-      "name": "LOOKINGBACK",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-4485992-d60bff11-312c-4668-b06d-96a33e7067e7.jpg"
-    },
-    "0x84cb17a50bc2487e8d64029783c3d2abcba328ad": {
-      "name": "Mikee12",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x204f72f35326db932158cba6adff0b9a1da95e14": {
-      "name": "swisstony",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xd4a39d991be98be710df1318a8f1fe70cde70848": {
-      "name": "0xd4a39d991be98be710df1318a8f1fe70cde70848",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xa6eeff2dbfc36c9a178598b7c1e14e1f4d9a697b": {
-      "name": "ccccccccccccccccccccccccccccccccccc",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x94d71d0d28709da91fd44c7d89da272fe86dbef5": {
-      "name": "JMMMMM",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3672621-3b474e5c-c296-47e8-9abc-1e7681ecbca9.jpeg"
-    },
-    "0xedc8b2023897dad9df5b2f47ce79b2cdf1b6cca9": {
-      "name": "qwertyuiopbvfcdxgh",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xab19716584931d81cd9e7763402673a64baa4876": {
-      "name": "SlenderMan",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x3a613cdb8f00f7afe0196cbbb91bdb597383b560": {
-      "name": "0x3a613cdb8f00f7afe0196cbbb91bdb597383b560",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x3b5a307f9b679922a105fe9f55013b0d05babb9b": {
-      "name": "Gh0stTradez",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x961afce6bd9aec79c5cf09d2d4dac2b434b23361": {
-      "name": "CRYINGLITTLEBABY",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x2720b14efddbffce3ce75a27c1d5eae58fb61a66": {
-      "name": "jewlsun",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x69ea0d77ef34f1acb03aaed901df7620fc4215cd": {
-      "name": "TylerTurden",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3085007-0198aa94-52a9-4cfb-b708-596ee64b36af.png"
-    },
-    "0x8cbb318b8863898f0907dee7113453eb75faacb2": {
-      "name": "0x8cbb318B8863898f0907deE7113453EB75FaACB2-1763215592534",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xd538574dea2cf51f8b0168e95be0e9802ee2cc31": {
-      "name": "icryptoscholar",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x79ac5210ddb41476ba20e9be7928534593c24377": {
-      "name": "BigBallsBill",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xf705fa045201391d9632b7f3cde06a5e24453ca7": {
-      "name": "0xf705fa045201391d9632b7f3cde06a5e24453ca7",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x654d71273300544faa06940ef2f7e8be3ff58e3e": {
-      "name": "Lesoo",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xc257ea7e3a81ca8e16df8935d44d513959fa358e": {
-      "name": "0xC257Ea7e3A81cA8e16dF8935d44d513959fA358e-1767221709856",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x8ad71d502126d9531bf0a8ba4c7ae24281e0c55b": {
-      "name": "imgone",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xb55216ed55337cf9443139e4e5cace56426694a8": {
-      "name": "KirksCousin",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x777d9f00c2b4f7b829c9de0049ca3e707db05143": {
-      "name": "CarlosMC",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xac75b6e590720a394364f2a1580b68a2fbe51319": {
-      "name": "monkeyfish69",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x110fbd0fe39eb16204e7f90e956cc995a64f8f39": {
-      "name": "sadsag",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x3d7710f91dbc7efcaaf0a37f305c42a6deacabd5": {
-      "name": "Mewin",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xe734d5a008576905ec700019e530a7cc8da88f6a": {
-      "name": "G1MAIN",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x91654fd592ea5339fc0b1b2f2b30bfffa5e75b98": {
-      "name": "C.SIN",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x6b9088be3898f1bcb7add8a174bdf1c7295c2194": {
-      "name": "banepir",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xd6a3f0ec6c4a8ad680d580610c82ca57ff139489": {
-      "name": "knedloveprovelo",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xa81eefec9c08fa157d855f1ac5caf8feab1903dc": {
-      "name": "Snow-White",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3747554-78121b6d-028e-4b9a-823b-e643e663ea93.jpg"
-    },
-    "0x6ade597c0e2b43c0bf3542cada8a5e330d73f5b0": {
-      "name": "TheOnlyHuman",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3880352-2c848d1c-d674-41af-a677-157d83998b8b.gif"
-    },
-    "0x65cdbbe0fa6975f641d37afeb32b9d9680151e0b": {
-      "name": "0x65CdbBe0fa6975f641D37AFeb32b9D9680151e0b-1744492852175",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x87759d85b293bc20bc360094dd512525716ba018": {
-      "name": "Kryptonitew",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x56c9fbdeccf198f1f5ad95ace39b24f5f7fb0d9e": {
-      "name": "redvinny",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0xead152b855effa6b5b5837f53b24c0756830c76a": {
-      "name": "elkmonkey",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x0940a70f216e2fd077f4f01044c4152f05e13640": {
-      "name": "jgages",
-      "pseudonym": null,
-      "profile_image": null
-    },
-    "0x2005d16a84ceefa912d4e380cd32e7ff827875ea": {
-      "name": "RN1",
-      "pseudonym": null,
-      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-1567750-84001aec-310a-470f-9584-67dfcaa61267.png"
     }
   }
 }

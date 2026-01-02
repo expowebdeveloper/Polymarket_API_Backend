@@ -4,6 +4,7 @@ import asyncio
 from fastapi import APIRouter, Query, HTTPException, status, Depends, Body
 from fastapi.responses import JSONResponse
 from typing import Literal, List, Optional
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from app.schemas.leaderboard import LeaderboardResponse, LeaderboardEntry, AllLeaderboardsResponse, PercentileInfo, MedianInfo
@@ -1587,6 +1588,7 @@ async def fetch_trader_details(
 async def get_daily_volume_leaderboard(
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1596,9 +1598,11 @@ async def get_daily_volume_leaderboard(
     Data is fetched from daily_volume_leaderboard table.
     """
     try:
+        sort_column = "volume" if order_by == "VOL" else "pnl"
+        
         # Query database for daily volume leaderboard, sorted by volume descending
         result = await db.execute(
-            text("""
+            text(f"""
                 SELECT 
                     rank,
                     wallet_address,
@@ -1610,8 +1614,8 @@ async def get_daily_volume_leaderboard(
                     verified_badge,
                     raw_data
                 FROM daily_volume_leaderboard
-                WHERE volume IS NOT NULL
-                ORDER BY volume DESC
+                WHERE {sort_column} IS NOT NULL
+                ORDER BY {sort_column} DESC
                 LIMIT :limit OFFSET :offset
             """),
             {"limit": limit, "offset": offset}
@@ -1621,7 +1625,7 @@ async def get_daily_volume_leaderboard(
         
         # Get total count
         count_result = await db.execute(
-            text("SELECT COUNT(*) FROM daily_volume_leaderboard WHERE volume IS NOT NULL")
+            text(f"SELECT COUNT(*) FROM daily_volume_leaderboard WHERE {sort_column} IS NOT NULL")
         )
         total_count = count_result.scalar()
         
@@ -1632,7 +1636,7 @@ async def get_daily_volume_leaderboard(
             actual_rank = offset + idx + 1
             
             entry = LeaderboardEntry(
-                rank=row.rank if row.rank is not None else actual_rank,
+                rank=actual_rank,
                 wallet_address=row.wallet_address,
                 name=row.name,
                 pseudonym=row.pseudonym,
@@ -1665,6 +1669,102 @@ async def get_daily_volume_leaderboard(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching daily volume leaderboard: {str(e)}"
+        )
+
+
+@router.get(
+    "/monthly-volume",
+    response_model=LeaderboardResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Monthly Volume Leaderboard from Database",
+    description="Get monthly volume leaderboard data from database with pagination, sorted by volume descending"
+)
+async def get_monthly_volume_leaderboard(
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get monthly volume leaderboard from database.
+    
+    Returns traders ranked by volume (descending) with pagination.
+    Data is fetched from monthly_volume_leaderboard table.
+    """
+    try:
+        sort_column = "volume" if order_by == "VOL" else "pnl"
+        
+        # Query database for monthly volume leaderboard, sorted by chosen metric descending
+        result = await db.execute(
+            text(f"""
+                SELECT 
+                    rank,
+                    wallet_address,
+                    name,
+                    pseudonym,
+                    profile_image,
+                    pnl,
+                    volume,
+                    verified_badge,
+                    raw_data
+                FROM monthly_volume_leaderboard
+                WHERE {sort_column} IS NOT NULL
+                ORDER BY {sort_column} DESC
+                LIMIT :limit OFFSET :offset
+            """),
+            {"limit": limit, "offset": offset}
+        )
+        
+        rows = result.fetchall()
+        
+        # Get total count
+        count_result = await db.execute(
+            text(f"SELECT COUNT(*) FROM monthly_volume_leaderboard WHERE {sort_column} IS NOT NULL")
+        )
+        total_count = count_result.scalar()
+        
+        # Transform to LeaderboardEntry format
+        entries = []
+        for idx, row in enumerate(rows):
+            # Calculate rank based on offset
+            actual_rank = offset + idx + 1
+            
+            entry = LeaderboardEntry(
+                rank=actual_rank,
+                wallet_address=row.wallet_address,
+                name=row.name,
+                pseudonym=row.pseudonym,
+                profile_image=row.profile_image,
+                total_pnl=float(row.pnl) if row.pnl is not None else 0.0,
+                roi=0.0,
+                win_rate=0.0,
+                total_trades=0,
+                total_trades_with_pnl=0,
+                winning_trades=0,
+                total_stakes=float(row.volume) if row.volume is not None else 0.0,
+                score_win_rate=0.0,
+                score_roi=0.0,
+                score_pnl=0.0,
+                score_risk=0.0,
+                final_score=0.0
+            )
+            entries.append(entry)
+        
+        return LeaderboardResponse(
+            period="month",
+            metric="volume",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error fetching monthly volume leaderboard: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching monthly volume leaderboard: {str(e)}"
         )
 
 
