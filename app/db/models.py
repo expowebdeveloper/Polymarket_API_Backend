@@ -637,6 +637,74 @@ class DailyVolumeLeaderboard(Base):
     pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
     volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
     
+    # Advanced metrics (calculated)
+    roi = Column(Numeric(10, 4), nullable=True)
+    win_rate = Column(Numeric(10, 4), nullable=True)
+    total_trades = Column(Integer, nullable=True)
+    total_trades_with_pnl = Column(Integer, nullable=True)
+    winning_trades = Column(Integer, nullable=True)
+    total_stakes = Column(Numeric(20, 8), nullable=True)
+    
+    # Scores
+    score_win_rate = Column(Numeric(10, 6), nullable=True)
+    score_roi = Column(Numeric(10, 6), nullable=True)
+    score_pnl = Column(Numeric(10, 6), nullable=True)
+    score_risk = Column(Numeric(10, 6), nullable=True)
+    final_score = Column(Numeric(10, 4), nullable=True, index=True)
+    
+    # Shrunk values
+    w_shrunk = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk = Column(Numeric(20, 10), nullable=True)
+    
+    # Additional fields from API
+    verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status
+    
+    # Store full API response as JSON
+    raw_data = Column(Text, nullable=True)  # Full API response as JSON string
+    
+    # Timestamps
+    fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+class WeeklyVolumeLeaderboard(Base):
+    """Table to store weekly volume leaderboard data from Polymarket API."""
+    __tablename__ = "weekly_volume_leaderboard"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    wallet_address = Column(String(42), nullable=False, index=True)  # Wallet address
+    
+    # Basic trader info
+    rank = Column(Integer, nullable=True)  # Rank from API
+    name = Column(String(255), nullable=True)  # User name (userName)
+    pseudonym = Column(String(255), nullable=True)  # User pseudonym (xUsername)
+    profile_image = Column(Text, nullable=True)  # Profile image URL (profileImage)
+    
+    # Core metrics from API
+    pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
+    volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
+    
+    # Advanced metrics (calculated)
+    roi = Column(Numeric(10, 4), nullable=True)
+    win_rate = Column(Numeric(10, 4), nullable=True)
+    total_trades = Column(Integer, nullable=True)
+    total_trades_with_pnl = Column(Integer, nullable=True)
+    winning_trades = Column(Integer, nullable=True)
+    total_stakes = Column(Numeric(20, 8), nullable=True)
+    
+    # Scores
+    score_win_rate = Column(Numeric(10, 6), nullable=True)
+    score_roi = Column(Numeric(10, 6), nullable=True)
+    score_pnl = Column(Numeric(10, 6), nullable=True)
+    score_risk = Column(Numeric(10, 6), nullable=True)
+    final_score = Column(Numeric(10, 4), nullable=True, index=True)
+    
+    # Shrunk values
+    w_shrunk = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk = Column(Numeric(20, 10), nullable=True)
+    
     # Additional fields from API
     verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status
     
@@ -665,6 +733,26 @@ class MonthlyVolumeLeaderboard(Base):
     # Core metrics from API
     pnl = Column(Numeric(20, 8), nullable=True)  # Profit and Loss
     volume = Column(Numeric(20, 8), nullable=True)  # Trading volume (vol)
+    
+    # Advanced metrics (calculated)
+    roi = Column(Numeric(10, 4), nullable=True)
+    win_rate = Column(Numeric(10, 4), nullable=True)
+    total_trades = Column(Integer, nullable=True)
+    total_trades_with_pnl = Column(Integer, nullable=True)
+    winning_trades = Column(Integer, nullable=True)
+    total_stakes = Column(Numeric(20, 8), nullable=True)
+    
+    # Scores
+    score_win_rate = Column(Numeric(10, 6), nullable=True)
+    score_roi = Column(Numeric(10, 6), nullable=True)
+    score_pnl = Column(Numeric(10, 6), nullable=True)
+    score_risk = Column(Numeric(10, 6), nullable=True)
+    final_score = Column(Numeric(10, 4), nullable=True, index=True)
+    
+    # Shrunk values
+    w_shrunk = Column(Numeric(20, 10), nullable=True)
+    roi_shrunk = Column(Numeric(20, 10), nullable=True)
+    pnl_shrunk = Column(Numeric(20, 10), nullable=True)
     
     # Additional fields from API
     verified_badge = Column(Boolean, nullable=True, default=False)  # Verified badge status

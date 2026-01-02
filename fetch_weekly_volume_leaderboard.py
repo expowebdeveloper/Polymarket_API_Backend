@@ -1,5 +1,11 @@
 """
-Script to fetch monthly volume leaderboard data from Polymarket API and store in database.
+Script to fetch weekly volume leaderboard data from Polymarket API and store in database.
+
+This script:
+1. Fetches data from https://data-api.polymarket.com/v1/leaderboard?timePeriod=week&orderBy=VOL&offset=0
+2. Stores it in weekly_volume_leaderboard table
+3. Clears table before each run to ensure data freshness
+4. Handles pagination to fetch all records
 """
 
 import asyncio
@@ -11,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
-from app.db.models import MonthlyVolumeLeaderboard, Base
+from app.db.models import WeeklyVolumeLeaderboard, Base
 from app.services.data_fetcher import async_client
 from app.services.polymarket_service import PolymarketService
 from app.services.live_leaderboard_service import transform_stats_for_scoring
@@ -20,23 +26,24 @@ from app.services.leaderboard_service import calculate_scores_and_rank
 
 # Configuration
 API_BASE_URL = "https://data-api.polymarket.com/v1/leaderboard"
-TIME_PERIOD = "month"
+TIME_PERIOD = "week"
 ORDER_BY = "VOL"
-LIMIT = 50  # Records per page
+LIMIT = 50  # Records per page (API maximum is 50)
 MAX_RETRIES = 3
-RETRY_DELAY = 2
-SCORING_LIMIT = 1000000  # Practically unlimited - score all fetched traders
-CONCURRENCY_LIMIT = 10  # Increased concurrency for large batches
+RETRY_DELAY = 10
+SCORING_LIMIT = 200  # Calculate scores for top 200 traders
+CONCURRENCY_LIMIT = 5
+# seconds
 
 
 async def check_table_exists(engine) -> bool:
-    """Check if monthly_volume_leaderboard table exists."""
+    """Check if weekly_volume_leaderboard table exists."""
     async with engine.begin() as conn:
         result = await conn.execute(
             text("""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_name = 'monthly_volume_leaderboard'
+                    WHERE table_name = 'weekly_volume_leaderboard'
                 )
             """)
         )
@@ -44,22 +51,22 @@ async def check_table_exists(engine) -> bool:
 
 
 async def create_table(engine):
-    """Create monthly_volume_leaderboard table if it doesn't exist."""
+    """Create weekly_volume_leaderboard table if it doesn't exist."""
     table_exists = await check_table_exists(engine)
     
     if not table_exists:
-        print("Creating monthly_volume_leaderboard table...")
+        print("Creating weekly_volume_leaderboard table...")
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all, tables=[MonthlyVolumeLeaderboard.__table__])
+            await conn.run_sync(Base.metadata.create_all, tables=[WeeklyVolumeLeaderboard.__table__])
         print("✅ Table created successfully!")
     else:
-        print("✅ Table monthly_volume_leaderboard already exists")
+        print("✅ Table weekly_volume_leaderboard already exists")
 
 
 async def clear_table(session: AsyncSession):
-    """Clear all records from monthly_volume_leaderboard table."""
-    print("🧹 Clearing existing data from monthly_volume_leaderboard...")
-    await session.execute(text("TRUNCATE TABLE monthly_volume_leaderboard"))
+    """Clear all records from weekly_volume_leaderboard table."""
+    print("🧹 Clearing existing data from weekly_volume_leaderboard...")
+    await session.execute(text("TRUNCATE TABLE weekly_volume_leaderboard"))
     await session.commit()
     print("✅ Table cleared")
 
@@ -71,6 +78,9 @@ async def fetch_leaderboard_page(
     offset: int = 0,
     retry_count: int = 0
 ) -> Optional[List[Dict]]:
+    """
+    Fetch a single page of leaderboard data from the API.
+    """
     try:
         params = {
             "timePeriod": time_period,
@@ -83,32 +93,40 @@ async def fetch_leaderboard_page(
         response.raise_for_status()
         data = response.json()
         
+        # Handle list response
         if isinstance(data, list):
             return data
         elif isinstance(data, dict):
+            # Try to extract data from dict
             if "data" in data:
                 return data["data"]
             elif "traders" in data:
                 return data["traders"]
             else:
+                print(f"⚠️  Warning: Unexpected response format at offset {offset}")
                 return []
         else:
+            print(f"⚠️  Warning: API returned unexpected data type at offset {offset}: {type(data)}")
             return []
             
     except Exception as e:
         if retry_count < MAX_RETRIES:
-            print(f"⚠️ Error fetching offset {offset} (attempt {retry_count + 1}/{MAX_RETRIES}): {e}")
+            print(f"⚠️  Error fetching offset {offset} (attempt {retry_count + 1}/{MAX_RETRIES}): {e}")
             await asyncio.sleep(RETRY_DELAY * (retry_count + 1))
             return await fetch_leaderboard_page(
                 time_period, order_by, limit, offset, retry_count + 1
             )
         else:
-            print(f"❌ Failed to fetch offset {offset}: {e}")
+            print(f"❌ Failed to fetch offset {offset} after {MAX_RETRIES} retries: {e}")
             return None
 
 
 async def process_trader_record(session: AsyncSession, trader_data: Dict, fetched_at: datetime) -> bool:
+    """
+    Process a single trader record: insert into database.
+    """
     try:
+        # Extract wallet address
         wallet_address = (
             trader_data.get("proxyWallet") or 
             trader_data.get("proxy_wallet") or
@@ -122,6 +140,7 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
         
         wallet_address = wallet_address.lower()
         
+        # Extract fields
         rank = trader_data.get("rank")
         name = trader_data.get("userName") or trader_data.get("name")
         pseudonym = trader_data.get("xUsername") or trader_data.get("pseudonym")
@@ -130,15 +149,21 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
         volume = trader_data.get("vol") or trader_data.get("volume")
         verified_badge = trader_data.get("verifiedBadge") or trader_data.get("verified_badge", False)
         
-        if pnl is not None: pnl = float(pnl)
-        if volume is not None: volume = float(volume)
-        if rank is not None: rank = int(rank)
+        # Convert to appropriate types
+        if pnl is not None:
+            pnl = float(pnl)
+        if volume is not None:
+            volume = float(volume)
+        if rank is not None:
+            rank = int(rank)
         
+        # Store full API response as JSON
         raw_data = json.dumps(trader_data)
         
+        # Insert record
         await session.execute(
             text("""
-                INSERT INTO monthly_volume_leaderboard 
+                INSERT INTO weekly_volume_leaderboard 
                 (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
                  roi, win_rate, total_trades, total_trades_with_pnl, winning_trades, total_stakes,
                  score_win_rate, score_roi, score_pnl, score_risk, final_score,
@@ -184,45 +209,86 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
             }
         )
         return True
+            
     except Exception as e:
-        print(f"⚠️ Error processing record: {e}")
+        print(f"⚠️  Error processing trader record: {e}")
         return False
 
 
 async def fetch_all_leaderboard_data(session: AsyncSession):
+    """
+    Fetch all leaderboard data from the API with pagination.
+    """
     offset = 0
     total_fetched = 0
     total_inserted = 0
-    fetched_at = datetime.utcnow()
+    failed_offsets = []
+    fetched_at = datetime.utcnow()  # Use same timestamp for all records in this run
     
-    print(f"\n🚀 Fetching monthly volume leaderboard data...")
+    print(f"\n🚀 Starting to fetch weekly volume leaderboard data...")
+    print(f"📋 Configuration: timePeriod={TIME_PERIOD}, orderBy={ORDER_BY}, limit={LIMIT}\n")
     
     while True:
-        traders = await fetch_leaderboard_page(offset=offset)
+        print(f"📥 Fetching offset {offset}...", end=" ")
         
-        if traders is None or len(traders) == 0:
+        # Fetch page
+        traders = await fetch_leaderboard_page(
+            time_period=TIME_PERIOD,
+            order_by=ORDER_BY,
+            limit=LIMIT,
+            offset=offset
+        )
+        
+        if traders is None:
+            # Failed after retries
+            failed_offsets.append(offset)
+            print(f"❌ Failed")
+            offset += LIMIT
+            continue
+        
+        if len(traders) == 0:
+            print(f"✅ No more data (empty response)")
             break
         
-        print(f"📥 Fetched offset {offset} ({len(traders)} traders)")
+        print(f"✅ Fetched {len(traders)} traders")
+        
         total_fetched += len(traders)
         
+        # Process each trader
         batch_inserted = 0
         for trader in traders:
             if await process_trader_record(session, trader, fetched_at):
                 batch_inserted += 1
                 total_inserted += 1
         
+        # Commit batch
         try:
             await session.commit()
+            print(f"   💾 Committed: {batch_inserted} inserted")
         except Exception as e:
-            print(f"❌ Commit error: {e}")
+            print(f"   ❌ Error committing batch: {e}")
             await session.rollback()
         
+        # Stop if we got fewer records than requested (definitely no more data)
         if len(traders) < LIMIT:
+            print(f"✅ Reached end of data (returned {len(traders)} < {LIMIT})")
             break
         
+        # Move to next page
         offset += LIMIT
+        
+        # Small delay to avoid rate limiting
         await asyncio.sleep(0.5)
+    
+    # Print final statistics
+    print(f"\n{'='*60}")
+    print(f"📊 FINAL STATISTICS")
+    print(f"{'='*60}")
+    print(f"Total traders fetched:     {total_fetched}")
+    print(f"Total records inserted:     {total_inserted}")
+    print(f"Final offset reached:       {offset}")
+    print(f"Failed offsets:             {len(failed_offsets)}")
+    print(f"{'='*60}\n")
     
     print(f"\n✅ Stats: Fetched {total_fetched}, Inserted {total_inserted}")
     
@@ -233,7 +299,8 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
         
         # Get top traders from DB
         result = await session.execute(
-            text("SELECT wallet_address, rank, name, pseudonym, profile_image, pnl, volume, raw_data FROM monthly_volume_leaderboard ORDER BY volume DESC")
+            text("SELECT wallet_address, rank, name, pseudonym, profile_image, pnl, volume, raw_data FROM weekly_volume_leaderboard ORDER BY volume DESC LIMIT :limit"),
+            {"limit": SCORING_LIMIT}
         )
         rows = result.fetchall()
         
@@ -243,8 +310,8 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
             async with semaphore:
                 try:
                     wallet = row.wallet_address
-                    # Fetch stats for a month
-                    stats = await PolymarketService.calculate_portfolio_stats(wallet, time_period="month")
+                    # Fetch stats for a week
+                    stats = await PolymarketService.calculate_portfolio_stats(wallet, time_period="week")
                     if stats is None:
                         return None
                     
@@ -278,7 +345,7 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
             for trader in ranked_results:
                 await session.execute(
                     text("""
-                        UPDATE monthly_volume_leaderboard 
+                        UPDATE weekly_volume_leaderboard 
                         SET roi = :roi, 
                             win_rate = :win_rate, 
                             total_trades = :total_trades,
@@ -315,21 +382,58 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
                 )
             
             await session.commit()
-            print("✅ Monthly Volume Leaderboard updated with advanced scores!")
+            print("✅ Weekly Volume Leaderboard updated with advanced scores!")
     
     return total_inserted
 
 
 async def main():
-    engine = create_async_engine(settings.DATABASE_URL)
+    """Main function to run the ingestion script."""
+    print("="*60)
+    print("Polymarket Weekly Volume Leaderboard Data Ingestion Script")
+    print("="*60)
+    
+    # Create database engine
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False
+    )
+    
     try:
+        # Check and create table
         await create_table(engine)
-        AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+        
+        # Create session
+        AsyncSessionLocal = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=engine,
+            class_=AsyncSession
+        )
+        
         async with AsyncSessionLocal() as session:
             # Clear existing data
             await clear_table(session)
             
-            await fetch_all_leaderboard_data(session)
+            # Fetch all data
+            stats = await fetch_all_leaderboard_data(session)
+            
+            # Verify final count
+            result = await session.execute(
+                text("SELECT COUNT(*) FROM weekly_volume_leaderboard")
+            )
+            total_in_db = result.scalar()
+            
+            print(f"\n✅ Final database state:")
+            print(f"   Total records: {total_in_db}")
+        
+        print("\n✅ Script completed successfully!")
+        
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
     finally:
         await engine.dispose()
 

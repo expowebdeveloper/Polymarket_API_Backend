@@ -101,7 +101,11 @@ async def fetch_trader_positions(wallet_address: str) -> List[Dict]:
         
         return data if isinstance(data, list) else []
     except Exception as e:
-        print(f"Error fetching positions for {wallet_address}: {e}")
+        error_msg = str(e)
+        if hasattr(e, 'response'):
+            error_msg += f" (Status: {e.response.status_code}, Body: {e.response.text})"
+        
+        print(f"Error fetching positions for {wallet_address}: {error_msg}")
         return []
 
 
@@ -201,10 +205,12 @@ async def save_trader_profile(session: AsyncSession, trader_id: int, profile_dat
                 "updated_at": text("NOW()")
             }
         )
-        await session.execute(stmt)
+        async with session.begin_nested():
+            await session.execute(stmt)
         return True
     except Exception as e:
-        print(f"Error saving trader profile: {e}")
+        # Log specific error if possible to help debug
+        print(f"Error saving trader profile: {str(e)[:200]}")
         return False
 
 
@@ -226,10 +232,11 @@ async def save_trader_value(session: AsyncSession, trader_id: int, value_data: D
                 "updated_at": text("NOW()")
             }
         )
-        await session.execute(stmt)
+        async with session.begin_nested():
+            await session.execute(stmt)
         return True
     except Exception as e:
-        print(f"Error saving trader value: {e}")
+        print(f"Error saving trader value: {str(e)[:200]}")
         return False
 
 
@@ -272,6 +279,15 @@ async def save_trader_positions(session: AsyncSession, trader_id: int, positions
                 "raw_data": json.dumps(pos_data)
             })
         
+        # Deduplicate positions based on unique constraint (trader_id, asset, condition_id)
+        # Keep the last one encountered (or first, doesn't matter if identical)
+        unique_pos = {}
+        for pos in pos_dicts:
+            key = (pos["trader_id"], pos["asset"], pos["condition_id"])
+            unique_pos[key] = pos
+        
+        pos_dicts = list(unique_pos.values())
+        
         # Batch insert - process in chunks to avoid datetime issues
         # SQLAlchemy batch insert can have issues with large lists and datetime defaults
         chunk_size = 100
@@ -310,13 +326,15 @@ async def save_trader_positions(session: AsyncSession, trader_id: int, positions
                 "updated_at": text("NOW()")
             }
             )
-            await session.execute(stmt)
+            async with session.begin_nested():
+                await session.execute(stmt)
             total_saved += len(chunk)
         
         return total_saved
     except Exception as e:
-        print(f"Error saving positions: {e}")
-        return 0
+        print(f"Error saving positions: {str(e)[:200]}")
+        # Return what we've saved so far instead of 0
+        return total_saved
 
 
 async def save_trader_activities(session: AsyncSession, trader_id: int, activities: List[Dict]) -> int:
@@ -353,6 +371,15 @@ async def save_trader_activities(session: AsyncSession, trader_id: int, activiti
                 "raw_data": json.dumps(activity_data)
             })
         
+        # Deduplicate activities based on unique constraint (trader_id, transaction_hash, timestamp, condition_id)
+        unique_activities = {}
+        for act in activity_dicts:
+            # Use tuple key for uniqueness
+            key = (act["trader_id"], act["transaction_hash"], act["timestamp"], act.get("condition_id"))
+            unique_activities[key] = act
+            
+        activity_dicts = list(unique_activities.values())
+        
         # Batch insert - process in chunks to avoid datetime issues
         chunk_size = 100
         total_saved = 0
@@ -384,13 +411,14 @@ async def save_trader_activities(session: AsyncSession, trader_id: int, activiti
                 "updated_at": text("NOW()")
             }
             )
-            await session.execute(stmt)
+            async with session.begin_nested():
+                await session.execute(stmt)
             total_saved += len(chunk)
         
         return total_saved
     except Exception as e:
-        print(f"Error saving activities: {e}")
-        return 0
+        print(f"Error saving activities: {str(e)[:200]}")
+        return total_saved
 
 
 async def save_trader_closed_positions(session: AsyncSession, trader_id: int, closed_positions: List[Dict]) -> int:
@@ -423,6 +451,14 @@ async def save_trader_closed_positions(session: AsyncSession, trader_id: int, cl
                 "raw_data": json.dumps(cp_data)
             })
         
+        # Deduplicate closed positions based on unique constraint (trader_id, asset, condition_id, timestamp)
+        unique_cp = {}
+        for cp in cp_dicts:
+            key = (cp["trader_id"], cp["asset"], cp["condition_id"], cp["timestamp"])
+            unique_cp[key] = cp
+            
+        cp_dicts = list(unique_cp.values())
+        
         # Batch insert - process in chunks to avoid datetime issues
         chunk_size = 100
         total_saved = 0
@@ -450,13 +486,14 @@ async def save_trader_closed_positions(session: AsyncSession, trader_id: int, cl
                 "updated_at": text("NOW()")
             }
             )
-            await session.execute(stmt)
+            async with session.begin_nested():
+                await session.execute(stmt)
             total_saved += len(chunk)
         
         return total_saved
     except Exception as e:
-        print(f"Error saving closed positions: {e}")
-        return 0
+        print(f"Error saving closed positions: {str(e)[:200]}")
+        return total_saved
 
 
 async def save_trader_trades(session: AsyncSession, trader_id: int, trades: List[Dict]) -> int:
@@ -491,6 +528,14 @@ async def save_trader_trades(session: AsyncSession, trader_id: int, trades: List
                 "raw_data": json.dumps(trade_data)
             })
         
+        # Deduplicate trades based on unique constraint (trader_id, transaction_hash, timestamp, asset)
+        unique_trades = {}
+        for trade in trade_dicts:
+            key = (trade["trader_id"], trade["transaction_hash"], trade["timestamp"], trade["asset"])
+            unique_trades[key] = trade
+            
+        trade_dicts = list(unique_trades.values())
+        
         # Batch insert - process in chunks to avoid datetime issues
         chunk_size = 100
         total_saved = 0
@@ -519,13 +564,14 @@ async def save_trader_trades(session: AsyncSession, trader_id: int, trades: List
                 "updated_at": text("NOW()")
             }
             )
-            await session.execute(stmt)
+            async with session.begin_nested():
+                await session.execute(stmt)
             total_saved += len(chunk)
         
         return total_saved
     except Exception as e:
-        print(f"Error saving trades: {e}")
-        return 0
+        print(f"Error saving trades: {str(e)[:200]}")
+        return total_saved
 
 
 async def get_trader_data_status(session: AsyncSession, trader_id: int, max_age_hours: int = 24) -> Dict:
@@ -829,8 +875,8 @@ async def fetch_and_save_all_traders_details(
         "errors": []
     }
     
-    # Process traders with concurrency limit (increased for better performance)
-    semaphore = asyncio.Semaphore(15)  # Increased from 5 to 15 for faster processing
+    # Process traders with concurrency limit (reduced to avoid rate limits)
+    semaphore = asyncio.Semaphore(5)  # Reduced from 15 to 5
     
     skipped_counts = {
         "profile": 0,
@@ -909,17 +955,17 @@ async def fetch_and_save_all_traders_details(
             
             return True
     
-    # Process in batches (increased for better performance)
-    batch_size = 50  # Increased from 20 to 50
+    # Process in batches (reduced for better stability)
+    batch_size = 20  # Reduced from 50 to 20
     for i in range(0, len(traders), batch_size):
         batch = traders[i:i + batch_size]
         tasks = [process_trader(trader_id, wallet) for trader_id, wallet in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         total_processed += sum(1 for r in results if r is True)
         
-        # Small delay between batches (reduced from 0.5s to 0.1s)
+        # Delay between batches (increased from 0.1s to 1.0s)
         if i + batch_size < len(traders):
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1.0)
     
     summary["skipped"] = skipped_counts
     return {

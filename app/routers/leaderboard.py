@@ -465,7 +465,7 @@ async def get_live_leaderboard_from_file(
     Returns ranked results from Polymarket's live API.
     """
     try:
-        # Fetch from Polymarket API
+        # 1. Fetch from Polymarket API to get the current ranked list of wallets
         api_data = await fetch_polymarket_leaderboard_api(
             time_period=time_period,
             order_by=order_by,
@@ -474,18 +474,39 @@ async def get_live_leaderboard_from_file(
             category="overall"
         )
         
-        # Extract wallet addresses and save to wallet_input.json
-        wallet_addresses, wallet_info_map = await fetch_wallet_addresses_from_live_leaderboard(
-            time_period=time_period,
-            order_by=order_by,
-            limit=limit
-        )
-        if wallet_addresses:
-            save_wallet_addresses_to_json(wallet_addresses, wallet_info_map)
+        if not api_data:
+            return LeaderboardResponse(period=time_period, metric=order_by.lower(), count=0, entries=[])
+
+        # 2. Extract wallet addresses
+        wallets = []
+        for entry in api_data:
+            wallet = entry.get("proxyWallet") or entry.get("wallet_address") or entry.get("wallet")
+            if wallet:
+                wallets.append(wallet)
+
+        # 3. Fetch detailed stats and calculate scores for these specific wallets
+        # This provides the "Full Functionality" with real scores in the Live view
+        from app.services.live_leaderboard_service import fetch_live_leaderboard
+        entries_data = await fetch_live_leaderboard(wallets)
         
-        # Transform API entries to LeaderboardEntry format
-        entries_data = [transform_polymarket_api_entry(entry, "leaderboard") for entry in api_data]
+        # 4. Map back any missing metadata (names, images) from the original API call if needed
+        # fetch_live_leaderboard already attempts to get some info, but api_data has the latest from Leaderboard
+        wallet_meta = {
+            (e.get("proxyWallet") or e.get("wallet_address")): {
+                "name": e.get("userName") or e.get("name"),
+                "pseudonym": e.get("xUsername") or e.get("pseudonym"),
+                "profile_image": e.get("profileImage") or e.get("profile_image")
+            } for e in api_data
+        }
         
+        for entry in entries_data:
+            addr = entry.get("wallet_address")
+            if addr in wallet_meta:
+                meta = wallet_meta[addr]
+                if not entry.get("name") and meta["name"]: entry["name"] = meta["name"]
+                if not entry.get("pseudonym") and meta["pseudonym"]: entry["pseudonym"] = meta["pseudonym"]
+                if not entry.get("profile_image") and meta["profile_image"]: entry["profile_image"] = meta["profile_image"]
+
         entries = [LeaderboardEntry(**e) for e in entries_data]
         
         return LeaderboardResponse(
@@ -1611,6 +1632,20 @@ async def get_daily_volume_leaderboard(
                     profile_image,
                     pnl,
                     volume,
+                    roi,
+                    win_rate,
+                    total_trades,
+                    total_trades_with_pnl,
+                    winning_trades,
+                    total_stakes,
+                    score_win_rate,
+                    score_roi,
+                    score_pnl,
+                    score_risk,
+                    final_score,
+                    w_shrunk,
+                    roi_shrunk,
+                    pnl_shrunk,
                     verified_badge,
                     raw_data
                 FROM daily_volume_leaderboard
@@ -1642,17 +1677,20 @@ async def get_daily_volume_leaderboard(
                 pseudonym=row.pseudonym,
                 profile_image=row.profile_image,
                 total_pnl=float(row.pnl) if row.pnl is not None else 0.0,
-                roi=0.0,  # Not available in daily volume leaderboard
-                win_rate=0.0,  # Not available in daily volume leaderboard
-                total_trades=0,  # Not available in daily volume leaderboard
-                total_trades_with_pnl=0,
-                winning_trades=0,
-                total_stakes=float(row.volume) if row.volume is not None else 0.0,
-                score_win_rate=0.0,
-                score_roi=0.0,
-                score_pnl=0.0,
-                score_risk=0.0,
-                final_score=0.0
+                roi=float(row.roi) if row.roi is not None else 0.0,
+                win_rate=float(row.win_rate) if row.win_rate is not None else 0.0,
+                total_trades=int(row.total_trades) if row.total_trades is not None else 0,
+                total_trades_with_pnl=int(row.total_trades_with_pnl) if row.total_trades_with_pnl is not None else 0,
+                winning_trades=int(row.winning_trades) if row.winning_trades is not None else 0,
+                total_stakes=float(row.total_stakes) if row.total_stakes is not None else float(row.volume) if row.volume else 0.0,
+                score_win_rate=float(row.score_win_rate) if row.score_win_rate is not None else 0.0,
+                score_roi=float(row.score_roi) if row.score_roi is not None else 0.0,
+                score_pnl=float(row.score_pnl) if row.score_pnl is not None else 0.0,
+                score_risk=float(row.score_risk) if row.score_risk is not None else 0.0,
+                final_score=float(row.final_score) if row.final_score is not None else 0.0,
+                W_shrunk=float(row.w_shrunk) if row.w_shrunk is not None else None,
+                roi_shrunk=float(row.roi_shrunk) if row.roi_shrunk is not None else None,
+                pnl_shrunk=float(row.pnl_shrunk) if row.pnl_shrunk is not None else None
             )
             entries.append(entry)
         
@@ -1669,6 +1707,119 @@ async def get_daily_volume_leaderboard(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching daily volume leaderboard: {str(e)}"
+        )
+
+
+@router.get(
+    "/weekly-volume",
+    response_model=LeaderboardResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Weekly Volume Leaderboard from Database",
+    description="Get weekly volume leaderboard data from database with pagination, sorted by volume descending"
+)
+async def get_weekly_volume_leaderboard(
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get weekly volume leaderboard from database.
+    
+    Returns traders ranked by volume (descending) with pagination.
+    Data is fetched from weekly_volume_leaderboard table.
+    """
+    try:
+        sort_column = "volume" if order_by == "VOL" else "pnl"
+        
+        # Query database for weekly volume leaderboard, sorted by chosen metric descending
+        result = await db.execute(
+            text(f"""
+                SELECT 
+                    rank,
+                    wallet_address,
+                    name,
+                    pseudonym,
+                    profile_image,
+                    pnl,
+                    volume,
+                    roi,
+                    win_rate,
+                    total_trades,
+                    total_trades_with_pnl,
+                    winning_trades,
+                    total_stakes,
+                    score_win_rate,
+                    score_roi,
+                    score_pnl,
+                    score_risk,
+                    final_score,
+                    w_shrunk,
+                    roi_shrunk,
+                    pnl_shrunk,
+                    verified_badge,
+                    raw_data
+                FROM weekly_volume_leaderboard
+                WHERE {sort_column} IS NOT NULL
+                ORDER BY {sort_column} DESC
+                LIMIT :limit OFFSET :offset
+            """),
+            {"limit": limit, "offset": offset}
+        )
+        
+        rows = result.fetchall()
+        
+        # Get total count
+        count_result = await db.execute(
+            text(f"SELECT COUNT(*) FROM weekly_volume_leaderboard WHERE {sort_column} IS NOT NULL")
+        )
+        total_count = count_result.scalar()
+        
+        # Transform to LeaderboardEntry format
+        entries = []
+        for idx, row in enumerate(rows):
+            # Calculate rank based on offset
+            actual_rank = offset + idx + 1
+            
+            entry = LeaderboardEntry(
+                rank=actual_rank,
+                wallet_address=row.wallet_address,
+                name=row.name,
+                pseudonym=row.pseudonym,
+                profile_image=row.profile_image,
+                total_pnl=float(row.pnl) if row.pnl is not None else 0.0,
+                roi=float(row.roi) if row.roi is not None else 0.0,
+                win_rate=float(row.win_rate) if row.win_rate is not None else 0.0,
+                total_trades=int(row.total_trades) if row.total_trades is not None else 0,
+                total_trades_with_pnl=int(row.total_trades_with_pnl) if row.total_trades_with_pnl is not None else 0,
+                winning_trades=int(row.winning_trades) if row.winning_trades is not None else 0,
+                total_stakes=float(row.total_stakes) if row.total_stakes is not None else float(row.volume) if row.volume else 0.0,
+                score_win_rate=float(row.score_win_rate) if row.score_win_rate is not None else 0.0,
+                score_roi=float(row.score_roi) if row.score_roi is not None else 0.0,
+                score_pnl=float(row.score_pnl) if row.score_pnl is not None else 0.0,
+                score_risk=float(row.score_risk) if row.score_risk is not None else 0.0,
+                final_score=float(row.final_score) if row.final_score is not None else 0.0,
+                W_shrunk=float(row.w_shrunk) if row.w_shrunk is not None else None,
+                roi_shrunk=float(row.roi_shrunk) if row.roi_shrunk is not None else None,
+                pnl_shrunk=float(row.pnl_shrunk) if row.pnl_shrunk is not None else None
+            )
+            entries.append(entry)
+        
+        return LeaderboardResponse(
+            period="week",
+            metric="volume",
+            count=len(entries),
+            entries=entries
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error fetching weekly volume leaderboard: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching weekly volume leaderboard: {str(e)}"
         )
 
 
@@ -1707,6 +1858,20 @@ async def get_monthly_volume_leaderboard(
                     profile_image,
                     pnl,
                     volume,
+                    roi,
+                    win_rate,
+                    total_trades,
+                    total_trades_with_pnl,
+                    winning_trades,
+                    total_stakes,
+                    score_win_rate,
+                    score_roi,
+                    score_pnl,
+                    score_risk,
+                    final_score,
+                    w_shrunk,
+                    roi_shrunk,
+                    pnl_shrunk,
                     verified_badge,
                     raw_data
                 FROM monthly_volume_leaderboard
@@ -1738,17 +1903,20 @@ async def get_monthly_volume_leaderboard(
                 pseudonym=row.pseudonym,
                 profile_image=row.profile_image,
                 total_pnl=float(row.pnl) if row.pnl is not None else 0.0,
-                roi=0.0,
-                win_rate=0.0,
-                total_trades=0,
-                total_trades_with_pnl=0,
-                winning_trades=0,
-                total_stakes=float(row.volume) if row.volume is not None else 0.0,
-                score_win_rate=0.0,
-                score_roi=0.0,
-                score_pnl=0.0,
-                score_risk=0.0,
-                final_score=0.0
+                roi=float(row.roi) if row.roi is not None else 0.0,
+                win_rate=float(row.win_rate) if row.win_rate is not None else 0.0,
+                total_trades=int(row.total_trades) if row.total_trades is not None else 0,
+                total_trades_with_pnl=int(row.total_trades_with_pnl) if row.total_trades_with_pnl is not None else 0,
+                winning_trades=int(row.winning_trades) if row.winning_trades is not None else 0,
+                total_stakes=float(row.total_stakes) if row.total_stakes is not None else float(row.volume) if row.volume else 0.0,
+                score_win_rate=float(row.score_win_rate) if row.score_win_rate is not None else 0.0,
+                score_roi=float(row.score_roi) if row.score_roi is not None else 0.0,
+                score_pnl=float(row.score_pnl) if row.score_pnl is not None else 0.0,
+                score_risk=float(row.score_risk) if row.score_risk is not None else 0.0,
+                final_score=float(row.final_score) if row.final_score is not None else 0.0,
+                W_shrunk=float(row.w_shrunk) if row.w_shrunk is not None else None,
+                roi_shrunk=float(row.roi_shrunk) if row.roi_shrunk is not None else None,
+                pnl_shrunk=float(row.pnl_shrunk) if row.pnl_shrunk is not None else None
             )
             entries.append(entry)
         

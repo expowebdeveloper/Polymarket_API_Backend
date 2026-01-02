@@ -920,7 +920,8 @@ def _get_cutoff_timestamp(time_period: str) -> int:
     elif time_period == "week":
         cutoff = now - timedelta(days=7)
     elif time_period == "month":
-        cutoff = now - timedelta(days=30)
+        # Current calendar month (from 1st day of current month)
+        cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     else:
         return 0  # No cutoff for "all"
     

@@ -56,32 +56,42 @@ async def save_activities_to_db(
         # Use PostgreSQL upsert (INSERT ... ON CONFLICT DO UPDATE)
         # Conflict on unique combination of proxy_wallet, transaction_hash, timestamp, and condition_id
         stmt = pg_insert(Activity).values(**activity_dict)
+        
+        # Build update dict with careful handling of values
+        update_dict = {
+            "type": stmt.excluded.type,
+            "size": stmt.excluded.size,
+            "usdc_size": stmt.excluded.usdc_size,
+            "price": stmt.excluded.price,
+            "asset": stmt.excluded.asset,
+            "side": stmt.excluded.side,
+            "outcome_index": stmt.excluded.outcome_index,
+            "title": stmt.excluded.title,
+            "slug": stmt.excluded.slug,
+            "icon": stmt.excluded.icon,
+            "event_slug": stmt.excluded.event_slug,
+            "outcome": stmt.excluded.outcome,
+            "name": stmt.excluded.name,
+            "pseudonym": stmt.excluded.pseudonym,
+            "bio": stmt.excluded.bio,
+            "profile_image": stmt.excluded.profile_image,
+            "profile_image_optimized": stmt.excluded.profile_image_optimized,
+            "updated_at": stmt.excluded.updated_at,
+        }
+
         stmt = stmt.on_conflict_do_update(
             constraint="uq_activity_unique",
-            set_={
-                "type": stmt.excluded.type,
-                "size": stmt.excluded.size,
-                "usdc_size": stmt.excluded.usdc_size,
-                "price": stmt.excluded.price,
-                "asset": stmt.excluded.asset,
-                "side": stmt.excluded.side,
-                "outcome_index": stmt.excluded.outcome_index,
-                "title": stmt.excluded.title,
-                "slug": stmt.excluded.slug,
-                "icon": stmt.excluded.icon,
-                "event_slug": stmt.excluded.event_slug,
-                "outcome": stmt.excluded.outcome,
-                "name": stmt.excluded.name,
-                "pseudonym": stmt.excluded.pseudonym,
-                "bio": stmt.excluded.bio,
-                "profile_image": stmt.excluded.profile_image,
-                "profile_image_optimized": stmt.excluded.profile_image_optimized,
-                "updated_at": stmt.excluded.updated_at,
-            }
+            set_=update_dict
         )
         
-        await session.execute(stmt)
-        saved_count += 1
+        try:
+            await session.execute(stmt)
+            saved_count += 1
+        except Exception as e:
+            # If explicit unique violation or other DB error for just this row, skip it
+            # Log specific details to help debug uniqueness issues
+            print(f"⚠️ Activity save error (skipping): {str(e)[:200]}")
+            continue
     
     return saved_count
 

@@ -18,6 +18,9 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 from app.db.models import DailyVolumeLeaderboard, Base
 from app.services.data_fetcher import async_client
+from app.services.polymarket_service import PolymarketService
+from app.services.live_leaderboard_service import transform_stats_for_scoring
+from app.services.leaderboard_service import calculate_scores_and_rank
 
 
 # Configuration
@@ -27,6 +30,8 @@ ORDER_BY = "VOL"
 LIMIT = 50  # Records per page (API maximum is 50)
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
+SCORING_LIMIT = 200  # Calculate scores for top 200 traders
+CONCURRENCY_LIMIT = 5
 
 
 async def check_table_exists(engine) -> bool:
@@ -54,6 +59,14 @@ async def create_table(engine):
         print("✅ Table created successfully!")
     else:
         print("✅ Table daily_volume_leaderboard already exists")
+
+
+async def clear_table(session: AsyncSession):
+    """Clear all records from daily_volume_leaderboard table."""
+    print("🧹 Clearing existing data from daily_volume_leaderboard...")
+    await session.execute(text("TRUNCATE TABLE daily_volume_leaderboard"))
+    await session.commit()
+    print("✅ Table cleared")
 
 
 async def fetch_leaderboard_page(
@@ -168,9 +181,15 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
             text("""
                 INSERT INTO daily_volume_leaderboard 
                 (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
+                 roi, win_rate, total_trades, total_trades_with_pnl, winning_trades, total_stakes,
+                 score_win_rate, score_roi, score_pnl, score_risk, final_score,
+                 w_shrunk, roi_shrunk, pnl_shrunk,
                  verified_badge, raw_data, fetched_at, created_at, updated_at)
                 VALUES 
                 (:wallet, :rank, :name, :pseudonym, :profile_image, :pnl, :volume,
+                 :roi, :win_rate, :total_trades, :total_trades_with_pnl, :winning_trades, :total_stakes,
+                 :score_win_rate, :score_roi, :score_pnl, :score_risk, :final_score,
+                 :w_shrunk, :roi_shrunk, :pnl_shrunk,
                  :verified_badge, :raw_data, :fetched_at, :created_at, :updated_at)
             """),
             {
@@ -181,6 +200,23 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
                 "profile_image": profile_image,
                 "pnl": pnl,
                 "volume": volume,
+                # New metrics
+                "roi": trader_data.get("roi", 0.0),
+                "win_rate": trader_data.get("win_rate", 0.0),
+                "total_trades": trader_data.get("total_trades", 0),
+                "total_trades_with_pnl": trader_data.get("total_trades_with_pnl", 0),
+                "winning_trades": trader_data.get("winning_trades", 0),
+                "total_stakes": trader_data.get("total_stakes", 0.0),
+                # New scores
+                "score_win_rate": trader_data.get("score_win_rate", 0.0),
+                "score_roi": trader_data.get("score_roi", 0.0),
+                "score_pnl": trader_data.get("score_pnl", 0.0),
+                "score_risk": trader_data.get("score_risk", 0.0),
+                "final_score": trader_data.get("final_score", 0.0),
+                # New shrunk values
+                "w_shrunk": trader_data.get("W_shrunk"),
+                "roi_shrunk": trader_data.get("roi_shrunk"),
+                "pnl_shrunk": trader_data.get("pnl_shrunk"),
                 "verified_badge": verified_badge if verified_badge is not None else False,
                 "raw_data": raw_data,
                 "fetched_at": fetched_at,
@@ -275,11 +311,101 @@ async def fetch_all_leaderboard_data(session: AsyncSession):
         print(f"Failed offset list:         {failed_offsets[:10]}{'...' if len(failed_offsets) > 10 else ''}")
     print(f"{'='*60}\n")
     
-    return {
-        "total_fetched": total_fetched,
-        "total_inserted": total_inserted,
-        "failed_offsets": failed_offsets
-    }
+    print(f"\n✅ Stats: Fetched {total_fetched}, Inserted {total_inserted}")
+    
+    # --- Scoring Phase ---
+    # Now that we have all traders, let's calculate scores for the top ones
+    if total_inserted > 0:
+        print(f"\n🏆 Calculating scores for top {min(total_inserted, SCORING_LIMIT)} traders...")
+        
+        # Get top traders from DB
+        result = await session.execute(
+            text("SELECT wallet_address, rank, name, pseudonym, profile_image, pnl, volume, raw_data FROM daily_volume_leaderboard ORDER BY volume DESC LIMIT :limit"),
+            {"limit": SCORING_LIMIT}
+        )
+        rows = result.fetchall()
+        
+        semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
+        
+        async def fetch_trader_stats(row):
+            async with semaphore:
+                try:
+                    wallet = row.wallet_address
+                    # Fetch stats for a day
+                    stats = await PolymarketService.calculate_portfolio_stats(wallet, time_period="day")
+                    if stats is None:
+                        return None
+                    
+                    transformed = transform_stats_for_scoring(stats)
+                    if transformed:
+                        # Preserve info from row
+                        transformed["name"] = row.name
+                        transformed["pseudonym"] = row.pseudonym
+                        transformed["profile_image"] = row.profile_image
+                        transformed["rank"] = row.rank
+                        transformed["pnl"] = float(row.pnl) if row.pnl is not None else 0.0
+                        transformed["vol"] = float(row.volume) if row.volume is not None else 0.0
+                        transformed["raw_data_orig"] = row.raw_data
+                    return transformed
+                except Exception as e:
+                    print(f"⚠️ Error fetching stats for {row.wallet_address}: {e}")
+                    return None
+
+        tasks = [fetch_trader_stats(row) for row in rows]
+        scored_results_raw = await asyncio.gather(*tasks)
+        
+        # Filter valid results
+        valid_results = [r for r in scored_results_raw if r is not None]
+        
+        if valid_results:
+            # Calculate scores using the population
+            ranked_results = calculate_scores_and_rank(valid_results)
+            
+            print(f"💾 Updating {len(ranked_results)} traders with calculated scores...")
+            
+            for trader in ranked_results:
+                await session.execute(
+                    text("""
+                        UPDATE daily_volume_leaderboard 
+                        SET roi = :roi, 
+                            win_rate = :win_rate, 
+                            total_trades = :total_trades,
+                            total_trades_with_pnl = :total_trades_with_pnl,
+                            winning_trades = :winning_trades,
+                            total_stakes = :total_stakes,
+                            score_win_rate = :score_win_rate,
+                            score_roi = :score_roi,
+                            score_pnl = :score_pnl,
+                            score_risk = :score_risk,
+                            final_score = :final_score,
+                            w_shrunk = :w_shrunk,
+                            roi_shrunk = :roi_shrunk,
+                            pnl_shrunk = :pnl_shrunk
+                        WHERE wallet_address = :wallet
+                    """),
+                    {
+                        "wallet": trader["wallet_address"],
+                        "roi": trader.get("roi", 0.0),
+                        "win_rate": trader.get("win_rate", 0.0),
+                        "total_trades": trader.get("total_trades", 0),
+                        "total_trades_with_pnl": trader.get("total_trades_with_pnl", 0),
+                        "winning_trades": trader.get("winning_trades", 0),
+                        "total_stakes": trader.get("total_stakes", 0.0),
+                        "score_win_rate": trader.get("score_win_rate", 0.0),
+                        "score_roi": trader.get("score_roi", 0.0),
+                        "score_pnl": trader.get("score_pnl", 0.0),
+                        "score_risk": trader.get("score_risk", 0.0),
+                        "final_score": trader.get("final_score", 0.0),
+                        "w_shrunk": trader.get("W_shrunk"),
+                        "roi_shrunk": trader.get("roi_shrunk"),
+                        "pnl_shrunk": trader.get("pnl_shrunk")
+                    }
+                )
+            
+            await session.commit()
+            print("✅ Daily Volume Leaderboard updated with advanced scores!")
+    
+    return total_inserted
 
 
 async def main():
@@ -315,6 +441,9 @@ async def main():
             
             print(f"📊 Current database state:")
             print(f"   Total records: {existing_count}\n")
+            
+            # Clear existing data
+            await clear_table(session)
             
             # Fetch all data
             stats = await fetch_all_leaderboard_data(session)
