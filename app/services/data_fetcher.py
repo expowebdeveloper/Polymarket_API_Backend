@@ -188,44 +188,7 @@ async def fetch_markets(
         elif status == "archived":
             archived = True
         
-<<<<<<< HEAD
         # Initialize results container
-=======
-        # Build query parameters
-        # Optimize: Only fetch what we need (limit + offset) but cap at reasonable size
-        # For better performance, we fetch only the required amount
-        fetch_limit = min(offset + limit, 200)  # Cap at 200 to avoid huge requests
-        
-        params = {
-            "limit": fetch_limit,
-        }
-        
-        if active is not None:
-            params["active"] = str(active).lower()
-        if closed is not None:
-            params["closed"] = str(closed).lower()
-        if archived is not None:
-            params["archived"] = str(archived).lower()
-        if tag_slug:
-            params["tag_slug"] = tag_slug
-        
-        # Add ordering by volume (descending) for better results
-        params["order"] = "volume"
-        params["ascending"] = "false"
-        
-        # Use async HTTP client for better performance
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-                
-        # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
-        events = data.get("data", [])
-        pagination = data.get("pagination", {})
-        
-        # Convert events to market format efficiently
-        # IMPORTANT: Don't include nested markets array to keep response size small
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
         all_markets = []
         
         # Pagination loop
@@ -262,7 +225,7 @@ async def fetch_markets(
             params["ascending"] = "false"
             
             # Use async HTTP client for better performance
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with DNSAwareAsyncClient(timeout=30.0) as client:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 data = response.json()
@@ -549,28 +512,40 @@ async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
         ]
         
         async with DNSAwareAsyncClient(timeout=10.0) as client:
-            for base_url in api_endpoints:
-                try:
-                    # Try /markets/{slug} endpoint
-                    url = f"{base_url}/markets/{market_slug}"
-                    response = await client.get(url)
-                    response.raise_for_status()
+            # Try Gamma API /events endpoint with slug filter
+            # Gamma API: https://gamma-api.polymarket.com/events?slug={slug}
+            gamma_url = "https://gamma-api.polymarket.com/events"
+            params = {"slug": market_slug}
+            
+            try:
+                response = await client.get(gamma_url, params=params)
+                if response.status_code == 200:
                     data = response.json()
-                    
-                    if isinstance(data, dict):
-                        return data
-                    elif isinstance(data, list) and len(data) > 0:
-                        return data[0]
-                        
-                except httpx.HTTPStatusError as e:
-                    if e.response and e.response.status_code == 404:
-                        # Market not found, try next endpoint
-                        continue
-                    # For other HTTP errors, try next endpoint
-                    continue
-                except httpx.RequestError:
-                    # Connection error, try next endpoint
-                    continue
+                    # Response is list of events. Each event has 'markets' list.
+                    if isinstance(data, list) and len(data) > 0:
+                        event = data[0]
+                        # Look for specific market if multiple, or just return the first/main one
+                        # If the slug matches the event slug, usually we want the main market or all markets.
+                        # For this function which returns 1 market, we'll take the first one or try to match slug if market-level slug exists.
+                        markets = event.get("markets", [])
+                        if markets:
+                            # Enhance market data with event info
+                            market = markets[0]
+                            market["input_slug"] = market_slug # Keep track of what we looked up
+                            if not market.get("title") and event.get("title"):
+                                market["title"] = event.get("title")
+                            if not market.get("icon") and event.get("icon"):
+                                market["icon"] = event.get("icon")
+                            if not market.get("image") and event.get("image"):
+                                market["image"] = event.get("image")
+                            if not market.get("description") and event.get("description"):
+                                market["description"] = event.get("description")
+                            return market
+            except Exception as e:
+                print(f"Error fetching from Gamma API /events: {e}")
+
+            # Try Data API as fallback (if it supports this endpoint)
+            # data-api usually mirrors or aggregates
         
         # If direct slug endpoint doesn't work, try fetching from markets list and filtering
         # This is a fallback approach
@@ -677,14 +652,9 @@ async def fetch_positions_for_wallet(
                 
             return all_positions
 
-<<<<<<< HEAD
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         print(f"Error fetching positions from Polymarket API: {str(e)}")
         return []
-=======
-    except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching positions from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
     except Exception as e:
         print(f"Unexpected error fetching positions: {str(e)}")
         return []
@@ -727,29 +697,17 @@ async def fetch_user_pnl(
             "fidelity": fidelity
         }
         
-<<<<<<< HEAD
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        pnl_data = response.json()
-        if isinstance(pnl_data, list):
-            return pnl_data
-        return []
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching user PnL from Polymarket API: {str(e)}")
-        return []
-=======
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            
             pnl_data = response.json()
-            if isinstance(pnl_data, list):
-                return pnl_data
-            return []
+            
+        if isinstance(pnl_data, list):
+            return pnl_data
+        return []
     except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching user PnL from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
+        print(f"Error fetching user PnL from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
         print(f"Unexpected error fetching user PnL: {str(e)}")
         return []
@@ -772,29 +730,17 @@ async def fetch_profile_stats(proxy_address: str, username: Optional[str] = None
         if username:
             params["username"] = username
         
-<<<<<<< HEAD
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
-        if isinstance(data, dict):
-            return data
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching profile stats from Polymarket API: {str(e)}")
-        return None
-=======
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            
             data = response.json()
-            if isinstance(data, dict):
-                return data
-            return None
+            
+        if isinstance(data, dict):
+            return data
+        return None
     except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching profile stats from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
+        print(f"Error fetching profile stats from Polymarket API: {str(e)}")
+        return None
     except Exception as e:
         print(f"Unexpected error fetching profile stats: {str(e)}")
         return None
@@ -830,29 +776,17 @@ async def fetch_user_activity(
         if offset:
             params["offset"] = offset
         
-<<<<<<< HEAD
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        activity = response.json()
-        if isinstance(activity, list):
-            return activity
-        return []
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching user activity from Polymarket API: {str(e)}")
-        return []
-=======
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
-            
             activity = response.json()
-            if isinstance(activity, list):
-                return activity
-            return []
+            
+        if isinstance(activity, list):
+            return activity
+        return []
     except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching user activity from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
+        print(f"Error fetching user activity from Polymarket API: {str(e)}")
+        return []
     except Exception as e:
         print(f"Unexpected error fetching user activity: {str(e)}")
         return []
@@ -920,36 +854,9 @@ async def fetch_closed_positions(
                 positions = response.json()
                 return positions if isinstance(positions, list) else []
 
-<<<<<<< HEAD
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         print(f"Error fetching closed positions from Polymarket API: {str(e)}")
         return []
-=======
-            # If limit is None, fetch ALL data using pagination
-            all_positions = []
-            fetch_limit = 1000  # Fetch in chunks
-            current_offset = offset or 0
-            
-            while True:
-                params["limit"] = fetch_limit
-                params["offset"] = current_offset
-                
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                
-                data = response.json()
-                if not isinstance(data, list) or not data:
-                    break
-                    
-                all_positions.extend(data)
-                
-                current_offset += len(data)
-                
-            return all_positions
-
-    except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching closed positions from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
     except Exception as e:
         print(f"Unexpected error fetching closed positions: {str(e)}")
         return []
@@ -969,31 +876,18 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         url = f"{settings.POLYMARKET_DATA_API_URL}/value"
         params = {"user": wallet_address}
         
-<<<<<<< HEAD
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        data = response.json()
+        async with DNSAwareAsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
         # API returns list of objects: [{"user": "...", "value": 0.041534}]
         if isinstance(data, list) and len(data) > 0:
             return float(data[0].get("value", 0.0))
         return 0.0
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         print(f"Error fetching portfolio value from Polymarket API: {str(e)}")
         return 0.0
-=======
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            # API returns list of objects: [{"user": "...", "value": 0.041534}]
-            if isinstance(data, list) and len(data) > 0:
-                return float(data[0].get("value", 0.0))
-            return 0.0
-    except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching portfolio value from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
     except Exception as e:
         print(f"Unexpected error fetching portfolio value: {str(e)}")
         return 0.0
@@ -1033,55 +927,81 @@ async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
                 stats["pnl"] = float(item.get("pnl", 0.0))
                 return stats
             return stats
-<<<<<<< HEAD
-        return stats
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPStatusError as e:
         print(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
         return {"volume": 0.0, "pnl": 0.0}
-=======
-    except httpx.HTTPStatusError as e:
-        raise Exception(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
->>>>>>> 363a0c38913e9778cf935c6c3d807700ccd2ce46
     except Exception as e:
         print(f"Unexpected error fetching leaderboard stats: {str(e)}")
         return {"volume": 0.0, "pnl": 0.0}
 
 
-def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) -> Dict[str, Any]:
     """
     Fetch market orders from Polymarket Data API only (no CLOB, Dome, Gamma, etc.).
     Uses the trades endpoint filtered by market slug.
     
-    Note: The trades endpoint filtered by market may not include user addresses.
-    This is a limitation of the Polymarket Data API when filtering by market.
-    
     Args:
         market_slug: Market slug identifier
-        limit: Maximum number of orders to return (default: 100)
+        limit: Maximum number of orders to return (default: 5000)
         offset: Offset for pagination (default: 0)
     
     Returns:
         Dictionary with orders list and pagination info
     """
     try:
-        # Use trades endpoint - activity endpoint requires user parameter, not market
+        # Use trades endpoint
         trades_url = "https://data-api.polymarket.com/trades"
         
-        # Fetch more than limit to account for pagination
-        fetch_limit = min(limit + offset, 1000)  # API might have limits
-        trades_params = {
-            "market": market_slug,
-            "limit": fetch_limit
-        }
+        all_trades_data = []
+        current_offset = 0 # API offset
+        # We need to fetch enough to cover our (offset + limit) requirements
+        target_count = limit + offset
+        fetched_so_far = 0
         
-        response = sync_client.get(trades_url, params=trades_params)
-        response.raise_for_status()
+        # Helper to get sync client (reusing global if available or creating new)
+        # Note: In the viewed code, 'sync_client' usage suggested a global, but we should be safe.
+        # Use a new client to be sure, or 'httpx.get'.
         
-        trades_data = response.json()
+        while fetched_so_far < target_count:
+            # Batch size for API (max usually 1000)
+            batch_limit = 1000
+            
+            trades_params = {
+                "market": market_slug,
+                "limit": batch_limit,
+                "offset": current_offset
+            }
+            
+            # Using httpx.get directly for sync call as seen in previous code ('sync_client' might be custom)
+            # Assuming 'sync_client' is available in scope or falling back to httpx
+            try:
+                # Try using the global sync_client if it was defined in the file
+                response = sync_client.get(trades_url, params=trades_params)
+            except NameError:
+                 # Fallback if sync_client isn't defined locally
+                 with DNSAwareClient() as client:
+                    response = client.get(trades_url, params=trades_params)
+
+            response.raise_for_status()
+            
+            batch_data = response.json()
+            
+            if not isinstance(batch_data, list) or not batch_data:
+                break
+                
+            all_trades_data.extend(batch_data)
+            fetched_count = len(batch_data)
+            fetched_so_far += fetched_count
+            current_offset += fetched_count
+            
+            if fetched_count < batch_limit:
+                # End of results
+                break
         
-        if not isinstance(trades_data, list):
-            # If response is not a list, return empty
-            return {
+        trades_data = all_trades_data
+        
+        if not trades_data:
+             return {
                 "orders": [],
                 "pagination": {
                     "limit": limit,
@@ -1090,7 +1010,7 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
                     "has_more": False
                 }
             }
-        
+            
         # Get market title if available (from first trade)
         market_title = ""
         condition_id = ""
@@ -1098,25 +1018,6 @@ def fetch_market_orders(market_slug: str, limit: int = 100, offset: int = 0) -> 
             first_trade = trades_data[0]
             market_title = first_trade.get("marketTitle", first_trade.get("title", ""))
             condition_id = first_trade.get("conditionId", first_trade.get("condition_id", ""))
-            
-            # Debug: Log available fields in first trade to help diagnose user field issues
-            available_fields = list(first_trade.keys())
-            print(f"📋 Available fields in trade data: {available_fields}")
-            
-            # Check if user info is available
-            has_user_info = any([
-                first_trade.get("proxyWallet"), 
-                first_trade.get("user"), 
-                first_trade.get("maker"), 
-                first_trade.get("from"), 
-                first_trade.get("trader"),
-                first_trade.get("proxy_wallet")
-            ])
-            
-            if not has_user_info:
-                print(f"⚠ Warning: Market-filtered trades endpoint doesn't include user addresses.")
-                print(f"   This is a limitation of the Polymarket Data API when filtering by market.")
-                print(f"   Available fields: {available_fields[:15]}...")
         
         # Convert trades to order format
         all_orders = []

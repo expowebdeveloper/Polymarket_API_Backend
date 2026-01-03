@@ -22,10 +22,10 @@ class PolymarketService:
             Dictionary containing PnL, Win Rate, ROI, and other metrics
         """
         # Fetch data (AWAITING all async calls)
-        positions = await fetch_positions_for_wallet(user_address)
-        closed_positions = await fetch_closed_positions(user_address)
-        portfolio_value = await fetch_portfolio_value(user_address)
-        leaderboard_stats = await fetch_leaderboard_stats(user_address)
+        positions = await fetch_positions_for_wallet(user_address) or []
+        closed_positions = await fetch_closed_positions(user_address) or []
+        portfolio_value = await fetch_portfolio_value(user_address) or 0.0
+        leaderboard_stats = await fetch_leaderboard_stats(user_address) or {}
         
         # Core Metrics from Leaderboard (Source of Truth for Profile Stats)
         total_pnl = leaderboard_stats.get("pnl", 0.0)
