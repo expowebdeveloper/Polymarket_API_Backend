@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
 from decimal import Decimal
 import math
-from app.db.models import Trade, Position, Activity
+from app.db.models import Trade, Position, Activity, ClosedPosition
 from app.core.scoring_config import scoring_config
 from app.services.pnl_median_service import calculate_median
 
@@ -95,6 +95,11 @@ async def calculate_trader_metrics_with_time_filter(
     positions = await get_positions_from_db(session, wallet_address)
     activities = await get_activities_from_db(session, wallet_address)
     
+    # Fetch closed positions from DB
+    stmt = select(ClosedPosition).where(ClosedPosition.proxy_wallet == wallet_address)
+    result = await session.execute(stmt)
+    closed_positions = result.scalars().all()
+    
     # Filter by time period
     if period != 'all':
         cutoff_timestamp = int((datetime.utcnow() - timedelta(
@@ -103,6 +108,9 @@ async def calculate_trader_metrics_with_time_filter(
         
         # Filter trades
         trades = [t for t in trades if t.timestamp >= cutoff_timestamp]
+        
+        # Filter closed positions
+        closed_positions = [cp for cp in closed_positions if cp.timestamp >= cutoff_timestamp]
         
         # For positions, we need to check if they have recent activity
         # We'll filter positions based on their updated_at timestamp
@@ -158,42 +166,42 @@ async def calculate_trader_metrics_with_time_filter(
     # Calculate total PnL
     total_pnl = total_realized_pnl + total_unrealized_pnl + total_rewards - total_redemptions
     
-    # Calculate trade metrics
+    # Calculate trade & win metrics from CLOSED POSITIONS (Exactly like view_all)
     total_trade_pnl = Decimal('0')
     total_stakes = Decimal('0')
     winning_trades_count = 0
     total_trades_with_pnl = 0
     stakes_of_wins = Decimal('0')
-    
-    for trade in trades:
-        stake = trade.size * trade.price
-        total_stakes += stake
-        
-        if trade.pnl is not None:
-            total_trade_pnl += trade.pnl
-            total_trades_with_pnl += 1
-            
-            if trade.pnl > 0:
-                winning_trades_count += 1
-                stakes_of_wins += stake
-    
-    # Advanced Metrics for Scoring
-    worst_loss = Decimal('0')
-    all_losses = []  # Collect all losses for average calculation (future enhancement)
-    stakes_list = []  # Collect all stakes for top 5 calculation
     sum_sq_stakes = Decimal('0')
+    worst_loss = Decimal('0')  # Will be updated if there are any losses
+    all_losses = []
+    stakes_list = []
     
-    for trade in trades:
-        stake = trade.size * trade.price
-        stakes_list.append(stake)
+    total_realized_pnl_filtered = Decimal('0')
+    
+    for cp in closed_positions:
+        # Stake = total_bought * avg_price (approximating entry cost)
+        stake = cp.total_bought * cp.avg_price
+        total_stakes += stake
         sum_sq_stakes += stake ** 2
+        stakes_list.append(stake)
         
-        if trade.pnl is not None:
-            if trade.pnl < worst_loss:
-                worst_loss = trade.pnl
-            # Collect all losses (negative PnL values) for average calculation
-            if trade.pnl < 0:
-                all_losses.append(trade.pnl)
+        realized_pnl = cp.realized_pnl
+        total_realized_pnl_filtered += realized_pnl
+        
+        total_trades_with_pnl += 1
+        if realized_pnl > 0:
+            winning_trades_count += 1
+            stakes_of_wins += stake
+        
+        # Update worst_loss if this is a loss (negative PnL)
+        if realized_pnl < 0:
+            all_losses.append(realized_pnl)
+            # If worst_loss is still 0 (no losses found yet) or this loss is worse, update it
+            if worst_loss == Decimal('0') or realized_pnl < worst_loss:
+                worst_loss = realized_pnl
+    
+    total_trade_pnl = total_realized_pnl_filtered
     
     # Calculate max_stake: average of top 5 highest stakes (or all if < 5)
     max_stake = Decimal('0')
@@ -202,8 +210,8 @@ async def calculate_trader_metrics_with_time_filter(
         top_n = min(5, len(sorted_stakes))
         top_stakes = sorted_stakes[:top_n]
         max_stake = sum(top_stakes) / Decimal(str(top_n)) if top_n > 0 else Decimal('0')
-    
-    # Calculate ROI
+
+    # Calculate ROI based on Realized PnL / Closed Investment (Exactly like view_all)
     roi = Decimal('0')
     if total_stakes > 0:
         roi = (total_trade_pnl / total_stakes) * 100
@@ -648,24 +656,27 @@ def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
     p_99 = get_percentile_value(pnl_shrunk_pop, upper_percentile)
     
     # Final Normalization
+    # Note: For W_shrunk, ROI_shrunk, and PNL_shrunk, LOWER is BETTER (ascending order)
+    # So we need to invert the normalization: (p99 - value) / (p99 - p1)
+    # This way: lower value → higher score, higher value → lower score
     for t in traders_metrics:
-        # W score
+        # W score (inverted: lower W_shrunk = better = higher score)
         if w_99 - w_1 != 0:
-            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+            w_score = (w_99 - t['W_shrunk']) / (w_99 - w_1)
         else:
             w_score = 0.5 
         t['score_win_rate'] = clamp(w_score, 0, 1)
         
-        # R score
+        # R score (inverted: lower ROI_shrunk = better = higher score)
         if r_99 - r_1 != 0:
-            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+            r_score = (r_99 - t['roi_shrunk']) / (r_99 - r_1)
         else:
             r_score = 0.5
         t['score_roi'] = clamp(r_score, 0, 1)
         
-        # P score
+        # P score (inverted: lower PNL_shrunk = better = higher score)
         if p_99 - p_1 != 0:
-            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+            p_score = (p_99 - t['pnl_shrunk']) / (p_99 - p_1)
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)
@@ -837,24 +848,27 @@ def calculate_scores_and_rank_with_percentiles(
     p_99 = get_percentile_value(pnl_shrunk_pop, upper_percentile)
     
     # Final Normalization
+    # Note: For W_shrunk, ROI_shrunk, and PNL_shrunk, LOWER is BETTER (ascending order)
+    # So we need to invert the normalization: (p99 - value) / (p99 - p1)
+    # This way: lower value → higher score, higher value → lower score
     for t in traders_metrics:
-        # W score
+        # W score (inverted: lower W_shrunk = better = higher score)
         if w_99 - w_1 != 0:
-            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
+            w_score = (w_99 - t['W_shrunk']) / (w_99 - w_1)
         else:
             w_score = 0.5 
         t['score_win_rate'] = clamp(w_score, 0, 1)
         
-        # R score
+        # R score (inverted: lower ROI_shrunk = better = higher score)
         if r_99 - r_1 != 0:
-            r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+            r_score = (r_99 - t['roi_shrunk']) / (r_99 - r_1)
         else:
             r_score = 0.5
         t['score_roi'] = clamp(r_score, 0, 1)
         
-        # P score
+        # P score (inverted: lower PNL_shrunk = better = higher score)
         if p_99 - p_1 != 0:
-            p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+            p_score = (p_99 - t['pnl_shrunk']) / (p_99 - p_1)
         else:
             p_score = 0.5
         t['score_pnl'] = clamp(p_score, 0, 1)

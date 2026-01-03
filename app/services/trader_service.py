@@ -355,7 +355,7 @@ async def sync_traders_to_db(limit: int = 50) -> Dict[str, int]:
         "details": defaultdict(int) 
     }
     
-    semaphore = asyncio.Semaphore(10) # Limit concurrent syncs
+    semaphore = asyncio.Semaphore(30) # Increased to 30 for extreme performance
     
     async def sync_single_trader(i: int, trader_info: Dict, total: int):
         wallet = trader_info.get("wallet_address")

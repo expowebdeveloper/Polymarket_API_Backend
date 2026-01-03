@@ -140,7 +140,7 @@ async def fetch_and_save_profile_stats(
         Tuple of (api response dict, saved ProfileStats object)
     """
     # Fetch profile stats from API
-    stats_data = fetch_profile_stats(proxy_address, username=username)
+    stats_data = await fetch_profile_stats(proxy_address, username=username)
     
     if not stats_data:
         return None, None

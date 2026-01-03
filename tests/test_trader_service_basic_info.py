@@ -1,3 +1,4 @@
+
 """
 Test trader service basic info with Dome trade format.
 """
@@ -35,7 +36,7 @@ def test_get_trader_basic_info_with_dome_trades(monkeypatch):
             "shares": 199950000,
             "shares_normalized": 199.95,
             "price": 0.96,
-            "timestamp": 1731489409,  # Unix timestamp
+            "timestamp": 1731489409,
             "user": wallet,
         },
         {
@@ -45,7 +46,7 @@ def test_get_trader_basic_info_with_dome_trades(monkeypatch):
             "shares": 50000000,
             "shares_normalized": 50.0,
             "price": 0.40,
-            "timestamp": 1731489409 + 86400,  # Next day
+            "timestamp": 1731489409 + 86400,
             "user": wallet,
         },
     ]
@@ -68,8 +69,4 @@ def test_get_trader_basic_info_with_dome_trades(monkeypatch):
     assert info["first_trade_date"] is not None
     assert info["last_trade_date"] is not None
     print(f"✓ Test passed: Basic info correctly extracted {info['total_trades']} trades and {info['total_positions']} positions")
-
-
-
-
 

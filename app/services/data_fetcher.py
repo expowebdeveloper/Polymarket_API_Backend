@@ -8,6 +8,7 @@ import httpx
 import dns.resolver
 from typing import List, Dict, Optional, Any, Set
 import asyncio
+from datetime import datetime, timedelta
 from app.core.config import settings
 
 # List of domains known to be hijacked/blocked by some ISPs (e.g., Jio)
@@ -131,6 +132,13 @@ class DNSAwareClient(httpx.Client):
 # Shared sync client instance
 sync_client = DNSAwareClient(timeout=30.0)
 
+# Shared async client instance for extreme performance
+# We use a single instance to reuse connection pools and SSL handshakes
+async_client = DNSAwareAsyncClient(
+    timeout=httpx.Timeout(30.0, connect=10.0),
+    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
+)
+
 def get_polymarket_headers() -> Dict[str, str]:
     """Get authenticated headers for Polymarket API."""
     return {
@@ -188,7 +196,43 @@ async def fetch_markets(
         elif status == "archived":
             archived = True
         
+<<<<<<< HEAD
         # Initialize results container
+=======
+        # Build query parameters
+        # Optimize: Only fetch what we need (limit + offset) but cap at reasonable size
+        # For better performance, we fetch only the required amount
+        fetch_limit = min(offset + limit, 200)  # Cap at 200 to avoid huge requests
+        
+        params = {
+            "limit": fetch_limit,
+        }
+        
+        if active is not None:
+            params["active"] = str(active).lower()
+        if closed is not None:
+            params["closed"] = str(closed).lower()
+        if archived is not None:
+            params["archived"] = str(archived).lower()
+        if tag_slug:
+            params["tag_slug"] = tag_slug
+        
+        # Add ordering by volume (descending) for better results
+        params["order"] = "volume"
+        params["ascending"] = "false"
+        
+        # Use shared async HTTP client for better performance
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+                
+        # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
+        events = data.get("data", [])
+        pagination = data.get("pagination", {})
+        
+        # Convert events to market format efficiently
+        # IMPORTANT: Don't include nested markets array to keep response size small
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
         all_markets = []
         
         # Pagination loop
@@ -615,16 +659,18 @@ async def fetch_positions_for_wallet(
         if size_threshold is not None:
             params["sizeThreshold"] = size_threshold
             
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
             # If limit is specified, just fetch that single page
             if limit is not None:
                 params["limit"] = limit
                 if offset is not None:
                     params["offset"] = offset
                 
-                response = await client.get(url, params=params)
+                response = await async_client.get(url, params=params)
                 response.raise_for_status()
                 positions = response.json()
+                # Ensure we always return a list, even if API returns None or empty
+                if positions is None:
+                    return []
                 return positions if isinstance(positions, list) else []
                 
             # If limit is None, fetch ALL data using pagination
@@ -636,7 +682,7 @@ async def fetch_positions_for_wallet(
                 params["limit"] = fetch_limit
                 params["offset"] = current_offset
                 
-                response = await client.get(url, params=params)
+                response = await async_client.get(url, params=params)
                 response.raise_for_status()
                 
                 data = response.json()
@@ -697,11 +743,18 @@ async def fetch_user_pnl(
             "fidelity": fidelity
         }
         
+<<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             pnl_data = response.json()
             
+=======
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        pnl_data = response.json()
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
         if isinstance(pnl_data, list):
             return pnl_data
         return []
@@ -730,11 +783,18 @@ async def fetch_profile_stats(proxy_address: str, username: Optional[str] = None
         if username:
             params["username"] = username
         
+<<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
+=======
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
         if isinstance(data, dict):
             return data
         return None
@@ -776,11 +836,18 @@ async def fetch_user_activity(
         if offset:
             params["offset"] = offset
         
+<<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             activity = response.json()
             
+=======
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        activity = response.json()
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
         if isinstance(activity, list):
             return activity
         return []
@@ -806,14 +873,13 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         params = {"user": wallet_address}
         
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            
-            trades = response.json()
-            if isinstance(trades, list):
-                return trades
-            return []
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        trades = response.json()
+        if isinstance(trades, list):
+            return trades
+        return []
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user trades from Polymarket API: {str(e)}")
         return []
@@ -825,7 +891,8 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
 async def fetch_closed_positions(
     wallet_address: str,
     limit: Optional[int] = None,
-    offset: Optional[int] = None
+    offset: Optional[int] = None,
+    time_period: Optional[str] = None
 ) -> List[Dict]:
     """
     Fetch closed positions for a wallet address from Polymarket Data API.
@@ -834,6 +901,8 @@ async def fetch_closed_positions(
         wallet_address: Ethereum wallet address (0x...)
         limit: Maximum number of positions to return
         offset: Offset for pagination
+        time_period: Optional time period filter ("day", "week", "month", "all")
+                     If provided, filters positions by timestamp
     
     Returns:
         List of closed position dictionaries
@@ -842,6 +911,7 @@ async def fetch_closed_positions(
         url = f"{settings.POLYMARKET_DATA_API_URL}/closed-positions"
         params = {"user": wallet_address}
         
+<<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             # If limit is specified, just fetch that single page
             if limit is not None:
@@ -853,6 +923,88 @@ async def fetch_closed_positions(
                 response.raise_for_status()
                 positions = response.json()
                 return positions if isinstance(positions, list) else []
+=======
+        # If limit is specified, just fetch that single page
+        if limit is not None:
+            params["limit"] = limit
+            if offset is not None:
+                params["offset"] = offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            positions = response.json()
+            positions = positions if isinstance(positions, list) else []
+            
+            # Apply time period filter if specified
+            if time_period and time_period != "all":
+                cutoff_timestamp = _get_cutoff_timestamp(time_period)
+                filtered_positions = []
+                for pos in positions:
+                    timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
+                    if timestamp:
+                        if isinstance(timestamp, str):
+                            try:
+                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                pos_timestamp = int(dt.timestamp())
+                            except:
+                                continue
+                        else:
+                            pos_timestamp = int(timestamp)
+                        
+                        if pos_timestamp >= cutoff_timestamp:
+                            filtered_positions.append(pos)
+                positions = filtered_positions
+            
+            return positions
+
+        # If limit is None, fetch ALL data using pagination (no maximum limit)
+        all_positions = []
+        fetch_limit = 1000  # Fetch in chunks
+        current_offset = offset or 0
+        
+        while True:
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
+                
+            all_positions.extend(data)
+            
+            # If we got fewer results than requested, we've reached the end
+            if len(data) < fetch_limit:
+                break
+            
+            current_offset += len(data)
+        
+        # Apply time period filter if specified
+        if time_period and time_period != "all":
+            cutoff_timestamp = _get_cutoff_timestamp(time_period)
+            filtered_positions = []
+            for pos in all_positions:
+                # Check various timestamp fields that might exist
+                timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
+                if timestamp:
+                    # Handle both Unix timestamp (int) and ISO string
+                    if isinstance(timestamp, str):
+                        try:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            pos_timestamp = int(dt.timestamp())
+                        except:
+                            continue
+                    else:
+                        pos_timestamp = int(timestamp)
+                    
+                    if pos_timestamp >= cutoff_timestamp:
+                        filtered_positions.append(pos)
+            all_positions = filtered_positions
+        
+        return all_positions
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
 
     except httpx.HTTPStatusError as e:
         print(f"Error fetching closed positions from Polymarket API: {str(e)}")
@@ -860,6 +1012,30 @@ async def fetch_closed_positions(
     except Exception as e:
         print(f"Unexpected error fetching closed positions: {str(e)}")
         return []
+
+
+def _get_cutoff_timestamp(time_period: str) -> int:
+    """
+    Get cutoff timestamp for a time period.
+    
+    Args:
+        time_period: Time period ("day", "week", "month")
+    
+    Returns:
+        Unix timestamp cutoff
+    """
+    now = datetime.utcnow()
+    if time_period == "day":
+        cutoff = now - timedelta(days=1)
+    elif time_period == "week":
+        cutoff = now - timedelta(days=7)
+    elif time_period == "month":
+        # Current calendar month (from 1st day of current month)
+        cutoff = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        return 0  # No cutoff for "all"
+    
+    return int(cutoff.timestamp())
 
 
 async def fetch_portfolio_value(wallet_address: str) -> float:
@@ -876,11 +1052,18 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         url = f"{settings.POLYMARKET_DATA_API_URL}/value"
         params = {"user": wallet_address}
         
+<<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
+=======
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+>>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
         # API returns list of objects: [{"user": "...", "value": 0.041534}]
         if isinstance(data, list) and len(data) > 0:
             return float(data[0].get("value", 0.0))
@@ -893,12 +1076,13 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         return 0.0
 
 
-async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
+async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all") -> Dict[str, float]:
     """
-    Fetch all-time stats (volume, pnl) for a user from the Leaderboard API.
+    Fetch stats (volume, pnl) for a user from the Leaderboard API for a specific time period.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
+        time_period: Time period ("day", "week", "month", "all")
     
     Returns:
         Dictionary with "volume" and "pnl" keys
@@ -906,7 +1090,7 @@ async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
     try:
         url = "https://data-api.polymarket.com/v1/leaderboard"
         params = {
-            "timePeriod": "all",
+            "timePeriod": time_period,
             "orderBy": "VOL",
             "limit": 1,
             "offset": 0,
@@ -914,19 +1098,18 @@ async def fetch_leaderboard_stats(wallet_address: str) -> Dict[str, float]:
             "user": wallet_address
         }
         
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            
-            data = response.json()
-            # Example: [{"user": "...", "vol": 12345.67, "pnl": -353.01...}]
-            stats = {"volume": 0.0, "pnl": 0.0}
-            if isinstance(data, list) and len(data) > 0:
-                item = data[0]
-                stats["volume"] = float(item.get("vol", 0.0))
-                stats["pnl"] = float(item.get("pnl", 0.0))
-                return stats
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        
+        data = response.json()
+        # Example: [{"user": "...", "vol": 12345.67, "pnl": -353.01...}]
+        stats = {"volume": 0.0, "pnl": 0.0}
+        if isinstance(data, list) and len(data) > 0:
+            item = data[0]
+            stats["volume"] = float(item.get("vol", 0.0))
+            stats["pnl"] = float(item.get("pnl", 0.0))
             return stats
+        return stats
     except httpx.HTTPStatusError as e:
         print(f"Error fetching leaderboard stats from Polymarket API: {str(e)}")
         return {"volume": 0.0, "pnl": 0.0}
@@ -1139,10 +1322,9 @@ async def fetch_traders_from_leaderboard(
             "category": category
         }
         
-        async with DNSAwareAsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
         
         # API returns a list of trader objects
         if not isinstance(data, list):

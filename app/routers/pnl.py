@@ -265,7 +265,7 @@ async def get_portfolio_stats(
         )
     
     try:
-        return PolymarketService.calculate_portfolio_stats(user_address)
+        return await PolymarketService.calculate_portfolio_stats(user_address)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

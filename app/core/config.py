@@ -67,6 +67,11 @@ class Settings:
     
     # Testing/Development limits
     MARKETS_FETCH_LIMIT: int = int(os.getenv("MARKETS_FETCH_LIMIT", "50"))  # Default limit: 50 markets per page (optimized for performance)
+    
+    # JWT Configuration
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
 
 
 settings = Settings()

@@ -5,7 +5,7 @@ FastAPI application main file.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routers import general, markets, analytics, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard
+from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth
 from app.db.session import init_db
 
 app = FastAPI(
@@ -45,11 +45,21 @@ app.add_middleware(
 async def startup_event():
     """Initialize database on application startup."""
     await init_db()
+    
+    # Start periodic leaderboard recalculation (every 6.5 hours)
+    # This calculates leaderboard metrics for traders in the database
+    try:
+        from app.services.leaderboard_scheduler import start_periodic_recalculation
+        await start_periodic_recalculation(interval_hours=6.5)
+        print("✅ Periodic leaderboard recalculation scheduler started (every 6.5 hours)")
+    except Exception as e:
+        print(f"⚠️  Failed to start leaderboard scheduler: {e}")
+    
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(general.router)
 app.include_router(markets.router)
-# app.include_router(analytics.router)
 app.include_router(traders.router)
 app.include_router(positions.router)
 app.include_router(orders.router)
