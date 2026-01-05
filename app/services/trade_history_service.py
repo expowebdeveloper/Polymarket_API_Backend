@@ -290,10 +290,14 @@ def calculate_overall_metrics_enhanced(
     This ensures consistency with Trader Analytics.
     """
     # Use scoring engine metrics as base (these are calculated from resolved markets)
-    total_trades_count = len(trades)  # Total trades from database
+    # Fix: Use the sum of wins and losses for total trades to ensure consistency with displayed metrics
+    # instead of using the local DB count which might be out of sync or stale.
     winning_trades = scoring_metrics.get("win_count", 0)
     losing_trades = scoring_metrics.get("loss_count", 0)
     total_trades_with_pnl = winning_trades + losing_trades
+    
+    # Use the calculated total from scoring metrics as the primary Total Trades count
+    total_trades_count = total_trades_with_pnl
     
     # PnL from scoring engine (based on resolved markets)
     scoring_pnl = scoring_metrics.get("pnl", 0.0)

@@ -21,8 +21,97 @@ from app.core.constants import (
     CONSISTENCY_WEIGHTS,
     RECENCY_DAYS,
     RESOLUTION_YES,
+    RECENCY_DAYS,
+    RESOLUTION_YES,
     RESOLUTION_NO,
 )
+import math
+
+def log_interpolate(x: float, x_min: float, x_max: float, s_min: float, s_max: float) -> float:
+    """
+    Interpolate score using logarithmic scale keys.
+    f(x) = s_min + (s_max - s_min) * (ln(x) - ln(x_min)) / (ln(x_max) - ln(x_min))
+    """
+    if x <= x_min: return s_min
+    if x >= x_max: return s_max
+    
+    # Use math.log for natural logarithm
+    try:
+        log_x = math.log(x)
+        log_x_min = math.log(x_min)
+        log_x_max = math.log(x_max)
+        
+        return s_min + (s_max - s_min) * (log_x - log_x_min) / (log_x_max - log_x_min)
+    except ValueError:
+        return s_min
+
+def calculate_pnl_score(pnl: float) -> float:
+    """
+    Calculate deterministic PnL score based on log-interpolated bands.
+    Output range: [0, 1]
+    """
+    
+    # 1. Handle Profits (PnL >= 0)
+    if pnl >= 0:
+        # 0 - 100: f(PnL; 1, 100, 0.15 -> 0.25)
+        # Note: log(0) is undefined, so we treat 0 as 1 for log scale or handle 0 separately
+        if pnl < 1:
+            # Linear interpolation for tiny profit 0-1 to avoid log(0)
+            return 0.15 + (0.25 - 0.15) * (pnl / 100.0) 
+            
+        if pnl < 100:
+            return log_interpolate(pnl, 1, 100, 0.15, 0.25)
+        elif pnl < 1000:
+            return log_interpolate(pnl, 100, 1000, 0.25, 0.40)
+        elif pnl < 5000:
+            return log_interpolate(pnl, 1000, 5000, 0.40, 0.60)
+        elif pnl < 10000:
+            return log_interpolate(pnl, 5000, 10000, 0.60, 0.75)
+        elif pnl < 50000:
+            return log_interpolate(pnl, 10000, 50000, 0.75, 0.85)
+        elif pnl < 100000:
+            return log_interpolate(pnl, 50000, 100000, 0.85, 0.92)
+        elif pnl < 500000:
+            return log_interpolate(pnl, 100000, 500000, 0.92, 0.98)
+        elif pnl < 1000000:
+            return log_interpolate(pnl, 500000, 1000000, 0.98, 0.999)
+        else:
+            return 1.00
+
+    # 2. Handle Losses (PnL < 0)
+    else:
+        abs_pnl = abs(pnl)
+        
+        # Missing ranges from prompt served as:
+        # 0 to -100 (0.15 -> ?)
+        # -100 to -1000 (? -> ?)
+        # -1000 to -10000 (? -> 0.05)
+        
+        # We assume a smooth degradation from 0.15 down to 0.05 over the range -1 to -10000
+        # This penalizes losses.
+        
+        if abs_pnl < 100:
+             # -100 < PnL < 0: Score 0.15 -> 0.12
+             return log_interpolate(abs_pnl, 1, 100, 0.15, 0.12)
+        elif abs_pnl < 1000:
+             # -1000 < PnL <= -100: Score 0.12 -> 0.08
+             return log_interpolate(abs_pnl, 100, 1000, 0.12, 0.08)
+        elif abs_pnl < 10000:
+             # -10000 < PnL <= -1000: Score 0.08 -> 0.05
+             return log_interpolate(abs_pnl, 1000, 10000, 0.08, 0.05)
+        else:
+             # PnL < -10,000 (abs_pnl > 10,000)
+             # Formula: 0.05 * (1 - (ln(|PnL|) - ln(10,000)) / (ln(1,000,000) - ln(10,000)))
+             try:
+                 ln_pnl = math.log(abs_pnl)
+                 ln_10k = math.log(10000)
+                 ln_1m = math.log(1000000)
+                 
+                 term = (ln_pnl - ln_10k) / (ln_1m - ln_10k)
+                 score = 0.05 * (1.0 - term)
+                 return max(0.0, score) # Clamp to >= 0
+             except:
+                 return 0.0
 
 
 def calculate_trade_pnl(trade: Dict, market_resolution: str) -> Tuple[float, bool]:
@@ -402,16 +491,23 @@ async def calculate_metrics(wallet_address: str, trades: List[Dict], markets: Li
     consistency = await calculate_consistency(trades, markets)
     recency = calculate_recency(trades)
     
-    # Calculate final score
-    win_rate_normalized = win_rate_percent / 100.0
-    roi_normalized = roi / 100.0 if roi != 0 else 0.0
     
-    final_score = (
-        ROI_WEIGHT * roi_normalized +
-        WIN_RATE_WEIGHT * win_rate_normalized +
-        CONSISTENCY_WEIGHT * consistency +
-        RECENCY_WEIGHT * recency
-    ) * 100  # Scale to 0-100
+    # Calculate final score using NEW Deterministic PnL Scoring
+    pnl_score = calculate_pnl_score(overall_pnl)
+    
+    # Multiply by 100 for 0-100 scale compliance with frontend
+    final_score = min(100.0, max(0.0, pnl_score * 100.0))
+    
+    # Previous Scoring System (Deprecated)
+    # win_rate_normalized = win_rate_percent / 100.0
+    # roi_normalized = roi / 100.0 if roi != 0 else 0.0
+    # 
+    # final_score = (
+    #     ROI_WEIGHT * roi_normalized +
+    #     WIN_RATE_WEIGHT * win_rate_normalized +
+    #     CONSISTENCY_WEIGHT * consistency +
+    #     RECENCY_WEIGHT * recency
+    # ) * 100  # Scale to 0-100
     
     # Format category stats
     categories = {}

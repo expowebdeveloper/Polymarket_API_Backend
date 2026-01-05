@@ -24,6 +24,8 @@ HIJACKED_DOMAINS = {
 # Cache for resolved IPs to avoid repeated DNS queries
 DNS_CACHE: Dict[str, str] = {}
 
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 def resolve_domain_securely(domain: str) -> str:
     """Resolve a domain using Google DNS (8.8.8.8) to bypass local hijacking."""
     if domain in DNS_CACHE:
@@ -130,13 +132,17 @@ class DNSAwareClient(httpx.Client):
         return super().request(method, url, **kwargs)
 
 # Shared sync client instance
-sync_client = DNSAwareClient(timeout=30.0)
+sync_client = DNSAwareClient(
+    timeout=30.0,
+    headers={"User-Agent": USER_AGENT}
+)
 
 # Shared async client instance for extreme performance
 # We use a single instance to reuse connection pools and SSL handshakes
 async_client = DNSAwareAsyncClient(
     timeout=httpx.Timeout(30.0, connect=10.0),
-    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
+    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    headers={"User-Agent": USER_AGENT}
 )
 
 def get_polymarket_headers() -> Dict[str, str]:
@@ -767,12 +773,18 @@ async def fetch_user_activity(
         raise Exception(f"Unexpected error fetching user activity: {str(e)}")
 
 
-async def fetch_user_trades(wallet_address: str) -> List[Dict]:
+async def fetch_user_trades(
+    wallet_address: str, 
+    limit: Optional[int] = None, 
+    offset: Optional[int] = None
+) -> List[Dict]:
     """
     Fetch user trades from Polymarket Data API (async version).
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
+        limit: Maximum number of trades
+        offset: Pagination offset
     
     Returns:
         List of trade dictionaries
@@ -780,6 +792,11 @@ async def fetch_user_trades(wallet_address: str) -> List[Dict]:
     try:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         params = {"user": wallet_address}
+        
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         
         response = await async_client.get(url, params=params)
         response.raise_for_status()
