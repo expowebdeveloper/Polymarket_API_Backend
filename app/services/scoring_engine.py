@@ -82,23 +82,21 @@ def calculate_pnl_score(pnl: float) -> float:
     else:
         abs_pnl = abs(pnl)
         
-        # Missing ranges from prompt served as:
-        # 0 to -100 (0.15 -> ?)
-        # -100 to -1000 (? -> ?)
-        # -1000 to -10000 (? -> 0.05)
-        
-        # We assume a smooth degradation from 0.15 down to 0.05 over the range -1 to -10000
-        # This penalizes losses.
+        # Loss zones as per FINAL specification:
+        # -100 ≤ PnL < 0: f(|PnL|; 10, 100, 0.20, 0.15)
+        # -1000 ≤ PnL < -100: f(|PnL|; 100, 1000, 0.15, 0.10)
+        # -10000 ≤ PnL < -1000: f(|PnL|; 1000, 10000, 0.10, 0.05)
+        # PnL < -10000: 0.05 * (1 - (ln(|PnL|) - ln(10000)) / (ln(1000000) - ln(10000)))
         
         if abs_pnl < 100:
-             # -100 < PnL < 0: Score 0.15 -> 0.12
-             return log_interpolate(abs_pnl, 1, 100, 0.15, 0.12)
+             # -100 < PnL < 0: Score 0.20 → 0.15
+             return log_interpolate(abs_pnl, 10, 100, 0.20, 0.15)
         elif abs_pnl < 1000:
-             # -1000 < PnL <= -100: Score 0.12 -> 0.08
-             return log_interpolate(abs_pnl, 100, 1000, 0.12, 0.08)
+             # -1000 < PnL ≤ -100: Score 0.15 → 0.10
+             return log_interpolate(abs_pnl, 100, 1000, 0.15, 0.10)
         elif abs_pnl < 10000:
-             # -10000 < PnL <= -1000: Score 0.08 -> 0.05
-             return log_interpolate(abs_pnl, 1000, 10000, 0.08, 0.05)
+             # -10000 < PnL ≤ -1000: Score 0.10 → 0.05
+             return log_interpolate(abs_pnl, 1000, 10000, 0.10, 0.05)
         else:
              # PnL < -10,000 (abs_pnl > 10,000)
              # Formula: 0.05 * (1 - (ln(|PnL|) - ln(10,000)) / (ln(1,000,000) - ln(10,000)))
@@ -112,6 +110,7 @@ def calculate_pnl_score(pnl: float) -> float:
                  return max(0.0, score) # Clamp to >= 0
              except:
                  return 0.0
+
 
 
 def calculate_trade_pnl(trade: Dict, market_resolution: str) -> Tuple[float, bool]:
