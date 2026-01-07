@@ -13,12 +13,12 @@ from app.core.config import settings
 
 # List of domains known to be hijacked/blocked by some ISPs (e.g., Jio)
 HIJACKED_DOMAINS = {
-    "data-api.polymarket.com",
-    "api.polymarket.com",
-    "gamma-api.polymarket.com",
-    "user-pnl-api.polymarket.com",
-    "clob.polymarket.com",
-    "polymarket.com"
+    # "data-api.polymarket.com",
+    # "api.polymarket.com",
+    # "gamma-api.polymarket.com",
+    # "user-pnl-api.polymarket.com",
+    # "clob.polymarket.com",
+    # "polymarket.com"
 }
 
 # Cache for resolved IPs to avoid repeated DNS queries
@@ -605,44 +605,44 @@ async def fetch_positions_for_wallet(
         if size_threshold is not None:
             params["sizeThreshold"] = size_threshold
             
-            # If limit is specified, just fetch that single page
-            if limit is not None:
-                params["limit"] = limit
-                if offset is not None:
-                    params["offset"] = offset
-                
-                response = await async_client.get(url, params=params)
-                response.raise_for_status()
-                positions = response.json()
-                # Ensure we always return a list, even if API returns None or empty
-                if positions is None:
-                    return []
-                return positions if isinstance(positions, list) else []
-                
-            # If limit is None, fetch ALL data using pagination
-            all_positions = []
-            fetch_limit = 1000  # Fetch in chunks
-            current_offset = offset or 0
+        # If limit is specified, just fetch that single page
+        if limit is not None:
+            params["limit"] = limit
+            if offset is not None:
+                params["offset"] = offset
             
-            while True:
-                params["limit"] = fetch_limit
-                params["offset"] = current_offset
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            positions = response.json()
+            # Ensure we always return a list, even if API returns None or empty
+            if positions is None:
+                return []
+            return positions if isinstance(positions, list) else []
+            
+        # If limit is None, fetch ALL data using pagination
+        all_positions = []
+        fetch_limit = 1000  # Fetch in chunks
+        current_offset = offset or 0
+        
+        while True:
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
                 
-                response = await async_client.get(url, params=params)
-                response.raise_for_status()
+            all_positions.extend(data)
+            
+            if len(data) < fetch_limit:
+                break
                 
-                data = response.json()
-                if not isinstance(data, list) or not data:
-                    break
-                    
-                all_positions.extend(data)
-                
-                if len(data) < fetch_limit:
-                    break
-                    
-                current_offset += len(data)
-                
-            return all_positions
+            current_offset += len(data)
+            
+        return all_positions
 
     except httpx.HTTPStatusError as e:
         raise Exception(f"Error fetching positions from Polymarket API: {str(e)}")

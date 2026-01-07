@@ -20,7 +20,12 @@ from app.services.scoring_engine import (
     calculate_roi,
     calculate_consistency,
     calculate_recency,
-    calculate_trade_pnl
+    calculate_trade_pnl,
+    calculate_new_risk_score,
+    calculate_win_score,
+    calculate_confidence_score,
+    calculate_new_roi_score,
+    calculate_max_drawdown
 )
 from app.core.constants import (
     DEFAULT_CATEGORY,
@@ -411,6 +416,81 @@ def calculate_overall_metrics_enhanced(
     k_p = 50.0
     pnl_shrunk = (pnl_adj * n_eff + pnl_median * k_p) / (n_eff + k_p) if (n_eff + k_p) > 0 else pnl_adj
     
+    # --- New Metrics Calculation ---
+    # Risk Score
+    all_losses = []
+    equity_curve = [0.0]
+    running_pnl = 0.0
+    
+    # Sort closed positions by timestamp for equity curve
+    sorted_closed = sorted(closed_positions, key=lambda x: x.get("timestamp") or 0)
+    for pos in sorted_closed:
+        pnl = pos.get("realized_pnl", 0.0)
+        running_pnl += pnl
+        equity_curve.append(running_pnl)
+        if pnl < 0:
+            all_losses.append(pnl)
+            
+    # Max Drawdown
+    max_drawdown = calculate_max_drawdown(equity_curve)
+    
+    # Worst Loss
+    worst_loss = min(all_losses) if all_losses else 0.0
+    
+    # Risk Score (Average Worst Loss / Total Stake)
+    risk_score = calculate_new_risk_score(all_losses, total_stakes, total_trades_count) or 0.0
+    
+    # Win Score
+    win_rate_trade = win_rate / 100.0
+    # Stake-weighted win rate: Winning Stake / Total Stake
+    winning_stakes = 0.0
+    for pos in closed_positions:
+        if pos.get("realized_pnl", 0.0) > 0:
+            if pos.get("avg_price") and pos.get("size"):
+                winning_stakes += float(pos.get("avg_price", 0)) * float(pos.get("size", 0))
+            elif pos.get("initial_value"):
+                winning_stakes += float(pos.get("initial_value", 0))
+    
+    win_rate_stake = (winning_stakes / total_stakes) if total_stakes > 0 else 0.0
+    win_score = calculate_win_score(win_rate_trade, win_rate_stake)
+    
+    # ROI Score
+    roi_decimal = roi / 100.0
+    roi_score = calculate_new_roi_score(roi_decimal)
+    
+    # PnL Score
+    from app.services.scoring_engine import calculate_pnl_score
+    pnl_score_val = calculate_pnl_score(total_pnl)
+    
+    # Confidence Score
+    confidence_score = calculate_confidence_score(total_trades_with_pnl)
+    
+    # Final Score (Blended)
+    # Using the same weights as leaderboard_service
+    # Rating = 100 × [ 0.30 * win_score + 0.30 * roi_score + 0.30 * pnl_score + 0.10 * (1 - risk) ] * confidence
+    risk_val = max(0.0, min(1.0, risk_score))
+    final_score = (
+        0.30 * win_score +
+        0.30 * roi_score +
+        0.30 * pnl_score_val +
+        0.10 * (1.0 - risk_val)
+    ) * 100.0 * confidence_score
+
+    # Stake Volatility
+    stake_volatility = 0.0
+    if stakes_list:
+        n = len(stakes_list)
+        mean_stake = sum(stakes_list) / n
+        if mean_stake > 0:
+            variance = sum((s - mean_stake) ** 2 for s in stakes_list) / n
+            std_dev = variance ** 0.5
+            stake_volatility = std_dev / mean_stake
+
+    # Shrunk ROI (simple version for now, could be improved)
+    # Formula: ROI_shrunk = (ROI_adj * N_eff + ROI_m * k_r) / (N_eff + k_r)
+    # For now, we'll just return raw ROI or a simplified shrunk version
+    roi_shrunk = roi # Placeholder for now, can be refined if median is available
+    
     return {
         "total_pnl": round(total_pnl, 2),
         "realized_pnl": round(scoring_pnl, 2),  # Realized from resolved trades
@@ -421,12 +501,18 @@ def calculate_overall_metrics_enhanced(
         "losing_trades": losing_trades,
         "total_trades": total_trades_count,  # All trades from database
         "total_trades_with_pnl": total_trades_with_pnl,  # Trades with calculated PnL
-        "score": round(score, 2),
+        "score": round(final_score, 2),
         "total_volume": round(total_volume, 2),
         "pnl_adj": round(pnl_adj, 2),  # Whale-adjusted PnL
         "pnl_shrunk": round(pnl_shrunk, 2),  # Shrunk PnL
         "n_eff": round(n_eff, 2),  # Effective number of trades
         "pnl_median_used": round(pnl_median, 2),  # Median used in calculation
+        "risk_score": round(risk_score, 4),
+        "confidence_score": round(confidence_score, 4),
+        "stake_volatility": round(stake_volatility, 4),
+        "max_drawdown": round(max_drawdown, 2),
+        "worst_loss": round(worst_loss, 2),
+        "roi_shrunk": round(roi_shrunk, 2),
     }
 
 

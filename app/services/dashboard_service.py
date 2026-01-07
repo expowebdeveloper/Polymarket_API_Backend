@@ -153,7 +153,8 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
             "roi": roi,
             "total_investment": total_investment,
             "win_rate": win_rate,
-            "worst_loss": worst_loss
+            "worst_loss": worst_loss,
+            "max_drawdown": 0.0 # Default value, will be updated if trader_metrics is available
         },
         "positions_summary": {
             "open_positions_count": len(active_positions),
@@ -231,12 +232,15 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
                     "winning_trades": scored_trader.get("winning_trades", 0),
                     "total_stakes": scored_trader.get("total_stakes", 0.0),
                     "winning_stakes": scored_trader.get("winning_stakes", 0.0),
+                    "losing_stakes": scored_trader.get("total_stakes", 0.0) - scored_trader.get("winning_stakes", 0.0),
                     "max_stake": scored_trader.get("max_stake", 0.0),
                     "worst_loss": scored_trader.get("worst_loss", 0.0),
+                    "max_drawdown": scored_trader.get("max_drawdown", 0.0),
                     # New Custom Metrics
                     "w_trade": round(w_trade, 4),
                     "w_stake": round(w_stake, 4),
                     "win_score_blended": round(win_score_custom, 4),
+                    "stake_volatility": scored_trader.get("stake_volatility", 0.0),
                 }
                 
                 # Calculate Confidence Score based on number of trades

@@ -2,7 +2,7 @@
 Scoring engine service for calculating trader performance metrics.
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -111,6 +111,137 @@ def calculate_pnl_score(pnl: float) -> float:
              except:
                  return 0.0
 
+
+def calculate_new_risk_score(trades_losses: List[float], total_stake: float, total_trades_count: int) -> Optional[float]:
+    """
+    Calculate Risk Score (Average Worst Loss).
+    
+    Formula:
+        k = floor(N / 10)
+        m = min(k, |L|)
+        AvgWorstLoss = (1/m) * sum(m worst losses)
+        RiskScore = AvgWorstLoss / TotalStake
+        
+    Returns:
+        Risk Score (0.0 to 1.0 ideally, but could be higher if losses > stake)
+        None if not enough trades (N < 10)
+    """
+    if total_trades_count < 10:
+        return None
+        
+    if not trades_losses:
+        return 0.0
+        
+    # k = floor(N / 10)
+    k = math.floor(total_trades_count / 10)
+    
+    # Sort losses descending (largest absolute loss first)
+    # Input trades_losses should be negative values (e.g. -50, -20)
+    # We want absolute values for the formula: L = {|pi| : pi < 0}
+    abs_losses = sorted([abs(x) for x in trades_losses], reverse=True)
+    
+    # m = min(k, |L|)
+    m = min(k, len(abs_losses))
+    
+    if m == 0:
+        return 0.0
+        
+    # Average worst loss
+    avg_worst_loss = sum(abs_losses[:m]) / m
+    
+    # Risk Score
+    if total_stake <= 0:
+        return 0.0 # Avoid division by zero
+        
+    return avg_worst_loss / total_stake
+
+
+def calculate_win_score(win_rate_trade: float, win_rate_stake: float) -> float:
+    """
+    Calculate Win Score.
+    
+    Formula:
+        W_score = 0.5 * W_trade + 0.5 * W_stake
+        
+    Args:
+        win_rate_trade: Trade-based win rate (0.0 to 1.0)
+        win_rate_stake: Stake-weighted win rate (Winning Stake / Total Stake) (0.0 to 1.0)
+    """
+    return 0.5 * win_rate_trade + 0.5 * win_rate_stake
+
+
+def calculate_confidence_score(n_predictions: int) -> float:
+    """
+    Calculate Confidence Score based on number of predictions.
+    
+    Formula:
+        x = Np / 16
+        y = x^0.60
+        z = exp(-y)
+        Conf(Np) = 1 - z
+    """
+    if n_predictions <= 0:
+        return 0.0
+        
+    x = n_predictions / 16.0
+    y = math.pow(x, 0.60)
+    z = math.exp(-y)
+    
+    return 1.0 - z
+
+
+def calculate_new_roi_score(roi: float) -> float:
+    """
+    Calculate ROI Score using tanh-based logarithmic scale.
+    
+    Formula:
+        ROI_score = (1 + tanh(s_ROI * sign(ROI) * ln(1 + |ROI|))) / 2
+        s_ROI = 0.6
+        
+    Returns:
+        ROI Score (0.0 to 1.0)
+    """
+    try:
+        # ln(1 + |ROI|)
+        ln_term = math.log1p(abs(roi))
+        # sign(ROI)
+        sign_roi = 1.0 if roi >= 0 else -1.0
+        # s_ROI = 0.6
+        s_roi = 0.6
+        # tanh(...)
+        tanh_term = math.tanh(s_roi * sign_roi * ln_term)
+        
+        # Final result
+        return (1.0 + tanh_term) / 2.0
+        
+    except ValueError:
+        return 0.5 # Fallback for math errors
+
+def calculate_max_drawdown(equity_curve: List[float]) -> float:
+    """
+    Calculate Maximum Drawdown from an equity curve.
+    
+    Args:
+        equity_curve: List of cumulative PnL values or portfolio values.
+        
+    Returns:
+        Maximum Drawdown as a positive float (representing the peak-to-trough drop).
+    """
+    if not equity_curve:
+        return 0.0
+        
+    max_drawdown = 0.0
+    peak = -float('inf')
+    
+    for value in equity_curve:
+        if value > peak:
+            peak = value
+        
+        drawdown = peak - value
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+            
+    return max_drawdown
 
 
 def calculate_trade_pnl(trade: Dict, market_resolution: str) -> Tuple[float, bool]:
