@@ -524,3 +524,7 @@ async def process_and_insert_trade_data(
         raise
 
 
+
+
+
+

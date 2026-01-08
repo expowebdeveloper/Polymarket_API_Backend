@@ -21,8 +21,8 @@ class LeaderboardEntry(BaseModel):
     score_win_rate: float = Field(0.0, description="Win Rate Score (0-1)")
     score_roi: float = Field(0.0, description="ROI Score (0-1)")
     score_pnl: float = Field(0.0, description="PnL Score (0-1)")
-    score_risk: float = Field(0.0, description="Risk Score (0-1)")
-    final_score: float = Field(0.0, description="Final Score - weighted combination of all 4 scores (0-100): 100 * [0.30*W + 0.30*R + 0.30*P + 0.10*(1-Risk/4)]")
+    score_risk: float = Field(0.0, description="Risk Score (0-1): |Worst Loss| / Total Stake")
+    final_score: float = Field(0.0, description="Final Score - weighted combination of all 4 scores (0-100): 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]")
     # Intermediate values for leaderboard sorting
     W_shrunk: Optional[float] = Field(None, description="W shrunk value (before final score)")
     roi_shrunk: Optional[float] = Field(None, description="ROI shrunk value (before final score)")
