@@ -103,16 +103,23 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         if float(profile_stats.largest_win) > largest_win:
             largest_win = float(profile_stats.largest_win)
 
-    # Total Investment (Volume) Fallback
-    total_investment = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else 0.0
-    if total_investment == 0:
-        # Sum of cost basis for all trades/positions
-        # This is a rough estimation of "total volume" if agg_metrics is empty
-        total_investment = sum(float(cp.total_bought or 0) for cp in closed_positions) + sum(float(p.initial_value or 0) for p in active_positions)
+    # Calculate realized PnL from closed positions
+    realized_pnl_total = sum(float(cp.realized_pnl or 0) for cp in closed_positions)
+    
+    # Calculate investment
+    total_investment = sum(float(cp.total_bought or 0) * float(cp.avg_price or 0) for cp in closed_positions)
+    if active_positions:
+        total_investment += sum(float(p.initial_value or 0) for p in active_positions)
 
     # ROI Calculation: ((realized_pnl + unrealized_pnl) / total_investment) * 100
     unrealized_pnl = sum(float(p.cash_pnl or 0) for p in active_positions)
-    total_pnl = float(agg_metrics.total_pnl) if agg_metrics and agg_metrics.total_pnl else (realized_pnl_total + unrealized_pnl)
+    
+    # Priority for total_pnl: 
+    # 1. Calculated (Realized + Unrealized) - most reliable based on our DB
+    # 2. Agg metrics (fallback)
+    total_pnl_calculated = realized_pnl_total + unrealized_pnl
+    total_pnl = total_pnl_calculated
+    
     roi = (total_pnl / total_investment * 100) if total_investment > 0 else 0.0
 
     # Win Rate from closed positions

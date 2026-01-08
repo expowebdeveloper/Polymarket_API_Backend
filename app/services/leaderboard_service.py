@@ -171,7 +171,17 @@ async def calculate_trader_metrics_with_time_filter(
             total_redemptions += activity.usdc_size
     
     # Calculate total PnL
-    total_pnl = total_realized_pnl + total_unrealized_pnl + total_rewards - total_redemptions
+    # Correct Formula: Realized (from closed) + Cash PnL (from active) + Rewards
+    # Note: total_realized_pnl_filtered is calculated below from closed_positions.
+    # We'll calculate it once here for the total_pnl.
+    
+    # Calculate from closed positions (filtered by time if necessary)
+    total_closed_pnl = sum(cp.realized_pnl for cp in closed_positions)
+    
+    # total_realized_pnl + total_unrealized_pnl for active positions is just the sum of cash_pnl
+    active_pnl = sum(p.cash_pnl for p in positions)
+    
+    total_pnl = total_closed_pnl + active_pnl + total_rewards
     
     # Calculate trade & win metrics from CLOSED POSITIONS (Exactly like view_all)
     total_trade_pnl = Decimal('0')
@@ -246,10 +256,10 @@ async def calculate_trader_metrics_with_time_filter(
     from app.services.scoring_engine import calculate_max_drawdown
     max_drawdown = calculate_max_drawdown(equity_curve)
     
-    # Calculate ROI based on Realized PnL / Closed Investment (Exactly like view_all)
+    # Calculate ROI based on Total PnL (Closed + Active) / Total Stakes
     roi = Decimal('0')
     if total_stakes > 0:
-        roi = (total_trade_pnl / total_stakes) * 100
+        roi = (total_pnl / total_stakes) * 100
     
     # Calculate Win Rate
     win_rate = Decimal('0')
@@ -284,7 +294,7 @@ async def calculate_trader_metrics_with_time_filter(
         "total_pnl": float(total_pnl),
         "roi": float(roi),
         "win_rate": float(win_rate),
-        "total_trades": len(trades),
+        "total_trades": len(closed_positions) + len(positions), # Sum of closed and active (Predictions)
         "total_trades_with_pnl": total_trades_with_pnl,
         "winning_trades": winning_trades_count,
         "total_stakes": float(total_stakes),

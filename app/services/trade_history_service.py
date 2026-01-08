@@ -248,7 +248,8 @@ async def get_trade_history(
             api_trades.append(scoring_trade)
     
     # Fetch resolved markets for scoring engine
-    markets = await fetch_resolved_markets(limit=200)
+    # Increased limit to 2000 to cover more historical data for whales
+    markets = await fetch_resolved_markets(limit=2000)
     
     # This ensures consistency between Trade History and Trader Analytics
     scoring_metrics = await calculate_metrics(wallet_address, api_trades, markets)
@@ -304,24 +305,23 @@ def calculate_overall_metrics_enhanced(
     # Use the calculated total from scoring metrics as the primary Total Trades count
     total_trades_count = total_trades_with_pnl
     
-    # PnL from scoring engine (based on resolved markets)
-    scoring_pnl = scoring_metrics.get("pnl", 0.0)
-    
+    # Calculate realized PnL and wins from database closed positions (more reliable than scoring engine)
+    total_realized_pnl_from_db = 0.0
+    wins_from_db = 0
+    for pos in closed_positions:
+        pnl = pos.get("realized_pnl", 0.0)
+        total_realized_pnl_from_db += pnl
+        if pnl > 0:
+            wins_from_db += 1
+            
     # Add unrealized PnL from open positions
     total_unrealized_pnl = 0.0
     for pos in open_positions:
         if pos.get("cash_pnl"):
             total_unrealized_pnl += pos["cash_pnl"]
     
-    # Add realized PnL from closed positions (if not already in scoring_pnl)
-    total_realized_pnl_from_positions = 0.0
-    for pos in closed_positions:
-        if pos.get("realized_pnl"):
-            total_realized_pnl_from_positions += pos["realized_pnl"]
-    
-    # Total PnL = scoring PnL (from resolved trades) + unrealized from open positions
-    # Note: Closed positions PnL might already be included in scoring_pnl if trades were processed
-    total_pnl = scoring_pnl + total_unrealized_pnl
+    # Total PnL = realized from DB + unrealized from open positions
+    total_pnl = total_realized_pnl_from_db + total_unrealized_pnl
     
     # Calculate total volume from all trades
     total_volume = 0.0
@@ -336,16 +336,17 @@ def calculate_overall_metrics_enhanced(
         if pos.get("initial_value"):
             total_volume += pos["initial_value"]
     
-    # Calculate ROI using scoring engine formula
-    roi = scoring_metrics.get("roi", 0.0)
-    if roi == 0.0 and total_volume > 0:
-        # Fallback: calculate ROI from total PnL and volume
-        roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
+    # Total Trades (Predictions logic: Closed + Open)
+    total_trades_count = len(closed_positions) + len(open_positions)
+
+    # Calculate ROI
+    roi = (total_pnl / total_volume * 100) if total_volume > 0 else 0.0
     
-    # Win Rate from scoring engine
-    win_rate = scoring_metrics.get("win_rate_percent", 0.0)
+    # Win Rate from DB
+    win_rate = (wins_from_db / len(closed_positions) * 100) if len(closed_positions) > 0 else 0.0
     
     # Score from scoring engine (uses ROI, Win Rate, Consistency, Recency)
+    # But we update it to use our more accurate PnL score
     score = scoring_metrics.get("final_score", 0.0)
     
     # Calculate PnL shrunk using the same formula as leaderboard
@@ -462,8 +463,8 @@ def calculate_overall_metrics_enhanced(
     from app.services.scoring_engine import calculate_pnl_score
     pnl_score_val = calculate_pnl_score(total_pnl)
     
-    # Confidence Score
-    confidence_score = calculate_confidence_score(total_trades_with_pnl)
+    # Confidence Score using all predictions
+    confidence_score = calculate_confidence_score(total_trades_count)
     
     # Final Score (Blended)
     # Using the same weights as leaderboard_service
@@ -493,14 +494,14 @@ def calculate_overall_metrics_enhanced(
     
     return {
         "total_pnl": round(total_pnl, 2),
-        "realized_pnl": round(scoring_pnl, 2),  # Realized from resolved trades
+        "realized_pnl": round(total_realized_pnl_from_db, 2),  # Realized from DB
         "unrealized_pnl": round(total_unrealized_pnl, 2),
         "roi": round(roi, 2),
         "win_rate": round(win_rate, 2),
-        "winning_trades": winning_trades,
-        "losing_trades": losing_trades,
-        "total_trades": total_trades_count,  # All trades from database
-        "total_trades_with_pnl": total_trades_with_pnl,  # Trades with calculated PnL
+        "winning_trades": wins_from_db,
+        "losing_trades": len(closed_positions) - wins_from_db,
+        "total_trades": total_trades_count,  # All predictions
+        "total_trades_with_pnl": total_trades_count,  # Alias
         "score": round(final_score, 2),
         "total_volume": round(total_volume, 2),
         "pnl_adj": round(pnl_adj, 2),  # Whale-adjusted PnL
