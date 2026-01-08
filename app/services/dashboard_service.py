@@ -14,6 +14,7 @@ from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
 from app.services.pnl_median_service import get_pnl_median_from_population
+from app.services.confidence_scoring import calculate_confidence_score, calculate_confidence_with_details
 
 async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> Dict[str, Any]:
     """
@@ -102,16 +103,23 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         if float(profile_stats.largest_win) > largest_win:
             largest_win = float(profile_stats.largest_win)
 
-    # Total Investment (Volume) Fallback
-    total_investment = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else 0.0
-    if total_investment == 0:
-        # Sum of cost basis for all trades/positions
-        # This is a rough estimation of "total volume" if agg_metrics is empty
-        total_investment = sum(float(cp.total_bought or 0) for cp in closed_positions) + sum(float(p.initial_value or 0) for p in active_positions)
+    # Calculate realized PnL from closed positions
+    realized_pnl_total = sum(float(cp.realized_pnl or 0) for cp in closed_positions)
+    
+    # Calculate investment
+    total_investment = sum(float(cp.total_bought or 0) * float(cp.avg_price or 0) for cp in closed_positions)
+    if active_positions:
+        total_investment += sum(float(p.initial_value or 0) for p in active_positions)
 
     # ROI Calculation: ((realized_pnl + unrealized_pnl) / total_investment) * 100
     unrealized_pnl = sum(float(p.cash_pnl or 0) for p in active_positions)
-    total_pnl = float(agg_metrics.total_pnl) if agg_metrics and agg_metrics.total_pnl else (realized_pnl_total + unrealized_pnl)
+    
+    # Priority for total_pnl: 
+    # 1. Calculated (Realized + Unrealized) - most reliable based on our DB
+    # 2. Agg metrics (fallback)
+    total_pnl_calculated = realized_pnl_total + unrealized_pnl
+    total_pnl = total_pnl_calculated
+    
     roi = (total_pnl / total_investment * 100) if total_investment > 0 else 0.0
 
     # Win Rate from closed positions
@@ -152,7 +160,8 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
             "roi": roi,
             "total_investment": total_investment,
             "win_rate": win_rate,
-            "worst_loss": worst_loss
+            "worst_loss": worst_loss,
+            "max_drawdown": 0.0 # Default value, will be updated if trader_metrics is available
         },
         "positions_summary": {
             "open_positions_count": len(active_positions),
@@ -197,6 +206,20 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
             if scoring_result.get("traders") and len(scoring_result["traders"]) > 0:
                 scored_trader = scoring_result["traders"][0]
                 
+                # Calculate Custom Win Score (User Request)
+                # W_score = 0.5 * W_trade + 0.5 * W_stake
+                
+                # W_trade = win_rate_percent / 100
+                w_trade = scored_trader.get("win_rate", 0.0) / 100.0
+                
+                # W_stake = winning_stakes / total_stakes
+                total_stakes_val = scored_trader.get("total_stakes", 0.0)
+                winning_stakes_val = scored_trader.get("winning_stakes", 0.0)
+                w_stake = (winning_stakes_val / total_stakes_val) if total_stakes_val > 0 else 0.0
+                
+                # Combined Score
+                win_score_custom = 0.5 * w_trade + 0.5 * w_stake
+                
                 # Extract all scoring metrics
                 scoring_metrics = {
                     "total_pnl": scored_trader.get("total_pnl", 0.0),
@@ -216,20 +239,52 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
                     "winning_trades": scored_trader.get("winning_trades", 0),
                     "total_stakes": scored_trader.get("total_stakes", 0.0),
                     "winning_stakes": scored_trader.get("winning_stakes", 0.0),
+                    "losing_stakes": scored_trader.get("total_stakes", 0.0) - scored_trader.get("winning_stakes", 0.0),
                     "max_stake": scored_trader.get("max_stake", 0.0),
                     "worst_loss": scored_trader.get("worst_loss", 0.0),
+                    "max_drawdown": scored_trader.get("max_drawdown", 0.0),
+                    "losing_trades": scored_trader.get("total_trades_with_pnl", 0) - scored_trader.get("winning_trades", 0),
+                    # New Custom Metrics
+                    "w_trade": round(w_trade, 4),
+                    "w_stake": round(w_stake, 4),
+                    "win_score_blended": round(win_score_custom, 4),
+                    "stake_volatility": scored_trader.get("stake_volatility", 0.0),
                 }
+                
+                # Calculate Confidence Score based on number of trades
+                num_predictions = scored_trader.get("total_trades_with_pnl", 0)
+                confidence_details = calculate_confidence_with_details(num_predictions)
+                
+                # Add confidence metrics to scoring_metrics
+                scoring_metrics.update({
+                    "confidence_score": confidence_details["confidence_score"],
+                    "confidence_percent": confidence_details["confidence_percent"],
+                    "confidence_level": confidence_details["confidence_level"],
+                })
     except Exception as e:
         # If scoring calculation fails, use basic metrics
         import traceback
         print(f"Error calculating scoring metrics: {e}")
         print(traceback.format_exc())
+        
+        # Fallback calculation if possible
+        try:
+             # Basic estimates from available local variables if fallback
+             w_trade_fallback = win_rate / 100.0 if 'win_rate' in locals() else 0.0
+             # We might not have total_stakes available easily here without iterating again, 
+             # but we can try from closed_positions if we want a better fallback.
+             # For now, keep it simple.
+             win_score_fallback = 0.5 * w_trade_fallback # Assuming w_stake is 0 if unknown
+        except:
+             win_score_fallback = 0.0
+
         scoring_metrics = {
             "total_pnl": total_pnl,
             "roi": roi,
             "win_rate": win_rate,
             "win_rate_percent": win_rate,
-            "total_trades": len(all_trades),
+            "total_trades": len(set(cp.condition_id for cp in closed_positions)) + len(set(p.condition_id for p in active_positions)),
+            "win_score_blended": 0.0 # Default failure
         }
 
     # --- Calculate Winning Streaks ---
@@ -242,6 +297,8 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         # Sort closed positions by timestamp (oldest first)
         sorted_closed = sorted(closed_positions, key=lambda cp: cp.timestamp)
         
+        # We calculate streaks and counts from closed positions
+        # This will be consistent with the streaks themselves
         longest_streak_temp = 0
         current_streak_temp = 0
         
@@ -262,6 +319,11 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         # Final check for longest streak
         longest_streak = max(longest_streak, longest_streak_temp)
         current_streak = current_streak_temp
+
+        # Override with scoring_metrics if available and different (should be rare)
+        if scoring_metrics and "winning_trades" in scoring_metrics:
+            total_wins = scoring_metrics["winning_trades"]
+            total_losses = scoring_metrics.get("losing_trades", total_losses)
     except Exception as e:
         print(f"Error calculating streaks: {e}")
     

@@ -266,3 +266,58 @@ async def process_trade_data_endpoint(
         )
 
 
+@router.post(
+    "/sync",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid wallet address"},
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Optimized trade sync",
+    description="Sync only new trades from Polymarket API (incremental update)."
+)
+async def sync_trades_endpoint(
+    user: str = Query(
+        ...,
+        description="Wallet address to sync trades for",
+        min_length=42,
+        max_length=42
+    ),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Sync only new trades from Polymarket API.
+    
+    This endpoint:
+    1. Checks the latest trade timestamp in the DB.
+    2. Fetches trades from API in batches.
+    3. Stops fetching when it sees trades older than the DB timestamp.
+    4. Saves only the new trades.
+    """
+    if not validate_wallet(user):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid wallet address format: {user}"
+        )
+    
+    try:
+        # Get latest timestamp from DB
+        from app.services.trade_service import get_latest_trade_timestamp, sync_trades_since_timestamp
+        
+        latest_ts = await get_latest_trade_timestamp(db, user)
+        
+        # Sync new trades
+        saved_count = await sync_trades_since_timestamp(db, user, min_timestamp=latest_ts)
+        
+        return {
+            "message": "Sync completed",
+            "wallet": user,
+            "new_trades_saved": saved_count,
+            "previous_latest_timestamp": latest_ts
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error syncing trades: {str(e)}"
+        )

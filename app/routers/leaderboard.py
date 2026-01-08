@@ -594,7 +594,7 @@ async def get_live_roi_leaderboard_from_file():
         # Sort by ROI Score
         # Note: keys in dictionary from fetch_live_leaderboard might need checking
         # app/services/live_leaderboard_service.py calls calculate_scores_and_rank
-        # scoring_script.py produces 'score_roi'.
+        # app/services/leaderboard_service.py produces 'score_roi'.
         
         # Sort by ROI_shrunk in ascending order (best = lowest shrunk value = rank 1)
         entries_data.sort(key=lambda x: x.get('roi_shrunk', float('inf')))

@@ -100,6 +100,12 @@ class OverallMetrics(BaseModel):
     pnl_shrunk: Optional[float] = Field(None, description="Shrunk PnL using population median")
     n_eff: Optional[float] = Field(None, description="Effective number of trades")
     pnl_median_used: Optional[float] = Field(None, description="PnL median used in shrinkage calculation")
+    risk_score: float = Field(default=0.0, description="Risk Score (Average Worst Loss / Total Stake)")
+    confidence_score: float = Field(default=0.0, description="Confidence Score (0-1.0)")
+    stake_volatility: float = Field(default=0.0, description="Stake Volatility (Coefficient of Variation)")
+    max_drawdown: float = Field(default=0.0, description="Maximum Drawdown")
+    worst_loss: float = Field(default=0.0, description="Worst Loss value")
+    roi_shrunk: float = Field(default=0.0, description="Shrunk ROI using population median")
 
 
 class CategoryMetrics(BaseModel):

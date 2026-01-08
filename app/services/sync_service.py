@@ -235,7 +235,7 @@ async def _ensure_trader_exists(
 async def _sync_profile_stats(session: AsyncSessionLocal, wallet_address: str, data: Dict[str, Any]):
     """Upsert profile stats."""
     result = await session.execute(select(ProfileStats).where(ProfileStats.proxy_address == wallet_address))
-    stats = result.scalar_one_or_none()
+    stats = result.scalars().first()
     
     if stats:
         stats.username = data.get("username")

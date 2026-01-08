@@ -2,7 +2,7 @@
 Scoring engine service for calculating trader performance metrics.
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -21,8 +21,227 @@ from app.core.constants import (
     CONSISTENCY_WEIGHTS,
     RECENCY_DAYS,
     RESOLUTION_YES,
+    RECENCY_DAYS,
+    RESOLUTION_YES,
     RESOLUTION_NO,
 )
+import math
+
+def log_interpolate(x: float, x_min: float, x_max: float, s_min: float, s_max: float) -> float:
+    """
+    Interpolate score using logarithmic scale keys.
+    f(x) = s_min + (s_max - s_min) * (ln(x) - ln(x_min)) / (ln(x_max) - ln(x_min))
+    """
+    if x <= x_min: return s_min
+    if x >= x_max: return s_max
+    
+    # Use math.log for natural logarithm
+    try:
+        log_x = math.log(x)
+        log_x_min = math.log(x_min)
+        log_x_max = math.log(x_max)
+        
+        return s_min + (s_max - s_min) * (log_x - log_x_min) / (log_x_max - log_x_min)
+    except ValueError:
+        return s_min
+
+def calculate_pnl_score(pnl: float) -> float:
+    """
+    Calculate deterministic PnL score based on log-interpolated bands.
+    Output range: [0, 1]
+    """
+    
+    # 1. Handle Profits (PnL >= 0)
+    if pnl >= 0:
+        # 0 - 100: f(PnL; 1, 100, 0.15 -> 0.25)
+        # Note: log(0) is undefined, so we treat 0 as 1 for log scale or handle 0 separately
+        if pnl < 1:
+            # Linear interpolation for tiny profit 0-1 to avoid log(0)
+            return 0.15 + (0.25 - 0.15) * (pnl / 100.0) 
+            
+        if pnl < 100:
+            return log_interpolate(pnl, 1, 100, 0.15, 0.25)
+        elif pnl < 1000:
+            return log_interpolate(pnl, 100, 1000, 0.25, 0.40)
+        elif pnl < 5000:
+            return log_interpolate(pnl, 1000, 5000, 0.40, 0.60)
+        elif pnl < 10000:
+            return log_interpolate(pnl, 5000, 10000, 0.60, 0.75)
+        elif pnl < 50000:
+            return log_interpolate(pnl, 10000, 50000, 0.75, 0.85)
+        elif pnl < 100000:
+            return log_interpolate(pnl, 50000, 100000, 0.85, 0.92)
+        elif pnl < 500000:
+            return log_interpolate(pnl, 100000, 500000, 0.92, 0.98)
+        elif pnl < 1000000:
+            return log_interpolate(pnl, 500000, 1000000, 0.98, 0.999)
+        else:
+            return 1.00
+
+    # 2. Handle Losses (PnL < 0)
+    else:
+        abs_pnl = abs(pnl)
+        
+        # Loss zones as per FINAL specification:
+        # -100 ≤ PnL < 0: f(|PnL|; 10, 100, 0.20, 0.15)
+        # -1000 ≤ PnL < -100: f(|PnL|; 100, 1000, 0.15, 0.10)
+        # -10000 ≤ PnL < -1000: f(|PnL|; 1000, 10000, 0.10, 0.05)
+        # PnL < -10000: 0.05 * (1 - (ln(|PnL|) - ln(10000)) / (ln(1000000) - ln(10000)))
+        
+        if abs_pnl < 100:
+             # -100 < PnL < 0: Score 0.20 → 0.15
+             return log_interpolate(abs_pnl, 10, 100, 0.20, 0.15)
+        elif abs_pnl < 1000:
+             # -1000 < PnL ≤ -100: Score 0.15 → 0.10
+             return log_interpolate(abs_pnl, 100, 1000, 0.15, 0.10)
+        elif abs_pnl < 10000:
+             # -10000 < PnL ≤ -1000: Score 0.10 → 0.05
+             return log_interpolate(abs_pnl, 1000, 10000, 0.10, 0.05)
+        else:
+             # PnL < -10,000 (abs_pnl > 10,000)
+             # Formula: 0.05 * (1 - (ln(|PnL|) - ln(10,000)) / (ln(1,000,000) - ln(10,000)))
+             try:
+                 ln_pnl = math.log(abs_pnl)
+                 ln_10k = math.log(10000)
+                 ln_1m = math.log(1000000)
+                 
+                 term = (ln_pnl - ln_10k) / (ln_1m - ln_10k)
+                 score = 0.05 * (1.0 - term)
+                 return max(0.0, score) # Clamp to >= 0
+             except:
+                 return 0.0
+
+
+def calculate_new_risk_score(trades_losses: List[float], total_stake: float, total_trades_count: int) -> Optional[float]:
+    """
+    Calculate Risk Score (Average Worst Loss).
+    
+    Formula:
+        k = floor(N / 10)
+        m = min(k, |L|)
+        AvgWorstLoss = (1/m) * sum(m worst losses)
+        RiskScore = AvgWorstLoss / TotalStake
+        
+    Returns:
+        Risk Score (0.0 to 1.0 ideally, but could be higher if losses > stake)
+        None if not enough trades (N < 10)
+    """
+    if total_trades_count < 10:
+        return None
+        
+    if not trades_losses:
+        return 0.0
+        
+    # k = floor(N / 10)
+    k = math.floor(total_trades_count / 10)
+    
+    # Sort losses descending (largest absolute loss first)
+    # Input trades_losses should be negative values (e.g. -50, -20)
+    # We want absolute values for the formula: L = {|pi| : pi < 0}
+    abs_losses = sorted([abs(x) for x in trades_losses], reverse=True)
+    
+    # m = min(k, |L|)
+    m = min(k, len(abs_losses))
+    
+    if m == 0:
+        return 0.0
+        
+    # Average worst loss
+    avg_worst_loss = sum(abs_losses[:m]) / m
+    
+    # Risk Score
+    if total_stake <= 0:
+        return 0.0 # Avoid division by zero
+        
+    return avg_worst_loss / total_stake
+
+
+def calculate_win_score(win_rate_trade: float, win_rate_stake: float) -> float:
+    """
+    Calculate Win Score.
+    
+    Formula:
+        W_score = 0.5 * W_trade + 0.5 * W_stake
+        
+    Args:
+        win_rate_trade: Trade-based win rate (0.0 to 1.0)
+        win_rate_stake: Stake-weighted win rate (Winning Stake / Total Stake) (0.0 to 1.0)
+    """
+    return 0.5 * win_rate_trade + 0.5 * win_rate_stake
+
+
+def calculate_confidence_score(n_predictions: int) -> float:
+    """
+    Calculate Confidence Score based on number of predictions.
+    
+    Formula:
+        x = Np / 16
+        y = x^0.60
+        z = exp(-y)
+        Conf(Np) = 1 - z
+    """
+    if n_predictions <= 0:
+        return 0.0
+        
+    x = n_predictions / 16.0
+    y = math.pow(x, 0.60)
+    z = math.exp(-y)
+    
+    return 1.0 - z
+
+
+def calculate_new_roi_score(roi: float) -> float:
+    """
+    Calculate ROI Score using tanh-based logarithmic scale.
+    
+    Formula:
+        ROI_score = (1 + tanh(s_ROI * sign(ROI) * ln(1 + |ROI|))) / 2
+        s_ROI = 0.6
+        
+    Returns:
+        ROI Score (0.0 to 1.0)
+    """
+    try:
+        # ln(1 + |ROI|)
+        ln_term = math.log1p(abs(roi))
+        # sign(ROI)
+        sign_roi = 1.0 if roi >= 0 else -1.0
+        # s_ROI = 0.6
+        s_roi = 0.6
+        # tanh(...)
+        tanh_term = math.tanh(s_roi * sign_roi * ln_term)
+        
+        # Final result
+        return (1.0 + tanh_term) / 2.0
+        
+    except ValueError:
+        return 0.5 # Fallback for math errors
+
+def calculate_max_drawdown(equity_curve: List[float]) -> float:
+    """
+    Calculate Maximum Drawdown from an equity curve.
+    
+    Args:
+        equity_curve: List of cumulative PnL values or portfolio values.
+        
+    Returns:
+        Maximum Drawdown as a positive float (representing the peak-to-trough drop).
+    """
+    if not equity_curve:
+        return 0.0
+        
+    max_drawdown = 0.0
+    peak = -float('inf')
+    
+    for value in equity_curve:
+        if value > peak:
+            peak = value
+        
+        drawdown = peak - value
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+            
+    return max_drawdown
 
 
 def calculate_trade_pnl(trade: Dict, market_resolution: str) -> Tuple[float, bool]:
@@ -402,16 +621,23 @@ async def calculate_metrics(wallet_address: str, trades: List[Dict], markets: Li
     consistency = await calculate_consistency(trades, markets)
     recency = calculate_recency(trades)
     
-    # Calculate final score
-    win_rate_normalized = win_rate_percent / 100.0
-    roi_normalized = roi / 100.0 if roi != 0 else 0.0
     
-    final_score = (
-        ROI_WEIGHT * roi_normalized +
-        WIN_RATE_WEIGHT * win_rate_normalized +
-        CONSISTENCY_WEIGHT * consistency +
-        RECENCY_WEIGHT * recency
-    ) * 100  # Scale to 0-100
+    # Calculate final score using NEW Deterministic PnL Scoring
+    pnl_score = calculate_pnl_score(overall_pnl)
+    
+    # Multiply by 100 for 0-100 scale compliance with frontend
+    final_score = min(100.0, max(0.0, pnl_score * 100.0))
+    
+    # Previous Scoring System (Deprecated)
+    # win_rate_normalized = win_rate_percent / 100.0
+    # roi_normalized = roi / 100.0 if roi != 0 else 0.0
+    # 
+    # final_score = (
+    #     ROI_WEIGHT * roi_normalized +
+    #     WIN_RATE_WEIGHT * win_rate_normalized +
+    #     CONSISTENCY_WEIGHT * consistency +
+    #     RECENCY_WEIGHT * recency
+    # ) * 100  # Scale to 0-100
     
     # Format category stats
     categories = {}

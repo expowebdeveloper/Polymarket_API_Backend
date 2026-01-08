@@ -121,28 +121,27 @@ class PolymarketService:
         stake_weighted_win_rate = (winning_stakes / total_stakes * 100) if total_stakes > 0 else 0.0
         
         # ROI Calculation
-        # ROI = Total PnL (Leaderboard) / Total Investment (Actual)
+        # ROI = Total PnL / Total Investment
         
         # Calculate Investment for Open Positions
         total_investment_open = 0.0
-        # Ensure positions is iterable
-        if not positions:
-            positions = []
-        
-        for p in positions:
-             # For open positions: size * avgPrice (buyPrice)
-             size = float(p.get("size", 0.0))
-             avg_price = float(p.get("avgPrice", 0.0)) 
-             # Note: API usually returns 'avgPrice' as the buy price for the position
-             total_investment_open += abs(size * avg_price)
+        if positions:
+            for p in positions:
+                size = float(p.get("size", 0.0))
+                avg_price = float(p.get("avgPrice", 0.0)) 
+                total_investment_open += abs(size * avg_price)
              
-        # Actual Total Investment = Closed Investment + Open Investment
         total_investment_closed = total_stakes
         total_investment = total_investment_closed + total_investment_open
         
-        # Recalculate ROI using Realized PnL / Closed Investment
-        # User Request: "calculate ROI and ROI % using teh realized_PnL / total_investment_of closed_markket"
-        if total_investment_closed > 0:
+        # Use a more robust total_pnl (fallback to calculated if leaderboard is suspect)
+        # If total_pnl is significantly different from calculated, we might prefer calculated
+        # but for consistency with leaderboard, we stick to leaderboard if available.
+        final_total_pnl = total_pnl if total_pnl != 0 else total_calculated_pnl
+
+        if total_investment > 0:
+            roi = (final_total_pnl / total_investment * 100)
+        elif total_investment_closed > 0:
             roi = (reailzed_pnl_sum / total_investment_closed * 100)
         else:
             roi = 0.0
