@@ -243,6 +243,7 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
                     "max_stake": scored_trader.get("max_stake", 0.0),
                     "worst_loss": scored_trader.get("worst_loss", 0.0),
                     "max_drawdown": scored_trader.get("max_drawdown", 0.0),
+                    "losing_trades": scored_trader.get("total_trades_with_pnl", 0) - scored_trader.get("winning_trades", 0),
                     # New Custom Metrics
                     "w_trade": round(w_trade, 4),
                     "w_stake": round(w_stake, 4),
@@ -282,7 +283,7 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
             "roi": roi,
             "win_rate": win_rate,
             "win_rate_percent": win_rate,
-            "total_trades": len(all_trades),
+            "total_trades": len(set(cp.condition_id for cp in closed_positions)) + len(set(p.condition_id for p in active_positions)),
             "win_score_blended": 0.0 # Default failure
         }
 
@@ -296,6 +297,8 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         # Sort closed positions by timestamp (oldest first)
         sorted_closed = sorted(closed_positions, key=lambda cp: cp.timestamp)
         
+        # We calculate streaks and counts from closed positions
+        # This will be consistent with the streaks themselves
         longest_streak_temp = 0
         current_streak_temp = 0
         
@@ -316,6 +319,11 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         # Final check for longest streak
         longest_streak = max(longest_streak, longest_streak_temp)
         current_streak = current_streak_temp
+
+        # Override with scoring_metrics if available and different (should be rare)
+        if scoring_metrics and "winning_trades" in scoring_metrics:
+            total_wins = scoring_metrics["winning_trades"]
+            total_losses = scoring_metrics.get("losing_trades", total_losses)
     except Exception as e:
         print(f"Error calculating streaks: {e}")
     

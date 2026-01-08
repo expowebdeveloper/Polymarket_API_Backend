@@ -294,7 +294,7 @@ async def calculate_trader_metrics_with_time_filter(
         "total_pnl": float(total_pnl),
         "roi": float(roi),
         "win_rate": float(win_rate),
-        "total_trades": len(closed_positions) + len(positions), # Sum of closed and active (Predictions)
+        "total_trades": len(set(cp.condition_id for cp in closed_positions)) + len(set(p.condition_id for p in positions)), # Unique markets
         "total_trades_with_pnl": total_trades_with_pnl,
         "winning_trades": winning_trades_count,
         "total_stakes": float(total_stakes),

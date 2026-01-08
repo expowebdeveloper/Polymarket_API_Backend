@@ -14,20 +14,26 @@ router = APIRouter(
 @router.post("/sync/{wallet_address}", response_model=Dict[str, Any])
 async def sync_dashboard_data(
     wallet_address: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    background: bool = True
 ):
     """
     Fetch everything from Polymarket for a specific wallet and store it in the DB.
-    Done in background to avoid blocking.
     """
     if not wallet_address.startswith("0x") or len(wallet_address) != 42:
         raise HTTPException(status_code=400, detail="Invalid wallet address")
         
-    # Trigger sync in background
-    # Note: sync_trader_full_data handles its own session if none passed
-    background_tasks.add_task(sync_trader_full_data, wallet_address)
-    
-    return {"message": "Sync initiated in background", "wallet_address": wallet_address}
+    if background:
+        # Trigger sync in background
+        background_tasks.add_task(sync_trader_full_data, wallet_address)
+        return {"message": "Sync initiated in background", "wallet_address": wallet_address}
+    else:
+        # Run synchronously and return stats
+        try:
+            stats = await sync_trader_full_data(wallet_address)
+            return {"message": "Sync completed", "wallet_address": wallet_address, "stats": stats}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
 
 @router.get("/db/{wallet_address}", response_model=Dict[str, Any])
 async def get_dashboard_db(
