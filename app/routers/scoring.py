@@ -54,26 +54,49 @@ async def get_user_scores_v2(user_address: str, db: AsyncSession = Depends(get_d
         if not user_address.startswith("0x"):
             raise HTTPException(status_code=400, detail="Invalid wallet address format")
             
+        from app.services.data_fetcher import fetch_leaderboard_stats
+        official_stats = await fetch_leaderboard_stats(user_address)
+        
         # 1. Fetch raw metrics from DB (all time)
         metrics = await calculate_trader_metrics_with_time_filter(db, user_address, period='all')
         
         if not metrics or metrics.get('total_trades', 0) == 0:
-            # Return empty/zero scores if no data in DB
-            return ScoringV2Response(
-                wallet_address=user_address,
-                w_shrunk=0.0,
-                pnl_score=0.0,
-                win_rate=0.0,
-                win_rate_percent=0.0,
-                final_rating=0.0,
-                confidence_score=0.0,
-                roi_score=0.0,
-                risk_score=0.0,
-                total_pnl=0.0,
-                roi=0.0,
-                total_trades=0,
-                winning_trades=0
-            )
+            # If no data in DB, try to construct from official stats
+            if official_stats and (official_stats.get("pnl") != 0 or official_stats.get("volume") != 0):
+                metrics = {
+                    "wallet_address": user_address,
+                    "total_pnl": official_stats.get("pnl", 0.0),
+                    "total_volume": official_stats.get("volume", 0.0),
+                    "roi": (official_stats.get("pnl", 0.0) / official_stats.get("volume", 1.0) * 100) if official_stats.get("volume", 0) > 0 else 0.0,
+                    "total_trades": 1, # Minimal trades to allow scoring
+                    "winning_trades": 1 if official_stats.get("pnl", 0) > 0 else 0,
+                    "avg_stake": 0.0,
+                    "win_rate": 50.0 # Default
+                }
+            else:
+                # Return empty/zero scores if no data at all
+                return ScoringV2Response(
+                    wallet_address=user_address,
+                    w_shrunk=0.0,
+                    pnl_score=0.0,
+                    win_rate=0.0,
+                    win_rate_percent=0.0,
+                    final_rating=0.0,
+                    confidence_score=0.0,
+                    roi_score=0.0,
+                    risk_score=0.0,
+                    total_pnl=0.0,
+                    roi=0.0,
+                    total_trades=0,
+                    winning_trades=0
+                )
+
+        # 2. OVERRIDE: Prioritize official PnL and Volume for scoring
+        if official_stats:
+            metrics["total_pnl"] = official_stats.get("pnl", metrics.get("total_pnl", 0.0))
+            metrics["total_volume"] = official_stats.get("volume", metrics.get("total_volume", 0.0))
+            if metrics["total_volume"] > 0:
+                metrics["roi"] = (metrics["total_pnl"] / metrics["total_volume"]) * 100
 
         # 2. Calculate scores using the latest logic
         # calculate_scores_and_rank adds score_win_rate, score_roi, score_pnl, score_risk, confidence_score, final_score

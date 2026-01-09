@@ -11,7 +11,9 @@ from app.db.models import (
 )
 from app.services.leaderboard_service import (
     calculate_trader_metrics_with_time_filter,
-    calculate_scores_and_rank_with_percentiles
+    calculate_scores_and_rank_with_percentiles,
+    process_trader_data_points,
+    calculate_scores_and_rank
 )
 from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.confidence_scoring import calculate_confidence_score, calculate_confidence_with_details
@@ -569,14 +571,195 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         "primary_edge": primary_edge,
         "total_trades": total_trades_count,  # Total number of trades
         "streaks": {
-            "longest_streak": longest_streak,
-            "current_streak": current_streak,
-            "total_wins": total_wins,
-            "total_losses": total_losses,
+            "longest_streak": trader_metrics.get("streaks", {}).get("longest_streak", 0),
+            "current_streak": trader_metrics.get("streaks", {}).get("current_streak", 0),
+            "total_wins": trader_metrics.get("streaks", {}).get("total_wins", 0),
+            "total_losses": trader_metrics.get("streaks", {}).get("total_losses", 0),
         },
-        "rewards_earned": rewards_earned,
+        "rewards_earned": trader_metrics.get("rewards_earned", 0.0),
         "total_volume": total_volume,
         "profit_trend": profit_trend,  # Last 7 days profit trend
+        "largest_win": trader_metrics.get("largest_win", 0.0),
+    }
+
+
+async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
+    """
+    Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
+    Bypasses the local database entirely.
+    """
+    import asyncio
+    from app.services.data_fetcher import (
+        fetch_positions_for_wallet,
+        fetch_closed_positions,
+        fetch_user_activity,
+        fetch_user_trades,
+        fetch_user_pnl,
+        fetch_profile_stats,
+        fetch_portfolio_value,
+        fetch_leaderboard_stats,
+        fetch_user_traded_count,
+        fetch_user_profile_data_v2
+    )
+
+    # 1. Fetch everything concurrently
+    tasks = {
+        "positions": fetch_positions_for_wallet(wallet_address), # limit=None by default
+        "closed_positions": fetch_closed_positions(wallet_address, limit=None),
+        "activities": fetch_user_activity(wallet_address),
+        "trades": fetch_user_trades(wallet_address),
+        "user_pnl": fetch_user_pnl(wallet_address),
+        "profile": fetch_profile_stats(wallet_address),
+        "portfolio_value": fetch_portfolio_value(wallet_address),
+        "leaderboard": fetch_leaderboard_stats(wallet_address),
+        "traded_count": fetch_user_traded_count(wallet_address),
+        "profile_v2": fetch_user_profile_data_v2(wallet_address)
+    }
+
+    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    f = dict(zip(tasks.keys(), results))
+
+    # Helper to handle exceptions
+    def safe_get(key, default=[]):
+        val = f.get(key)
+        return val if not isinstance(val, Exception) and val is not None else default
+
+    active_positions = safe_get("positions", [])
+    closed_positions = safe_get("closed_positions", [])
+    activities = safe_get("activities", [])
+    trades_list = safe_get("trades", [])
+    user_pnl = safe_get("user_pnl", [])
+    profile_stats = safe_get("profile", {})
+    portfolio_value = safe_get("portfolio_value", 0.0)
+    leaderboard_stats = safe_get("leaderboard", {})
+    traded_count = safe_get("traded_count", 0)
+    profile_v2 = safe_get("profile_v2", {})
+
+    # Username Fallback
+    username = profile_stats.get("username") if profile_stats else "Unknown"
+    if (not username or username == "Unknown") and activities:
+        for a in activities:
+            if a.get("name"):
+                username = a.get("name")
+                break
+            if a.get("pseudonym"):
+                username = a.get("pseudonym")
+                break
+
+    # 2. Advanced Performance Calculations (Shared Logic)
+    # This ensures live results match the backend/leaderboard logic exactly.
+    trader_metrics = process_trader_data_points(
+        wallet_address,
+        trades_list,
+        active_positions,
+        activities,
+        closed_positions,
+        {"name": username}
+    )
+
+    # Calculate Scores using Population Medians for consistency
+    pnl_median = await get_pnl_median_from_population()
+    scoring_result = calculate_scores_and_rank_with_percentiles(
+        [trader_metrics],
+        pnl_median=pnl_median
+    )
+    
+    scored_trader = scoring_result["traders"][0] if scoring_result.get("traders") else trader_metrics
+    
+    # Custom Blended Win Score
+    w_trade = scored_trader.get("win_rate", 0.0) / 100.0
+    total_stakes_val = scored_trader.get("total_stakes", 0.0)
+    winning_stakes_val = scored_trader.get("winning_stakes", 0.0)
+    w_stake = (winning_stakes_val / total_stakes_val) if total_stakes_val > 0 else 0.0
+    win_score_blended = 0.5 * w_trade + 0.5 * w_stake
+
+    # Confidence Score
+    num_predictions = scored_trader.get("total_trades_with_pnl", 0)
+    confidence_details = calculate_confidence_with_details(num_predictions)
+
+    scoring_metrics = {
+        "total_pnl": scored_trader.get("total_pnl", 0.0),
+        "roi": scored_trader.get("roi", 0.0),
+        "win_rate": scored_trader.get("win_rate", 0.0),
+        "win_rate_percent": scored_trader.get("win_rate", 0.0),
+        "score_win_rate": scored_trader.get("score_win_rate", 0.0),
+        "score_roi": scored_trader.get("score_roi", 0.0),
+        "score_pnl": scored_trader.get("score_pnl", 0.0),
+        "score_risk": scored_trader.get("score_risk", 0.0),
+        "final_score": scored_trader.get("final_score", 0.0),
+        "total_trades": scored_trader.get("total_trades", 0),
+        "total_trades_with_pnl": scored_trader.get("total_trades_with_pnl", 0),
+        "winning_trades": scored_trader.get("winning_trades", 0),
+        "losing_trades": scored_trader.get("losing_trades", 0),
+        "total_stakes": scored_trader.get("total_stakes", 0.0),
+        "winning_stakes": scored_trader.get("winning_stakes", 0.0),
+        "worst_loss": scored_trader.get("worst_loss", 0.0),
+        "largest_win": trader_metrics.get("largest_win", 0.0),
+        "max_drawdown": scored_trader.get("max_drawdown", 0.0),
+        "stake_volatility": scored_trader.get("stake_volatility", 0.0),
+        "buy_volume": trader_metrics.get("buy_volume", 0.0),
+        "sell_volume": trader_metrics.get("sell_volume", 0.0),
+        "total_volume": trader_metrics.get("buy_volume", 0.0) + trader_metrics.get("sell_volume", 0.0),
+        "confidence_score": confidence_details["confidence_score"],
+        "win_score_blended": win_score_blended,
+        "streaks": trader_metrics.get("streaks", {
+            "longest_streak": 0,
+            "current_streak": 0,
+            "total_wins": 0,
+            "total_losses": 0
+        })
+    }
+
+    # CRITICAL: Override metrics with official values from Polymarket Data API
+    # These values are the Source of Truth for the dashboard display.
+    official_pnl = leaderboard_stats.get("pnl", scoring_metrics["total_pnl"])
+    official_vol = leaderboard_stats.get("volume", scoring_metrics["total_volume"])
+    official_rank = leaderboard_stats.get("rank", 0)
+    
+    scoring_metrics["total_pnl"] = official_pnl
+    scoring_metrics["total_volume"] = official_vol
+    scoring_metrics["buy_volume"] = official_vol # In v1/leaderboard, 'vol' is the primary volume metric
+    scoring_metrics["total_trades"] = traded_count or scoring_metrics["total_trades"]
+    
+    # Update username and profile image from official userData API
+    username = profile_v2.get("name") or profile_v2.get("pseudonym") or username
+    profile_image = profile_v2.get("profileImage") or (profile_stats.get("profileImage") if profile_stats else None)
+
+    return {
+        "profile": {
+            "username": username,
+            "trades": scoring_metrics["total_trades"],
+            "largestWin": scoring_metrics["largest_win"],
+            "views": profile_stats.get("views", 0),
+            "joinDate": profile_stats.get("joinDate"),
+            "profileImage": profile_image
+        },
+        "leaderboard": {
+            "address": wallet_address,
+            "userName": username,
+            "vol": scoring_metrics["total_volume"],
+            "pnl": scoring_metrics["total_pnl"],
+            "rank": official_rank
+        },
+        "portfolio": {
+            "performance_metrics": scoring_metrics,
+            "positions_summary": {
+                "open_positions_count": len(active_positions),
+                "closed_positions_count": len(closed_positions),
+                "current_value": portfolio_value
+            }
+        },
+        "scoring_metrics": scoring_metrics,
+        "positions": active_positions,
+        "closed_positions": closed_positions,
+        "activities": activities,
+        "trade_history": {
+            "trades": user_pnl
+        },
+        "streaks": scoring_metrics["streaks"],
+        "rewards_earned": trader_metrics.get("rewards_earned", 0.0),
+        "total_volume": scoring_metrics["total_volume"],
+        "portfolio_value": portfolio_value
     }
 
 def row_to_dict(obj):

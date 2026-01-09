@@ -291,6 +291,8 @@ class UserScoringService:
         closed_positions = await fetch_closed_positions(user_address)
         leaderboard = await fetch_leaderboard_stats(user_address)
         portfolio_val = await fetch_portfolio_value(user_address)
+        from app.services.data_fetcher import fetch_user_traded_count
+        traded_count = await fetch_user_traded_count(user_address)
         
         total_pnl = leaderboard.get("pnl", 0.0)
         total_vol = leaderboard.get("volume", 0.0)

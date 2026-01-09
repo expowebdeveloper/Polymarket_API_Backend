@@ -95,9 +95,9 @@ async def _sync_trader_with_session(
         "profile": fetch_profile_stats(wallet_address),
         "leaderboard": fetch_leaderboard_stats(wallet_address),
         "trades": fetch_user_trades(wallet_address), # Usually already limited to 100/1000 by API
-        "positions": fetch_positions_for_wallet(wallet_address, limit=100), # Limit to 100 active positions
-        "activities": fetch_user_activity(wallet_address, limit=200), # Reduced from 500 to 200
-        "closed_positions": fetch_closed_positions(wallet_address, limit=200), # Limit to 200 closed positions
+        "positions": fetch_positions_for_wallet(wallet_address), # No limit for full sync
+        "activities": fetch_user_activity(wallet_address), # No limit for full sync
+        "closed_positions": fetch_closed_positions(wallet_address), # No limit for full sync
         "pnl_history": fetch_user_pnl(wallet_address, interval="1m", fidelity="1d"),
         "portfolio_value": fetch_portfolio_value(wallet_address)
     }
@@ -337,7 +337,8 @@ async def _sync_closed_positions(session: AsyncSessionLocal, wallet_address: str
     for p in positions:
         asset = p.get("asset")
         condition_id = p.get("conditionId")
-        timestamp = p.get("timestamp")
+        # Handle multiple possible timestamp fields
+        timestamp = p.get("timestamp") or p.get("time") or p.get("closedAt") or p.get("updatedAt")
         
         if not asset or not condition_id or not timestamp:
             continue
