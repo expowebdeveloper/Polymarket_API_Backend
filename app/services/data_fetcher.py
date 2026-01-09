@@ -622,9 +622,9 @@ async def fetch_positions_for_wallet(
         # If limit is None, fetch ALL data using pagination
         all_positions = []
         seen_ids = set()
-        fetch_limit = 500  # Fetch in chunks (Data API limit is often 500)
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
-        max_pages = 100 # Safety limit
+        max_pages = 200 # Support up to 10,000 items
         
         for _ in range(max_pages):
             params["limit"] = fetch_limit
@@ -805,9 +805,9 @@ async def fetch_user_activity(
         # If limit is None, fetch ALL data using pagination
         all_activities = []
         seen_ids = set()
-        fetch_limit = 500  # Fetch in chunks (Data API limit is often 500)
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
-        max_pages = 100 # Safety limit
+        max_pages = 200 # Support up to 10,000 items
         
         for _ in range(max_pages):
             params["limit"] = fetch_limit
@@ -901,9 +901,9 @@ async def fetch_user_trades(
         # If limit is None, fetch ALL data using pagination
         all_trades = []
         seen_ids = set()
-        fetch_limit = 500  # Fetch in chunks (Data API limit is often 500)
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
-        max_pages = 100 # Safety limit
+        max_pages = 200 # Support up to 10,000 items
         
         for _ in range(max_pages):
             params["limit"] = fetch_limit
@@ -1005,9 +1005,9 @@ async def fetch_closed_positions(
         # If limit is None, fetch ALL data using pagination (no maximum limit)
         all_positions = []
         seen_ids = set()
-        fetch_limit = 500  # Fetch in chunks (Data API limit is often 500)
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
-        max_pages = 100 # Safety limit
+        max_pages = 200 # Support up to 10,000 items
         
         for _ in range(max_pages):
             params["limit"] = fetch_limit
