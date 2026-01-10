@@ -22,13 +22,11 @@ class PolymarketService:
         Returns:
             Dictionary containing PnL, Win Rate, ROI, and other metrics
         """
-<<<<<<< HEAD
         # Fetch data (AWAITING all async calls)
         positions = await fetch_positions_for_wallet(user_address) or []
         closed_positions = await fetch_closed_positions(user_address) or []
         portfolio_value = await fetch_portfolio_value(user_address) or 0.0
         leaderboard_stats = await fetch_leaderboard_stats(user_address) or {}
-=======
         # Fetch data (AWAITING all async calls) with error handling
         try:
             positions = await fetch_positions_for_wallet(user_address)
@@ -45,7 +43,6 @@ class PolymarketService:
         except Exception:
             closed_positions = []
         
-<<<<<<< HEAD
         try:
             portfolio_value = await fetch_portfolio_value(user_address)
         except Exception:
@@ -65,8 +62,6 @@ class PolymarketService:
             leaderboard_stats = {}
         if portfolio_value is None:
             portfolio_value = 0.0
->>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b
-=======
         # Breakdown Metrics
         unrealized_pnl = sum(float(p.get("cashPnl", 0.0)) for p in positions)
         reailzed_pnl_sum = sum(float(c.get("realizedPnl", 0.0)) for c in closed_positions)
@@ -169,7 +164,6 @@ class PolymarketService:
         closed_positions = fetch_closed_positions(user_address)
         portfolio_value = fetch_portfolio_value(user_address)
         leaderboard_stats = fetch_leaderboard_stats(user_address)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         
         # Core Metrics from Leaderboard (Source of Truth for Profile Stats)
         total_pnl = leaderboard_stats.get("pnl", 0.0)

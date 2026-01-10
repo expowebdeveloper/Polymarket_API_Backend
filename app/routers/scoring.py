@@ -9,7 +9,7 @@ from app.services.leaderboard_service import (
 )
 from app.db.session import get_db
 from app.schemas.scoring import ScoringV2Response
-from app.core.scoring_config import scoring_config
+from app.core.scoring_config import default_scoring_config
 
 router = APIRouter(
     prefix="/scoring",
@@ -104,14 +104,14 @@ async def get_user_scores_v2(user_address: str, db: AsyncSession = Depends(get_d
         scored_metrics = scored_metrics_list[0]
         
         # 3. Calculate final_rating (the weighted sum before confidence multiplier)
-        weights = scoring_config.get_all_weights()
+        # Use default_scoring_config attributes directly
         risk_val = max(0.0, min(1.0, scored_metrics.get('score_risk', 0.0)))
         
         base_rating = (
-            weights.get('w', 0.30) * scored_metrics.get('score_win_rate', 0.0) +
-            weights.get('r', 0.30) * scored_metrics.get('score_roi', 0.0) +
-            weights.get('p', 0.30) * scored_metrics.get('score_pnl', 0.0) +
-            weights.get('risk', 0.10) * (1.0 - risk_val)
+            default_scoring_config.weight_win_rate * scored_metrics.get('score_win_rate', 0.0) +
+            default_scoring_config.weight_roi * scored_metrics.get('score_roi', 0.0) +
+            default_scoring_config.weight_pnl * scored_metrics.get('score_pnl', 0.0) +
+            default_scoring_config.weight_risk * (1.0 - risk_val)
         ) * 100.0
         
         return ScoringV2Response(

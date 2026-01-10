@@ -599,6 +599,9 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         fetch_portfolio_value,
         fetch_leaderboard_stats,
         fetch_user_traded_count,
+        fetch_portfolio_value,
+        fetch_leaderboard_stats,
+        fetch_user_traded_count,
         fetch_user_profile_data_v2
     )
 
@@ -673,6 +676,51 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     w_stake = (winning_stakes_val / total_stakes_val) if total_stakes_val > 0 else 0.0
     win_score_blended = 0.5 * w_trade + 0.5 * w_stake
 
+    try:
+        # Explicitly calculate PnL breakdowns for Live Dashboard
+        # Support both camelCase (API) and snake_case (Internal)
+        
+        # Debug: Print first item keys to verify structure
+        if active_positions:
+            print(f"DEBUG: Active Position Keys: {list(active_positions[0].keys())}")
+        if closed_positions:
+            print(f"DEBUG: Closed Position Keys: {list(closed_positions[0].keys())}")
+
+        unrealized_pnl = sum(float(p.get("cashPnl") or p.get("cash_pnl") or 0) for p in (active_positions or []))
+        realized_pnl = sum(float(cp.get("realizedPnl") or cp.get("realized_pnl") or 0) for cp in (closed_positions or []))
+        
+        # Calculate Max Stake from active and closed
+        max_stake = 0.0
+        for p in (active_positions or []):
+            # Check initialValue or initial_value
+            stake = float(p.get("initialValue") or p.get("initial_value") or 0)
+            if stake > max_stake:
+                max_stake = stake
+        
+        for cp in (closed_positions or []):
+             # Check for size/avgPrice variants
+             size = float(cp.get("totalBought") or cp.get("total_bought") or cp.get("size") or 0)
+             price = float(cp.get("avgPrice") or cp.get("avg_price") or 0)
+             stake = size * price
+             
+             if stake > max_stake:
+                 max_stake = stake
+
+        # Winning vs Losing Stakes
+        winning_stakes = scored_trader.get("winning_stakes", 0.0)
+        total_stakes = scored_trader.get("total_stakes", 0.0)
+        losing_stakes = total_stakes - winning_stakes
+    except Exception as e:
+        print(f"Error calculating detailed metrics: {e}")
+        import traceback
+        print(traceback.format_exc())
+        unrealized_pnl = 0.0
+        realized_pnl = 0.0
+        max_stake = 0.0
+        winning_stakes = 0.0
+        losing_stakes = 0.0
+
+
     # Confidence Score
     num_predictions = scored_trader.get("total_trades_with_pnl", 0)
     confidence_details = calculate_confidence_with_details(num_predictions)
@@ -707,7 +755,17 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
             "current_streak": 0,
             "total_wins": 0,
             "total_losses": 0
-        })
+        }),
+        # Detailed Metrics for Dashboard
+        "unrealized_pnl": unrealized_pnl,
+        "realized_pnl": realized_pnl,
+        "max_stake": max_stake,
+        "winning_stakes": winning_stakes,
+        "losing_stakes": losing_stakes,
+        "w_trade": w_trade,
+        "w_stake": w_stake,
+        "open_positions": len(active_positions),
+        "closed_positions": len(closed_positions),
     }
 
     # CRITICAL: Override metrics with official values from Polymarket Data API

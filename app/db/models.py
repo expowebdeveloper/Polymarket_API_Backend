@@ -4,6 +4,28 @@ from datetime import datetime
 
 Base = declarative_base()
 
+class Market(Base):
+    __tablename__ = "markets"
+
+    id = Column(String, primary_key=True, index=True)
+    slug = Column(String, index=True)
+    question = Column(Text)
+    description = Column(Text)
+    status = Column(String, index=True)
+    end_date = Column(DateTime)
+    creation_date = Column(DateTime)
+    volume = Column(Numeric(20, 8), default=0)
+    liquidity = Column(Numeric(20, 8), default=0)
+    open_interest = Column(Numeric(20, 8), default=0)
+    image = Column(Text)
+    icon = Column(Text)
+    category = Column(String)
+    tags = Column(Text)
+    outcome_prices = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -252,29 +274,6 @@ class ClosedPosition(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-<<<<<<< HEAD
-
-class Market(Base):
-    __tablename__ = "markets"
-
-    id = Column(String, primary_key=True, index=True)  # Polymarket Market ID or Slug
-    slug = Column(String(255), unique=True, index=True)
-    question = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    status = Column(String(50), index=True)  # active, closed, resolved
-    end_date = Column(DateTime, nullable=True)
-    creation_date = Column(DateTime, nullable=True)
-    volume = Column(Numeric(20, 8), default=0)
-    liquidity = Column(Numeric(20, 8), default=0)
-    open_interest = Column(Numeric(20, 8), default=0)
-    image = Column(Text, nullable=True)
-    icon = Column(Text, nullable=True)
-    category = Column(String(255), nullable=True)
-    tags = Column(Text, nullable=True)  # Comma-separated or JSON string
-    outcome_prices = Column(Text, nullable=True)  # JSON string of outcomes and prices
-    last_updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-=======
     __table_args__ = (
         UniqueConstraint('proxy_wallet', 'asset', 'condition_id', 'timestamp', name='uq_closed_position_unique'),
     )
@@ -787,4 +786,3 @@ class MonthlyVolumeLeaderboard(Base):
     fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
->>>>>>> 1e267d7cee08180e9c110108b558c48504150e5b

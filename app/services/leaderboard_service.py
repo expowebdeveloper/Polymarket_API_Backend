@@ -6,21 +6,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
 from decimal import Decimal
 import math
-<<<<<<< HEAD
-from app.db.models import Trade, Position, Activity, ClosedPosition
-from app.core.scoring_config import scoring_config
-from app.services.pnl_median_service import calculate_median
-from app.services.scoring_engine import (
-    calculate_new_risk_score,
-    calculate_win_score,
-    calculate_confidence_score,
-    calculate_new_roi_score,
-    calculate_pnl_score # Already existed, but ensure imported
-)
-=======
 from app.db.models import Trade, Position, Activity
 from app.core.scoring_config import ScoringConfig, default_scoring_config
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
+
+def calculate_median(values: List[float]) -> float:
+    """Calculate median of a list of numbers."""
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    n = len(sorted_v)
+    if n % 2 == 1:
+        return sorted_v[n // 2]
+    else:
+        return (sorted_v[n // 2 - 1] + sorted_v[n // 2]) / 2.0
+
+def calculate_win_score(w_trade: float, w_stake: float) -> float:
+    """
+    Calculate blended win score.
+    W_score = 0.5 * W_trade + 0.5 * W_stake
+    Input ranges: 0-1
+    Output range: 0-1
+    """
+    return 0.5 * w_trade + 0.5 * w_stake
 
 
 def get_time_filter(timestamp: int, period: str) -> bool:
@@ -475,151 +482,6 @@ def clamp(n: float, minn: float, maxn: float) -> float:
 
 
 def calculate_risk_score(
-<<<<<<< HEAD
-    trader: Dict,
-    config: Optional[Dict] = None
-) -> Dict[str, any]:
-    """
-    Calculate Risk Score using the fixed formula: Risk Score = |Worst Loss| / Total Stake
-    
-    Base Rules:
-    - Output range: 0 → 1
-    - Higher value = higher risk
-    - This formula is not percentile-based
-    
-    Future Enhancements (Configurable):
-    1. Average of N Worst Losses: If enabled, use average of N worst losses
-    2. Minimum Activity Condition: If enabled, check minimum trades threshold
-    
-    Args:
-        trader: Trader dictionary with metrics
-        config: Optional configuration override (uses scoring_config if not provided)
-    
-    Returns:
-        Dictionary with:
-        - risk_score: Risk score (0-1)
-        - worst_loss: Worst loss value used
-        - avg_worst_loss_n: Average of N worst losses (if enabled)
-        - insufficient_data: True if minimum activity not met
-    """
-    if config is None:
-        config = scoring_config.get_risk_config()
-    
-    total_stakes = trader.get('total_stakes', 0.0)
-    total_trades = trader.get('total_trades', 0)
-    worst_loss = trader.get('worst_loss', 0.0)
-    all_losses = trader.get('all_losses', [])
-    
-    # Future Enhancement 2: Minimum Activity Condition
-    insufficient_data = False
-    if config.get('min_activity_enabled', False):
-        min_trades = config.get('min_trades_threshold', 10)
-        if total_trades < min_trades:
-            insufficient_data = True
-            action = config.get('insufficient_data_action', 'exclude')
-            if action == 'exclude':
-                return {
-                    'risk_score': None,  # Mark for exclusion
-                    'worst_loss': worst_loss,
-                    'avg_worst_loss_n': None,
-                    'insufficient_data': True
-                }
-            elif action == 'mark_insufficient':
-                # Still calculate but mark as insufficient
-                pass
-            # 'calculate_anyway' - continue with calculation
-    
-    # Ensure total_stakes is positive to avoid division by zero
-    if total_stakes <= 0:
-        return {
-            'risk_score': 0.0,
-            'worst_loss': worst_loss,
-            'avg_worst_loss_n': None,
-            'insufficient_data': insufficient_data
-        }
-    
-    # Future Enhancement 1: Average of N Worst Losses
-    loss_value = abs(worst_loss)  # Default: use single worst loss
-    avg_worst_loss_n = None
-    
-    if config.get('use_avg_n_worst', False):
-        n = config.get('n_worst_losses', 5)
-        if all_losses and len(all_losses) > 0:
-            # Sort losses (most negative first)
-            sorted_losses = sorted(all_losses)
-            # Take N worst losses (or all if less than N)
-            n_worst = sorted_losses[:min(n, len(sorted_losses))]
-            if n_worst:
-                avg_worst_loss_n = sum(n_worst) / len(n_worst)
-                loss_value = abs(avg_worst_loss_n)
-    
-    # Base Formula: Risk Score = |Worst Loss| / Total Stake
-    risk_score = loss_value / total_stakes
-    
-    # Clamp to 0-1 range (as per specification)
-    risk_score = clamp(risk_score, 0.0, 1.0)
-    
-    return {
-        'risk_score': risk_score,
-        'worst_loss': worst_loss,
-        'avg_worst_loss_n': avg_worst_loss_n,
-        'insufficient_data': insufficient_data
-    }
-
-
-def calculate_final_rating(
-    scores: Dict[str, float],
-    config: Optional[Dict] = None
-) -> float:
-    """
-    Calculate Final Rating using the formula:
-    Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-    
-    All component scores (W, R, P) must be normalized to 0–1 before applying weights.
-    Risk Score is also 0-1, and we use (1 - Risk Score) in the formula.
-    
-    Args:
-        scores: Dictionary with normalized scores (0-1):
-            - w_score: Win-related score
-            - r_score: ROI score
-            - p_score: PnL score
-            - risk_score: Risk score
-        config: Optional configuration override (uses scoring_config if not provided)
-    
-    Returns:
-        Final rating (0-100)
-    """
-    if config is None:
-        weights = scoring_config.get_all_weights()
-    else:
-        weights = config.get('weights', scoring_config.get_all_weights())
-    
-    w_score = scores.get('w_score', 0.0)
-    r_score = scores.get('r_score', 0.0)
-    p_score = scores.get('p_score', 0.0)
-    risk_score = scores.get('risk_score', 0.0)
-    
-    # Ensure all scores are in 0-1 range
-    w_score = clamp(w_score, 0.0, 1.0)
-    r_score = clamp(r_score, 0.0, 1.0)
-    p_score = clamp(p_score, 0.0, 1.0)
-    risk_score = clamp(risk_score, 0.0, 1.0)
-    
-    # Final Rating Formula
-    # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-    rating = 100.0 * (
-        weights.get('w', 0.30) * w_score +
-        weights.get('r', 0.30) * r_score +
-        weights.get('p', 0.30) * p_score +
-        weights.get('risk', 0.10) * (1.0 - risk_score)
-    )
-    
-    # Clamp to 0-100 range
-    return clamp(rating, 0.0, 100.0)
-
-
-def calculate_scores_and_rank(traders_metrics: List[Dict]) -> List[Dict]:
-=======
     worst_loss: float,
     total_stake: float,
     config: ScoringConfig,
@@ -667,7 +529,6 @@ def calculate_scores_and_rank(
     traders_metrics: List[Dict],
     config: Optional[ScoringConfig] = None
 ) -> List[Dict]:
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
     """
     Calculate advanced scores for a list of traders.
     
@@ -728,13 +589,6 @@ def calculate_scores_and_rank(
         total_stakes = t.get('total_stakes', 0.0)
         total_trades = t.get('total_trades', 0)
         
-<<<<<<< HEAD
-        risk_score_new = calculate_new_risk_score(all_losses, total_stakes, total_trades)
-        
-        if risk_score_new is None:
-            t['score_risk'] = 0.0
-            t['risk_score'] = 0.0
-=======
         # --- Formula 1: Win Rate ---
         s_w = t.get('winning_stakes', 0.0)
         W = (s_w / S) if S > 0 else 0.0
@@ -782,7 +636,6 @@ def calculate_scores_and_rank(
         # W score
         if w_99 - w_1 != 0:
             w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         else:
             t['score_risk'] = float(risk_score_new)
             t['risk_score'] = float(risk_score_new)
@@ -797,49 +650,6 @@ def calculate_scores_and_rank(
         
         t['score_win_rate'] = calculate_win_score(win_rate_trade, win_rate_stake)
         
-<<<<<<< HEAD
-        # 3. ROI Score
-        roi_percent = t.get('roi', 0.0)
-        roi_decimal = roi_percent / 100.0
-        t['score_roi'] = calculate_new_roi_score(roi_decimal)
-        
-        # 4. PnL Score
-        total_pnl = t.get('total_pnl', 0.0)
-        t['score_pnl'] = calculate_pnl_score(total_pnl)
-        
-        # 5. Confidence Score
-        n_predictions = t.get('total_trades_with_pnl', 0)
-        t['confidence_score'] = calculate_confidence_score(n_predictions)
-        
-        # --- Final Rating ---
-        weights = scoring_config.get_all_weights()
-        
-        # Clamp Risk Score for rating calculation if needed. 
-        # Assuming Risk Score is ideally low, we use (1 - Risk).
-        # We clamp risk score to [0, 1] for this part to avoid negative rating.
-        risk_val = max(0.0, min(1.0, t['score_risk']))
-        
-        base_rating = (
-            weights.get('w', 0.30) * t['score_win_rate'] +
-            weights.get('r', 0.30) * t['score_roi'] +
-            weights.get('p', 0.30) * t['score_pnl'] +
-            weights.get('risk', 0.10) * (1.0 - risk_val)
-        ) * 100.0
-        
-        # Apply Confidence Multiplier
-        t['final_score'] = base_rating * t['confidence_score']
-        
-        # Compatibility keys
-        t['w_score'] = t['score_win_rate']
-        t['r_score'] = t['score_roi']
-        t['p_score'] = t['score_pnl']
-        t['risk_score'] = t['score_risk']
-        
-        # Mapping for frontend "Shrunk" tiles
-        t['W_shrunk'] = t.get('win_rate', 0.0)
-        t['roi_shrunk'] = t.get('roi', 0.0)
-        t['pnl_shrunk'] = t.get('total_pnl', 0.0)
-=======
         # Final Rating Formula (0-100 scale)
         # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
         w_score = t.get('score_win_rate', 0.0)
@@ -854,32 +664,24 @@ def calculate_scores_and_rank(
             config.weight_risk * (1.0 - risk_score)
         )
         t['final_score'] = clamp(final_score, 0, 100)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         
     return traders_metrics
 
 
 def calculate_scores_and_rank_with_percentiles(
     traders_metrics: List[Dict],
-<<<<<<< HEAD
+    config: Optional[ScoringConfig] = None,
     pnl_median: Optional[float] = None,
     roi_median: Optional[float] = None
-=======
-    config: Optional[ScoringConfig] = None
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
 ) -> Dict:
     """
     Calculate advanced scores for a list of traders and return with percentile information.
     
     Args:
-<<<<<<< HEAD
-        traders_metrics: List of trader metric dictionaries
-        pnl_median: Optional PnL median from database (all traders). If None, calculates from provided traders.
-        roi_median: Optional ROI median from database (all traders). If None, calculates from provided traders.
-=======
         traders_metrics: List of trader metrics dictionaries
         config: Scoring configuration (uses default if not provided)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
+        pnl_median: Optional pre-calculated PnL median
+        roi_median: Optional pre-calculated ROI median
     
     Returns:
         Dict containing:
@@ -923,44 +725,24 @@ def calculate_scores_and_rank_with_percentiles(
         population_metrics = traders_metrics 
 
     # --- PnL Population Median (for Formula 3) ---
-<<<<<<< HEAD
-    # Use provided median from database, or calculate from current population
     if pnl_median is not None:
         pnl_m = pnl_median
     else:
-        # Calculate from current population (fallback for backward compatibility)
         pnl_adjs_pop = []
-=======
-    pnl_adjs_pop = []
-    
-    for t in population_metrics:
-        pnl_total = t.get('total_pnl', 0.0)
-        S = t.get('total_stakes', 0.0)
-        max_s = t.get('max_stake', 0.0)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         
         for t in population_metrics:
             pnl_total = t.get('total_pnl', 0.0)
             S = t.get('total_stakes', 0.0)
             max_s = t.get('max_stake', 0.0)
-            alpha = 4.0
             
-<<<<<<< HEAD
             ratio = 0.0
             if S > 0:
                 ratio = max_s / S
                 
-            pnl_adj = pnl_total / (1 + alpha * ratio)
+            pnl_adj = pnl_total / (1 + config.shrink_alpha * ratio)
             pnl_adjs_pop.append(pnl_adj)
             
-        # Calculate PnL median using exact traditional formula
-        pnl_m = calculate_median(pnl_adjs_pop)
-=======
-        pnl_adj = pnl_total / (1 + config.shrink_alpha * ratio)
-        pnl_adjs_pop.append(pnl_adj)
-        
-    pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
+        pnl_m = sorted(pnl_adjs_pop)[len(pnl_adjs_pop) // 2] if pnl_adjs_pop else 0.0
 
     # --- ROI Population Median (for Formula 2) ---
     # Use provided median from database, or calculate from current population
@@ -970,22 +752,25 @@ def calculate_scores_and_rank_with_percentiles(
         # Calculate from current population (fallback for backward compatibility)
         rois_pop = [t.get('roi', 0.0) for t in population_metrics]
         # Calculate ROI median using exact traditional formula
-        roi_m = calculate_median(rois_pop)
+        if not rois_pop:
+            roi_m = 0.0
+        else:
+            rois_pop.sort()
+            n = len(rois_pop)
+            if n % 2 == 1:
+                roi_m = rois_pop[n // 2]
+            else:
+                roi_m = (rois_pop[n // 2 - 1] + rois_pop[n // 2]) / 2.0
 
     # --- NEW Scoring Implementation (Deterministic) ---
     for t in traders_metrics:
         # 1. Risk Score (Average Worst Loss)
         all_losses = t.get('all_losses', [])
         total_stakes = t.get('total_stakes', 0.0)
+        S = total_stakes
         total_trades = t.get('total_trades', 0)
+        N_eff = float(total_trades)
         
-<<<<<<< HEAD
-        risk_score_new = calculate_new_risk_score(all_losses, total_stakes, total_trades)
-        
-        if risk_score_new is None:
-            t['score_risk'] = 0.0
-            t['risk_score'] = 0.0
-=======
         # --- Formula 1: Win Rate ---
         s_w = t.get('winning_stakes', 0.0)
         W = (s_w / S) if S > 0 else 0.0
@@ -1032,87 +817,63 @@ def calculate_scores_and_rank_with_percentiles(
     for t in traders_metrics:
         # W score
         if w_99 - w_1 != 0:
-            w_score = (t['W_shrunk'] - w_1) / (w_99 - w_1)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
+            # Normalize w_shrunk to 0-1 range based on percentiles
+            w_factor = (t['W_shrunk'] - w_1) / (w_99 - w_1)
         else:
-            t['score_risk'] = float(risk_score_new)
-            t['risk_score'] = float(risk_score_new)
-            t['_exclude'] = False
-
-        # 2. Win Score
+            w_factor = 0.5 # Neutral if no variance
+        
+        # 2. Win Score (Blended)
         win_rate_percent = t.get('win_rate', 0.0)
         win_rate_trade = win_rate_percent / 100.0
         
         winning_stakes = t.get('winning_stakes', 0.0)
+        total_stakes = t.get('total_stakes', 0.0) # Ensure using the loop variable
         win_rate_stake = (winning_stakes / total_stakes) if total_stakes > 0 else 0.0
         
         t['score_win_rate'] = calculate_win_score(win_rate_trade, win_rate_stake)
         
-<<<<<<< HEAD
-        # 3. ROI Score
-        roi_percent = t.get('roi', 0.0)
-        roi_decimal = roi_percent / 100.0
-        t['score_roi'] = calculate_new_roi_score(roi_decimal)
+        # Normalize other scores if needed, for now we assume they are 0-100 or 0-1
+        # In this implementation, we map shrunk values to scores implicitly or explicitly
+        # For simplicity and matching dashboard:
         
-        # 4. PnL Score
-        total_pnl = t.get('total_pnl', 0.0)
-        t['score_pnl'] = calculate_pnl_score(total_pnl)
+        # ROI Score
+        # ROI Score
+        if r_99 - r_1 != 0:
+             r_score = (t['roi_shrunk'] - r_1) / (r_99 - r_1)
+        else:
+             r_score = 0.5
+        t['score_roi'] = clamp(r_score, 0.0, 1.0) * 100.0 # Scale to 0-100 for final weight
         
-        # 5. Confidence Score
-        # Use total_trades_with_pnl as N_p (predictions)
-        n_predictions = t.get('total_trades_with_pnl', 0)
-        t['confidence_score'] = calculate_confidence_score(n_predictions)
+        # PnL Score
+        if p_99 - p_1 != 0:
+             p_score = (t['pnl_shrunk'] - p_1) / (p_99 - p_1)
+        else:
+             p_score = 0.5
+        t['score_pnl'] = clamp(p_score, 0.0, 1.0) * 100.0
         
-        # --- Final Rating ---
-        weights = scoring_config.get_all_weights()
-        risk_val = max(0.0, min(1.0, t['score_risk']))
-        
-        base_rating = (
-            weights.get('w', 0.30) * t['score_win_rate'] +
-            weights.get('r', 0.30) * t['score_roi'] +
-            weights.get('p', 0.30) * t['score_pnl'] +
-            weights.get('risk', 0.10) * (1.0 - risk_val)
-        ) * 100.0
-        
-        # Apply Confidence Multiplier
-        t['final_score'] = base_rating * t['confidence_score']
-        
-        # Compatibility keys
-        t['w_score'] = t['score_win_rate']
-        t['r_score'] = t['score_roi']
-        t['p_score'] = t['score_pnl']
-        t['risk_score'] = t['score_risk']
-        
-        # Mapping for frontend "Shrunk" tiles
-        t['W_shrunk'] = t.get('win_rate', 0.0)
-        t['roi_shrunk'] = t.get('roi', 0.0)
-        t['pnl_shrunk'] = t.get('total_pnl', 0.0)
-
-    # Filter out excluded traders
-    traders_metrics = [t for t in traders_metrics if not t.get('_exclude', False)]
-
-    return {
-        "traders": traders_metrics,
-        "percentiles": {
-            "w_shrunk_1_percent": 0.0,
-            "w_shrunk_99_percent": 0.0,
-            "roi_shrunk_1_percent": 0.0,
-            "roi_shrunk_99_percent": 0.0,
-            "pnl_shrunk_1_percent": 0.0,
-            "pnl_shrunk_99_percent": 0.0,
-=======
-        # Final Rating Formula (0-100 scale)
-        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-        w_score = t.get('score_win_rate', 0.0)
-        r_score = t.get('score_roi', 0.0)
-        p_score = t.get('score_pnl', 0.0)
+        # Risk Score is 0-1
         risk_score = t.get('score_risk', 0.0)
         
-        final_score = 100.0 * (
-            config.weight_win_rate * w_score + 
-            config.weight_roi * r_score + 
-            config.weight_pnl * p_score + 
-            config.weight_risk * (1.0 - risk_score)
+        # Final Rating Formula (0-100 scale)
+        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
+        # We use the calculated scores which are now 0-100 (except risk which is 0-1)
+        
+        # Note: weights in config sum to 1.0 usually. 
+        # If scores are 0-100, we just multiply.
+        
+        # Normalize W_shrunk contribution to 0-100
+        w_score_val = clamp(w_factor, 0.0, 1.0) * 100.0
+        
+        # Use Blended Win Score as the primary Win Score component? 
+        # Or combine them? The prompt implies "Custom Win Score" which is Blended.
+        # Let's use Blended Win Score for the final score as it captures both trade and stake win rates.
+        w_score_final = t['score_win_rate'] * 100.0 # blended is 0-1
+        
+        final_score = (
+            config.weight_win_rate * w_score_final + 
+            config.weight_roi * t['score_roi'] + 
+            config.weight_pnl * t['score_pnl'] + 
+            config.weight_risk * (1.0 - risk_score) * 100.0
         )
         t['final_score'] = clamp(final_score, 0, 100)
     
@@ -1125,7 +886,6 @@ def calculate_scores_and_rank_with_percentiles(
             f"roi_shrunk_{config.percentile_upper}_percent": r_99,
             f"pnl_shrunk_{config.percentile_lower}_percent": p_1,
             f"pnl_shrunk_{config.percentile_upper}_percent": p_99,
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         },
         "medians": {
             "roi_median": float(roi_m),

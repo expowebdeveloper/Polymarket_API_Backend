@@ -12,22 +12,13 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
-<<<<<<< HEAD
-from app.services.pnl_median_service import get_pnl_median_from_population
+from app.core.scoring_config import default_scoring_config
 from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
-    fetch_raw_metrics_for_scoring,
     fetch_polymarket_leaderboard_api,
     fetch_polymarket_biggest_winners,
-    transform_polymarket_api_entry,
-    fetch_wallet_addresses_from_live_leaderboard,
-    save_wallet_addresses_to_json,
-    load_wallet_addresses_from_json
+    transform_polymarket_api_entry
 )
-=======
-from app.core.scoring_config import default_scoring_config
-from app.services.live_leaderboard_service import fetch_live_leaderboard_from_file
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
@@ -853,28 +844,12 @@ async def get_all_leaderboards_with_percentiles():
                 population_traders=0
             )
         
-<<<<<<< HEAD
-        # Get medians from Polymarket API (all traders in file, fetched from API)
-        pnl_median_api = await get_pnl_median_from_population()
-        
-        # Calculate scores with percentile information
-        # Pass API PnL median to use in calculations
-        result = calculate_scores_and_rank_with_percentiles(
-            entries_data,
-            pnl_median=pnl_median_api
-        )
-=======
         # Calculate scores with percentile information using configurable scoring
         result = calculate_scores_and_rank_with_percentiles(entries_data, default_scoring_config)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
         
-<<<<<<< HEAD
-        # Override PnL median with API value
-        medians_data["pnl_median"] = pnl_median_api
-=======
         # Extract percentile values using configurable keys (default uses 1% and 99%)
         config = default_scoring_config
         w_lower_key = f"w_shrunk_{config.percentile_lower}_percent"
@@ -883,7 +858,6 @@ async def get_all_leaderboards_with_percentiles():
         roi_upper_key = f"roi_shrunk_{config.percentile_upper}_percent"
         pnl_lower_key = f"pnl_shrunk_{config.percentile_lower}_percent"
         pnl_upper_key = f"pnl_shrunk_{config.percentile_upper}_percent"
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         
         # Create all different leaderboards
         leaderboards = {}
@@ -946,15 +920,6 @@ async def get_all_leaderboards_with_percentiles():
         
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
-<<<<<<< HEAD
-                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
-                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
-                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
-                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
-                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
-                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
-                population_size=percentiles_data.get("population_size", len(traders))
-=======
                 w_shrunk_1_percent=percentiles_data.get(w_lower_key, 0.0),
                 w_shrunk_99_percent=percentiles_data.get(w_upper_key, 0.0),
                 roi_shrunk_1_percent=percentiles_data.get(roi_lower_key, 0.0),
@@ -962,7 +927,6 @@ async def get_all_leaderboards_with_percentiles():
                 pnl_shrunk_1_percent=percentiles_data.get(pnl_lower_key, 0.0),
                 pnl_shrunk_99_percent=percentiles_data.get(pnl_upper_key, 0.0),
                 population_size=result["population_size"]
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
             ),
             medians=MedianInfo(
                 roi_median=medians_data["roi_median"],
@@ -1161,287 +1125,12 @@ async def get_all_db_leaderboards(
                 population_traders=0
             )
         
-<<<<<<< HEAD
-        # Get medians from Polymarket API
-        pnl_median_api = await get_pnl_median_from_population()
-        
-        # Calculate scores with percentile information
-        result = calculate_scores_and_rank_with_percentiles(
-            entries_data,
-            pnl_median=pnl_median_api
-        )
-=======
         # Calculate scores with percentile information using configurable scoring
         result = calculate_scores_and_rank_with_percentiles(entries_data, default_scoring_config)
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         traders = result["traders"]
         percentiles_data = result["percentiles"]
         medians_data = result["medians"]
         
-<<<<<<< HEAD
-        # Override PnL median with API value
-        medians_data["pnl_median"] = pnl_median_api
-        
-        # Create all different leaderboards (same as view-all endpoint)
-        leaderboards = {}
-        
-        # 1. W_shrunk leaderboard (ascending - best = lowest)
-        w_shrunk_sorted = sorted(traders, key=lambda x: x.get('W_shrunk', float('inf')))
-        for i, trader in enumerate(w_shrunk_sorted, 1):
-            trader['rank'] = i
-        leaderboards["w_shrunk"] = [LeaderboardEntry(**t) for t in w_shrunk_sorted]
-        
-        # 2. ROI raw leaderboard (descending - best = highest)
-        roi_raw_sorted = sorted(traders, key=lambda x: x.get('roi', float('-inf')), reverse=True)
-        for i, trader in enumerate(roi_raw_sorted, 1):
-            trader['rank'] = i
-        leaderboards["roi_raw"] = [LeaderboardEntry(**t) for t in roi_raw_sorted]
-        
-        # 3. ROI shrunk leaderboard (ascending - best = lowest)
-        roi_shrunk_sorted = sorted(traders, key=lambda x: x.get('roi_shrunk', float('inf')))
-        for i, trader in enumerate(roi_shrunk_sorted, 1):
-            trader['rank'] = i
-        leaderboards["roi_shrunk"] = [LeaderboardEntry(**t) for t in roi_shrunk_sorted]
-        
-        # 4. PNL shrunk leaderboard (ascending - best = lowest)
-        pnl_shrunk_sorted = sorted(traders, key=lambda x: x.get('pnl_shrunk', float('inf')))
-        for i, trader in enumerate(pnl_shrunk_sorted, 1):
-            trader['rank'] = i
-        leaderboards["pnl_shrunk"] = [LeaderboardEntry(**t) for t in pnl_shrunk_sorted]
-        
-        # 5. Final Score leaderboards (descending - best = highest)
-        # Win Rate Score
-        win_rate_sorted = sorted(traders, key=lambda x: x.get('score_win_rate', 0), reverse=True)
-        for i, trader in enumerate(win_rate_sorted, 1):
-            trader['rank'] = i
-        leaderboards["score_win_rate"] = [LeaderboardEntry(**t) for t in win_rate_sorted]
-        
-        # ROI Score
-        roi_score_sorted = sorted(traders, key=lambda x: x.get('score_roi', 0), reverse=True)
-        for i, trader in enumerate(roi_score_sorted, 1):
-            trader['rank'] = i
-        leaderboards["score_roi"] = [LeaderboardEntry(**t) for t in roi_score_sorted]
-        
-        # PNL Score
-        pnl_score_sorted = sorted(traders, key=lambda x: x.get('score_pnl', 0), reverse=True)
-        for i, trader in enumerate(pnl_score_sorted, 1):
-            trader['rank'] = i
-        leaderboards["score_pnl"] = [LeaderboardEntry(**t) for t in pnl_score_sorted]
-        
-        # Risk Score
-        risk_sorted = sorted(traders, key=lambda x: x.get('score_risk', 0), reverse=True)
-        for i, trader in enumerate(risk_sorted, 1):
-            trader['rank'] = i
-        leaderboards["score_risk"] = [LeaderboardEntry(**t) for t in risk_sorted]
-        
-        # Final Score (descending - best = highest)
-        final_score_sorted = sorted(traders, key=lambda x: x.get('final_score', 0), reverse=True)
-        for i, trader in enumerate(final_score_sorted, 1):
-            trader['rank'] = i
-        leaderboards["final_score"] = [LeaderboardEntry(**t) for t in final_score_sorted]
-        
-        # Apply limit and offset to each list
-        for key in list(leaderboards.keys()):
-            leaderboards[key] = leaderboards[key][offset : offset + limit]
-        
-        return AllLeaderboardsResponse(
-            percentiles=PercentileInfo(
-                w_shrunk_1_percent=percentiles_data.get("w_shrunk_1_percent", 0.0),
-                w_shrunk_99_percent=percentiles_data.get("w_shrunk_99_percent", 0.0),
-                roi_shrunk_1_percent=percentiles_data.get("roi_shrunk_1_percent", 0.0),
-                roi_shrunk_99_percent=percentiles_data.get("roi_shrunk_99_percent", 0.0),
-                pnl_shrunk_1_percent=percentiles_data.get("pnl_shrunk_1_percent", 0.0),
-                pnl_shrunk_99_percent=percentiles_data.get("pnl_shrunk_99_percent", 0.0),
-                population_size=result.get("population_size", 0)
-            ),
-            medians=MedianInfo(
-                roi_median=medians_data.get("roi_median", 0.0),
-                pnl_median=medians_data.get("pnl_median", 0.0)
-            ),
-            leaderboards=leaderboards,
-            total_traders=result.get("total_traders", len(traders)),
-            population_traders=result.get("population_size", 0)
-        )
-    except Exception as e:
-        import traceback
-        print(f"Error generating all DB leaderboards: {e}")
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating all DB leaderboards: {str(e)}"
-        )
-
-
-
-@router.get(
-    "/view-all",
-    response_model=AllLeaderboardsResponse,
-    responses={
-        500: {"model": ErrorResponse, "description": "Internal server error"}
-    },
-    summary="View All Leaderboards (JSON)",
-    description="Get all leaderboards using wallet addresses from wallet_input.json (saved by /leaderboard/live endpoint), with percentile information in JSON format. Always computes fresh data (no caching). The time_period parameter affects metrics calculation. Note: Call /leaderboard/live first to populate wallet_input.json."
-)
-async def view_all_leaderboards(
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination"),
-    time_period: Literal["day", "week", "month", "all"] = Query(
-        "all",
-        description="Time period for both wallet selection and metrics calculation (day, week, month, or all)"
-    ),
-    order_by: Literal["PNL", "VOL"] = Query(
-        "PNL",
-        description="Order by metric for fetching wallet addresses from live leaderboard"
-    )
-):
-    """
-    Get all leaderboards and percentile information in JSON format.
-    
-    This endpoint:
-    1. Loads wallet addresses from wallet_input.json (saved by /leaderboard/live endpoint)
-    2. Calculates metrics (PnL, ROI, win rate) for each wallet filtered by the time period
-    3. Calculates scores with percentile information using the same formula as live leaderboard
-    4. Returns all leaderboards sorted by different metrics
-    5. Includes percentile anchors, medians, and population statistics
-    6. Always computes fresh data - no database caching
-    7. Fetches ALL closed positions for each wallet (no limits)
-    
-    IMPORTANT: Call /leaderboard/live endpoint first to populate wallet_input.json with wallet addresses.
-    
-    Time Period Behavior:
-    - "day": Calculates metrics for last 24 hours
-    - "week": Calculates metrics for last 7 days
-    - "month": Calculates metrics for last 30 days
-    - "all": Calculates all-time metrics
-    
-    Returns:
-    - All leaderboards sorted by different metrics (W_shrunk, ROI_raw, ROI_shrunk, PNL_shrunk, final scores)
-    - Percentile information (configurable percentiles for W, ROI, and PNL shrunk values)
-    - Median values (ROI median and PNL median used in shrinkage)
-    - Population statistics
-    """
-    try:
-        # Step 1: Load wallet addresses from wallet_input.json (saved by /leaderboard/live endpoint)
-        # If file doesn't exist or is empty, return empty response
-        wallet_addresses, wallet_info_map = load_wallet_addresses_from_json()
-        
-        if not wallet_addresses:
-            # If no wallets in file, return empty response
-            return AllLeaderboardsResponse(
-                percentiles=PercentileInfo(
-                    w_shrunk_1_percent=0.0,
-                    w_shrunk_99_percent=0.0,
-                    roi_shrunk_1_percent=0.0,
-                    roi_shrunk_99_percent=0.0,
-                    pnl_shrunk_1_percent=0.0,
-                    pnl_shrunk_99_percent=0.0,
-                    population_size=0
-                ),
-                medians=MedianInfo(
-                    roi_median=0.0,
-                    pnl_median=0.0
-                ),
-                leaderboards={},
-                total_traders=0,
-                population_traders=0
-            )
-        
-        if not wallet_addresses:
-            return AllLeaderboardsResponse(
-                percentiles=PercentileInfo(
-                    w_shrunk_1_percent=0.0,
-                    w_shrunk_99_percent=0.0,
-                    roi_shrunk_1_percent=0.0,
-                    roi_shrunk_99_percent=0.0,
-                    pnl_shrunk_1_percent=0.0,
-                    pnl_shrunk_99_percent=0.0,
-                    population_size=0
-                ),
-                medians=MedianInfo(
-                    roi_median=0.0,
-                    pnl_median=0.0
-                ),
-                leaderboards={},
-                total_traders=0,
-                population_traders=0
-            )
-        
-        # Step 2: Fetch raw metrics for these wallets using the same method as live leaderboard
-        entries_data = []
-        semaphore = asyncio.Semaphore(5)  # Limit concurrency
-        
-        async def fetch_wallet_metrics(wallet: str):
-            async with semaphore:
-                try:
-                    from app.services.polymarket_service import PolymarketService
-                    # Pass time_period to calculate metrics for the specified time period
-                    stats = await PolymarketService.calculate_portfolio_stats(wallet, time_period=time_period)
-                    if stats is None:
-                        return None
-                    from app.services.live_leaderboard_service import transform_stats_for_scoring
-                    transformed = transform_stats_for_scoring(stats)
-                    if transformed:
-                        # Merge name/pseudonym/profile_image from live API
-                        wallet_info = wallet_info_map.get(wallet, {})
-                        transformed["name"] = wallet_info.get("name")
-                        transformed["pseudonym"] = wallet_info.get("pseudonym")
-                        transformed["profile_image"] = wallet_info.get("profile_image")
-                    return transformed
-                except Exception as e:
-                    print(f"Error fetching stats for {wallet}: {e}")
-                    return None
-        
-        # Process wallets in batches
-        batch_size = 50
-        for i in range(0, len(wallet_addresses), batch_size):
-            batch = wallet_addresses[i:i + batch_size]
-            tasks = [fetch_wallet_metrics(wallet) for wallet in batch]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            for result in results:
-                if result and isinstance(result, dict):
-                    entries_data.append(result)
-            
-            # Small delay between batches
-            if i + batch_size < len(wallet_addresses):
-                await asyncio.sleep(0.1)
-        
-        if not entries_data:
-            return AllLeaderboardsResponse(
-                percentiles=PercentileInfo(
-                    w_shrunk_1_percent=0.0,
-                    w_shrunk_99_percent=0.0,
-                    roi_shrunk_1_percent=0.0,
-                    roi_shrunk_99_percent=0.0,
-                    pnl_shrunk_1_percent=0.0,
-                    pnl_shrunk_99_percent=0.0,
-                    population_size=0
-                ),
-                medians=MedianInfo(
-                    roi_median=0.0,
-                    pnl_median=0.0
-                ),
-                leaderboards={},
-                total_traders=0,
-                population_traders=0
-            )
-        
-        # Get medians from Polymarket API (population median for shrinkage calculations)
-        pnl_median_api = await get_pnl_median_from_population()
-        
-        # Calculate scores with percentile information (single calculation)
-        # Pass API PnL median to use in calculations
-        result = calculate_scores_and_rank_with_percentiles(
-            entries_data,
-            pnl_median=pnl_median_api
-        )
-        traders = result["traders"]
-        percentiles_data = result["percentiles"]
-        medians_data = result["medians"]
-        
-        # Override PnL median with API value
-        medians_data["pnl_median"] = pnl_median_api
-=======
         # Extract percentile values using configurable keys (default uses 1% and 99%)
         config = default_scoring_config
         w_lower_key = f"w_shrunk_{config.percentile_lower}_percent"
@@ -1450,7 +1139,6 @@ async def view_all_leaderboards(
         roi_upper_key = f"roi_shrunk_{config.percentile_upper}_percent"
         pnl_lower_key = f"pnl_shrunk_{config.percentile_lower}_percent"
         pnl_upper_key = f"pnl_shrunk_{config.percentile_upper}_percent"
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
         
         # Create all different leaderboards
         leaderboards = {}
@@ -1517,15 +1205,6 @@ async def view_all_leaderboards(
         
         return AllLeaderboardsResponse(
             percentiles=PercentileInfo(
-<<<<<<< HEAD
-                w_shrunk_1_percent=percentiles_data["w_shrunk_1_percent"],
-                w_shrunk_99_percent=percentiles_data["w_shrunk_99_percent"],
-                roi_shrunk_1_percent=percentiles_data["roi_shrunk_1_percent"],
-                roi_shrunk_99_percent=percentiles_data["roi_shrunk_99_percent"],
-                pnl_shrunk_1_percent=percentiles_data["pnl_shrunk_1_percent"],
-                pnl_shrunk_99_percent=percentiles_data["pnl_shrunk_99_percent"],
-                population_size=percentiles_data.get("population_size", len(traders))
-=======
                 w_shrunk_1_percent=percentiles_data.get(w_lower_key, 0.0),
                 w_shrunk_99_percent=percentiles_data.get(w_upper_key, 0.0),
                 roi_shrunk_1_percent=percentiles_data.get(roi_lower_key, 0.0),
@@ -1533,7 +1212,6 @@ async def view_all_leaderboards(
                 pnl_shrunk_1_percent=percentiles_data.get(pnl_lower_key, 0.0),
                 pnl_shrunk_99_percent=percentiles_data.get(pnl_upper_key, 0.0),
                 population_size=result["population_size"]
->>>>>>> 7ffa6dd982d968bfe597ebd0f22d2268454ce1bc
             ),
             medians=MedianInfo(
                 roi_median=medians_data["roi_median"],
