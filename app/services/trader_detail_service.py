@@ -84,6 +84,7 @@ async def fetch_trader_value(wallet_address: str) -> Optional[Dict]:
 async def fetch_trader_positions(wallet_address: str) -> List[Dict]:
     """
     Fetch trader positions from Polymarket API.
+    Fetches all pages.
     
     Args:
         wallet_address: Wallet address
@@ -92,26 +93,17 @@ async def fetch_trader_positions(wallet_address: str) -> List[Dict]:
         List of position dicts
     """
     try:
-        url = "https://data-api.polymarket.com/positions"
-        params = {"user": wallet_address}
-        
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        return data if isinstance(data, list) else []
+        from app.services.data_fetcher import fetch_positions_for_wallet
+        return await fetch_positions_for_wallet(wallet_address)
     except Exception as e:
-        error_msg = str(e)
-        if hasattr(e, 'response'):
-            error_msg += f" (Status: {e.response.status_code}, Body: {e.response.text})"
-        
-        print(f"Error fetching positions for {wallet_address}: {error_msg}")
+        print(f"Error fetching positions for {wallet_address}: {e}")
         return []
 
 
 async def fetch_trader_activity(wallet_address: str) -> List[Dict]:
     """
     Fetch trader activity from Polymarket API.
+    Fetches all pages.
     
     Args:
         wallet_address: Wallet address
@@ -120,14 +112,8 @@ async def fetch_trader_activity(wallet_address: str) -> List[Dict]:
         List of activity dicts
     """
     try:
-        url = "https://data-api.polymarket.com/activity"
-        params = {"user": wallet_address}
-        
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        return data if isinstance(data, list) else []
+        from app.services.data_fetcher import fetch_user_activity
+        return await fetch_user_activity(wallet_address)
     except Exception as e:
         print(f"Error fetching activity for {wallet_address}: {e}")
         return []
@@ -136,6 +122,7 @@ async def fetch_trader_activity(wallet_address: str) -> List[Dict]:
 async def fetch_trader_closed_positions(wallet_address: str) -> List[Dict]:
     """
     Fetch trader closed positions from Polymarket API.
+    Fetches all pages.
     
     Args:
         wallet_address: Wallet address
@@ -144,14 +131,8 @@ async def fetch_trader_closed_positions(wallet_address: str) -> List[Dict]:
         List of closed position dicts
     """
     try:
-        url = "https://data-api.polymarket.com/closed-positions"
-        params = {"user": wallet_address}
-        
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        return data if isinstance(data, list) else []
+        from app.services.data_fetcher import fetch_closed_positions
+        return await fetch_closed_positions(wallet_address)
     except Exception as e:
         print(f"Error fetching closed positions for {wallet_address}: {e}")
         return []
@@ -160,6 +141,7 @@ async def fetch_trader_closed_positions(wallet_address: str) -> List[Dict]:
 async def fetch_trader_trades(wallet_address: str) -> List[Dict]:
     """
     Fetch trader trades from Polymarket API.
+    Fetches all pages.
     
     Args:
         wallet_address: Wallet address
@@ -168,14 +150,8 @@ async def fetch_trader_trades(wallet_address: str) -> List[Dict]:
         List of trade dicts
     """
     try:
-        url = "https://data-api.polymarket.com/trades"
-        params = {"user": wallet_address}
-        
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        return data if isinstance(data, list) else []
+        from app.services.data_fetcher import fetch_user_trades
+        return await fetch_user_trades(wallet_address)
     except Exception as e:
         print(f"Error fetching trades for {wallet_address}: {e}")
         return []

@@ -82,196 +82,133 @@ async def get_unique_wallet_addresses(session: AsyncSession) -> List[str]:
     return list(wallets)
 
 
-async def calculate_trader_metrics_with_time_filter(
-    session: AsyncSession,
+def process_trader_data_points(
     wallet_address: str,
-    period: str = 'all'
-) -> Optional[Dict]:
+    trades: List[Dict],
+    positions: List[Dict],
+    activities: List[Dict],
+    closed_positions: List[Dict],
+    trader_info: Optional[Dict] = None
+) -> Dict:
     """
-    Calculate PnL metrics for a trader with time filtering.
-    
-    Args:
-        session: Database session
-        wallet_address: Wallet address
-        period: Time period ('7d', '30d', 'all')
-    
-    Returns:
-        Dictionary with trader metrics or None if no data
+    Core logic for calculating trader metrics from raw data points.
+    Bypasses database sessions.
     """
-    # Get all data
-    from app.services.trade_service import get_trades_from_db
-    from app.services.position_service import get_positions_from_db
-    from app.services.activity_service import get_activities_from_db
-    
-    trades = await get_trades_from_db(session, wallet_address)
-    positions = await get_positions_from_db(session, wallet_address)
-    activities = await get_activities_from_db(session, wallet_address)
-    
-    # Fetch closed positions from DB
-    stmt = select(ClosedPosition).where(ClosedPosition.proxy_wallet == wallet_address)
-    result = await session.execute(stmt)
-    closed_positions = result.scalars().all()
-    
-    # Filter by time period
-    if period != 'all':
-        cutoff_timestamp = int((datetime.utcnow() - timedelta(
-            days=7 if period == '7d' else 30
-        )).timestamp())
-        
-        # Filter trades
-        trades = [t for t in trades if t.timestamp >= cutoff_timestamp]
-        
-        # Filter closed positions
-        closed_positions = [cp for cp in closed_positions if cp.timestamp >= cutoff_timestamp]
-        
-        # For positions, we need to check if they have recent activity
-        # We'll filter positions based on their updated_at timestamp
-        # If a position was updated recently, include it
-        filtered_positions = []
-        for position in positions:
-            # Convert updated_at to timestamp if it's a datetime
-            if hasattr(position, 'updated_at') and position.updated_at:
-                if isinstance(position.updated_at, datetime):
-                    pos_timestamp = int(position.updated_at.timestamp())
-                else:
-                    pos_timestamp = position.updated_at
-                
-                if pos_timestamp >= cutoff_timestamp:
-                    filtered_positions.append(position)
-            else:
-                # If no updated_at, include it (better to include than exclude)
-                filtered_positions.append(position)
-        positions = filtered_positions
-        
-        # Filter activities
-        activities = [a for a in activities if a.timestamp >= cutoff_timestamp]
-    
-    # If no data after filtering, return None
-    if not trades and not positions and not activities:
-        return None
-    
-    # Calculate metrics (similar to calculate_user_pnl but with filtered data)
-    total_invested = Decimal('0')
     total_realized_pnl = Decimal('0')
     total_unrealized_pnl = Decimal('0')
     total_rewards = Decimal('0')
-    total_redemptions = Decimal('0')
     total_current_value = Decimal('0')
-    
-    # Calculate from positions (only include positions with recent activity)
-    for position in positions:
-        # For time filtering, we'll include all positions but this is a simplification
-        # In production, you might want to track when positions were created/updated
-        total_invested += position.initial_value
-        total_realized_pnl += position.realized_pnl
-        unrealized = position.cash_pnl - position.realized_pnl
-        total_unrealized_pnl += unrealized
-        total_current_value += position.current_value
-    
-    # Calculate from activities
-    for activity in activities:
-        if activity.type == "REWARD":
-            total_rewards += activity.usdc_size
-        elif activity.type == "REDEEM":
-            total_redemptions += activity.usdc_size
-    
-    # Calculate total PnL
-    # Correct Formula: Realized (from closed) + Cash PnL (from active) + Rewards
-    # Note: total_realized_pnl_filtered is calculated below from closed_positions.
-    # We'll calculate it once here for the total_pnl.
-    
-    # Calculate from closed positions (filtered by time if necessary)
-    total_closed_pnl = sum(cp.realized_pnl for cp in closed_positions)
-    
-    # total_realized_pnl + total_unrealized_pnl for active positions is just the sum of cash_pnl
-    active_pnl = sum(p.cash_pnl for p in positions)
-    
-    total_pnl = total_closed_pnl + active_pnl + total_rewards
-    
-    # Calculate trade & win metrics from CLOSED POSITIONS (Exactly like view_all)
-    total_trade_pnl = Decimal('0')
     total_stakes = Decimal('0')
     winning_trades_count = 0
     total_trades_with_pnl = 0
     stakes_of_wins = Decimal('0')
     sum_sq_stakes = Decimal('0')
-    worst_loss = Decimal('0')  # Will be updated if there are any losses
+    worst_loss = Decimal('0')
     all_losses = []
     stakes_list = []
     
-    total_realized_pnl_filtered = Decimal('0')
+    # Buy/Sell Volume (New tracked metrics)
+    buy_volume = Decimal('0')
+    sell_volume = Decimal('0')
     
-    # Sort closed positions by timestamp for running PnL
-    closed_positions_sorted = sorted(closed_positions, key=lambda x: x.timestamp)
+    # 1. Activities (Rewards, Buy/Sell Volume)
+    for activity in activities:
+        # Standardize keys (live responses use camelCase or snake_case)
+        a_type = activity.get("type")
+        size = Decimal(str(activity.get("usdcSize") or activity.get("usdc_size") or 0))
+        side = str(activity.get("side") or "").upper()
+        
+        if a_type == "REWARD":
+            total_rewards += size
+        
+        if side == "BUY":
+            buy_volume += size
+        elif side == "SELL":
+            sell_volume += size
+
+    # 2. Closed Positions (Stakes, Realized PnL, Win Rate)
+    # Sort for MDD
+    sorted_closed = sorted(closed_positions, key=lambda x: x.get("timestamp") or x.get("time") or 0)
     running_pnl_accumulator = 0.0
     equity_curve = [0.0]
     
-    for cp in closed_positions_sorted:
-        # Stake = total_bought * avg_price (approximating entry cost)
-        stake = cp.total_bought * cp.avg_price
+    # Win Rate & Streaks
+    wins = 0
+    total_losses = 0
+    largest_win = 0.0
+    
+    # Streaks
+    longest_streak = 0
+    current_streak = 0
+    temp_streak = 0
+
+    for cp in sorted_closed:
+        # Standardize keys
+        bought = Decimal(str(cp.get("totalBought") or cp.get("total_bought") or 0))
+        price = Decimal(str(cp.get("avgPrice") or cp.get("avg_price") or 0))
+        stake = bought * price
         total_stakes += stake
         sum_sq_stakes += stake ** 2
         stakes_list.append(stake)
         
-        realized_pnl = cp.realized_pnl
-        total_realized_pnl_filtered += realized_pnl
+        realized_pnl = Decimal(str(cp.get("realizedPnl") or cp.get("realized_pnl") or 0))
+        total_realized_pnl += realized_pnl
         
-        # Tracking for MDD
-        running_pnl_accumulator += float(realized_pnl)
+        pnl_val = float(realized_pnl)
+        running_pnl_accumulator += pnl_val
         equity_curve.append(running_pnl_accumulator)
         
         total_trades_with_pnl += 1
-        if realized_pnl > 0:
+        if pnl_val > 0:
             winning_trades_count += 1
             stakes_of_wins += stake
-        
-        # Update worst_loss if this is a loss (negative PnL)
-        if realized_pnl < 0:
-            all_losses.append(float(realized_pnl))
+            wins += 1
+            temp_streak += 1
+            current_streak = temp_streak
+            longest_streak = max(longest_streak, temp_streak)
+            if pnl_val > largest_win: largest_win = pnl_val
+        elif pnl_val < 0:
+            total_losses += 1
+            temp_streak = 0
+            current_streak = 0
+            all_losses.append(pnl_val)
             if worst_loss == Decimal('0') or realized_pnl < worst_loss:
                 worst_loss = realized_pnl
 
-    # --- ADDED: Include active positions in risk metrics (Stakes and Unrealized Losses) ---
+    # 3. Active Positions (Risk, Current Value)
     for pos in positions:
-        # Include active stake
-        stake = pos.initial_value
+        stake = Decimal(str(pos.get("initialValue") or pos.get("initial_value") or 0))
         if stake > 0:
             total_stakes += stake
             sum_sq_stakes += stake ** 2
             stakes_list.append(stake)
         
-        # Include unrealized loss as risk
-        if pos.cash_pnl < 0:
-            all_losses.append(float(pos.cash_pnl))
-            if worst_loss == Decimal('0') or pos.cash_pnl < worst_loss:
-                worst_loss = pos.cash_pnl
-    # --- END ADDED ---
+        cash_pnl = Decimal(str(pos.get("cashPnl") or pos.get("cash_pnl") or 0))
+        if cash_pnl < 0:
+            all_losses.append(float(cash_pnl))
+            if worst_loss == Decimal('0') or cash_pnl < worst_loss:
+                worst_loss = cash_pnl
+        
+        total_current_value += Decimal(str(pos.get("currentValue") or pos.get("current_value") or 0))
+        total_unrealized_pnl += cash_pnl # In Polymarket, positioning cashPnl is total pnl for that position
+
+    # 4. Final Aggregations
+    total_pnl = total_realized_pnl + total_unrealized_pnl + total_rewards
     
-    total_trade_pnl = total_realized_pnl_filtered
-    
-    # Calculate max_stake: average of top 5 highest stakes (or all if < 5)
+    # Max Stake (Average of top 5)
     max_stake = Decimal('0')
     if stakes_list:
         sorted_stakes = sorted(stakes_list, reverse=True)
         top_n = min(5, len(sorted_stakes))
-        top_stakes = sorted_stakes[:top_n]
-        max_stake = sum(top_stakes) / Decimal(str(top_n)) if top_n > 0 else Decimal('0')
+        max_stake = sum(sorted_stakes[:top_n]) / Decimal(str(top_n)) if top_n > 0 else Decimal('0')
 
-    # Calculate Max Drawdown
     from app.services.scoring_engine import calculate_max_drawdown
     max_drawdown = calculate_max_drawdown(equity_curve)
     
-    # Calculate ROI based on Total PnL (Closed + Active) / Total Stakes
-    roi = Decimal('0')
-    if total_stakes > 0:
-        roi = (total_pnl / total_stakes) * 100
+    roi = (total_pnl / total_stakes * 100) if total_stakes > 0 else Decimal('0')
+    win_rate = (Decimal(str(winning_trades_count)) / Decimal(str(total_trades_with_pnl)) * 100) if total_trades_with_pnl > 0 else Decimal('0')
     
-    # Calculate Win Rate
-    win_rate = Decimal('0')
-    if total_trades_with_pnl > 0:
-        win_rate = (winning_trades_count / total_trades_with_pnl) * 100
-    
-    # Calculate Stake Volatility (Coefficient of Variation)
+    # Stake Volatility
     stake_volatility = 0.0
     if stakes_list:
         n = len(stakes_list)
@@ -280,28 +217,29 @@ async def calculate_trader_metrics_with_time_filter(
             variance = (float(sum_sq_stakes) / n) - (mean_stake ** 2)
             std_dev = max(0, variance) ** 0.5
             stake_volatility = std_dev / mean_stake
+
+    # Unique markets
+    closed_market_ids = {cp.get("conditionId") or cp.get("condition_id") for cp in closed_positions if cp.get("conditionId") or cp.get("condition_id")}
+    active_market_ids = {p.get("conditionId") or p.get("condition_id") for p in positions if p.get("conditionId") or p.get("condition_id")}
+    unique_markets = len(closed_market_ids | active_market_ids)
     
-    # Get trader info (name, pseudonym, etc.)
-    trader_name = None
-    trader_pseudonym = None
-    trader_profile_image = None
-    
-    if trades:
-        trader_name = trades[0].name
-        trader_pseudonym = trades[0].pseudonym
-        trader_profile_image = trades[0].profile_image_optimized or trades[0].profile_image
-    
+    # Total trades (Predictions)
+    # Polymarket "Predictions" count usually matches total number of trades/activities
+    total_trades_count = len(trades) if trades else unique_markets
+
     return {
         "wallet_address": wallet_address,
-        "name": trader_name,
-        "pseudonym": trader_pseudonym,
-        "profile_image": trader_profile_image,
+        "name": trader_info.get("name") if trader_info else None,
+        "pseudonym": trader_info.get("pseudonym") if trader_info else None,
+        "profile_image": trader_info.get("profile_image") if trader_info else None,
         "total_pnl": float(total_pnl),
         "roi": float(roi),
         "win_rate": float(win_rate),
-        "total_trades": len(set(cp.condition_id for cp in closed_positions)) + len(set(p.condition_id for p in positions)), # Unique markets
+        "total_trades": total_trades_count,
+        "unique_markets": unique_markets,
         "total_trades_with_pnl": total_trades_with_pnl,
         "winning_trades": winning_trades_count,
+        "winning_trades_count": winning_trades_count,
         "total_stakes": float(total_stakes),
         "winning_stakes": float(stakes_of_wins),
         "worst_loss": float(worst_loss),
@@ -310,8 +248,72 @@ async def calculate_trader_metrics_with_time_filter(
         "max_stake": float(max_stake),
         "sum_sq_stakes": float(sum_sq_stakes),
         "stake_volatility": float(stake_volatility),
-        "portfolio_value": float(total_current_value) if total_current_value > 0 else 0.0 # Use current value as capital proxy
+        "portfolio_value": float(total_current_value),
+        "buy_volume": float(buy_volume),
+        "sell_volume": float(sell_volume),
+        "largest_win": float(largest_win),
+        "streaks": {
+            "longest_streak": longest_streak,
+            "current_streak": current_streak,
+            "total_wins": wins,
+            "total_losses": total_losses
+        }
     }
+
+
+async def calculate_trader_metrics_with_time_filter(
+    session: AsyncSession,
+    wallet_address: str,
+    period: str = 'all'
+) -> Optional[Dict]:
+    """
+    Calculate PnL metrics for a trader with time filtering.
+    """
+    from app.services.trade_service import get_trades_from_db
+    from app.services.position_service import get_positions_from_db
+    from app.services.activity_service import get_activities_from_db
+    
+    trades = await get_trades_from_db(session, wallet_address)
+    positions = await get_positions_from_db(session, wallet_address)
+    activities = await get_activities_from_db(session, wallet_address)
+    
+    stmt = select(ClosedPosition).where(ClosedPosition.proxy_wallet == wallet_address)
+    result = await session.execute(stmt)
+    closed_positions = result.scalars().all()
+    
+    # Filter by time
+    if period != 'all':
+        cutoff = int((datetime.utcnow() - timedelta(days=7 if period == '7d' else 30)).timestamp())
+        trades = [t for t in trades if t.timestamp >= cutoff]
+        closed_positions = [cp for cp in closed_positions if cp.timestamp >= cutoff]
+        activities = [a for a in activities if a.timestamp >= cutoff]
+        
+        # Position filtering (simplified: include all active for now as they are ongoing)
+        # In process_trader_data_points we use initialValue/cashPnl
+    
+    if not trades and not positions and not activities:
+        return None
+        
+    # Prepare info
+    trader_info = {}
+    if trades:
+        trader_info = {
+            "name": trades[0].name,
+            "pseudonym": trades[0].pseudonym,
+            "profile_image": trades[0].profile_image_optimized or trades[0].profile_image
+        }
+
+    # Convert SQLAlchemy objects to dicts for process_trader_data_points
+    from app.services.dashboard_service import row_to_dict
+    
+    return process_trader_data_points(
+        wallet_address,
+        [row_to_dict(t) for t in trades],
+        [row_to_dict(p) for p in positions],
+        [row_to_dict(a) for a in activities],
+        [row_to_dict(cp) for cp in closed_positions],
+        trader_info
+    )
 
 
 async def get_leaderboard_by_pnl(

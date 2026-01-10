@@ -13,12 +13,12 @@ from app.core.config import settings
 
 # List of domains known to be hijacked/blocked by some ISPs (e.g., Jio)
 HIJACKED_DOMAINS = {
-    # "data-api.polymarket.com",
-    # "api.polymarket.com",
-    # "gamma-api.polymarket.com",
-    # "user-pnl-api.polymarket.com",
-    # "clob.polymarket.com",
-    # "polymarket.com"
+    "data-api.polymarket.com",
+    "api.polymarket.com",
+    "gamma-api.polymarket.com",
+    "user-pnl-api.polymarket.com",
+    "clob.polymarket.com",
+    "polymarket.com"
 }
 
 # Cache for resolved IPs to avoid repeated DNS queries
@@ -681,22 +681,57 @@ async def fetch_positions_for_wallet(
             
         # If limit is None, fetch ALL data using pagination
         all_positions = []
-        fetch_limit = 1000  # Fetch in chunks
+        seen_ids = set()
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
+        max_pages = 200 # Support up to 10,000 items
         
-        while True:
+        for _ in range(max_pages):
             params["limit"] = fetch_limit
             params["offset"] = current_offset
             
-            response = await async_client.get(url, params=params)
-            response.raise_for_status()
+            # Implementation with retry for 408/Timeout
+            max_retries = 3
+            retry_count = 0
+            response = None
+            
+            while retry_count < max_retries:
+                try:
+                    response = await async_client.get(url, params=params)
+                    response.raise_for_status()
+                    break # Success
+                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
+                    if is_timeout and retry_count < max_retries - 1:
+                        retry_count += 1
+                        wait_time = 2 ** retry_count
+                        print(f"⚠️ Timeout fetching positions (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise e
             
             data = response.json()
             if not isinstance(data, list) or not data:
                 break
                 
-            all_positions.extend(data)
+            # Filter for new items to avoid infinite loops if offset is ignored
+            new_items = []
+            for item in data:
+                # Positions are unique per conditionId
+                item_id = item.get("conditionId") or item.get("condition_id") or item.get("asset")
+                if item_id:
+                    if item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
             
+            if not new_items:
+                break
+                
+            all_positions.extend(new_items)
+            
+            # If we got fewer than requested, we likely reached the end
             if len(data) < fetch_limit:
                 break
                 
@@ -825,7 +860,7 @@ async def fetch_user_activity(
     Args:
         wallet_address: Ethereum wallet address (0x...)
         activity_type: Optional activity type filter (e.g., "REDEEM", "TRADE")
-        limit: Optional limit
+        limit: Optional limit. If None, fetches all pages.
         offset: Optional offset
     
     Returns:
@@ -837,11 +872,26 @@ async def fetch_user_activity(
         
         if activity_type:
             params["type"] = activity_type
-        if limit:
-            params["limit"] = limit
-        if offset:
-            params["offset"] = offset
         
+        # If limit is specified, just fetch that page
+        if limit is not None:
+            params["limit"] = limit
+            if offset is not None:
+                params["offset"] = offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            activity = response.json()
+            return activity if isinstance(activity, list) else []
+
+        # If limit is None, fetch ALL data using pagination
+        all_activities = []
+        seen_ids = set()
+        fetch_limit = 50  # API max is 50
+        current_offset = offset or 0
+        max_pages = 200 # Support up to 10,000 items
+        
+<<<<<<< HEAD
 <<<<<<< HEAD
         async with DNSAwareAsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
@@ -857,6 +907,60 @@ async def fetch_user_activity(
         if isinstance(activity, list):
             return activity
         return []
+=======
+        for _ in range(max_pages):
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            # Implementation with retry for 408/Timeout
+            max_retries = 3
+            retry_count = 0
+            response = None
+            
+            while retry_count < max_retries:
+                try:
+                    response = await async_client.get(url, params=params)
+                    response.raise_for_status()
+                    break # Success
+                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
+                    if is_timeout and retry_count < max_retries - 1:
+                        retry_count += 1
+                        wait_time = 2 ** retry_count
+                        print(f"⚠️ Timeout fetching activities (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise e
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
+            
+            new_items = []
+            for item in data:
+                item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
+                if item_id:
+                    if item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
+            
+            if not new_items:
+                break
+                
+            all_activities.extend(new_items)
+            
+            # If fewer than requested, we likely reached the end
+            if len(data) < fetch_limit:
+                break
+            
+            current_offset += len(data)
+            
+        print(f"✓ Successfully fetched {len(all_activities)} activities for {wallet_address}")
+        return all_activities
+
+>>>>>>> efb62af486a9ccff2646f878b84369db58f415bd
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user activity from Polymarket API: {str(e)}")
         return []
@@ -875,7 +979,7 @@ async def fetch_user_trades(
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
-        limit: Maximum number of trades
+        limit: Maximum number of trades. If None, fetches all pages.
         offset: Pagination offset
     
     Returns:
@@ -885,18 +989,59 @@ async def fetch_user_trades(
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         params = {"user": wallet_address}
         
+        # If limit is specified, just fetch that page
         if limit is not None:
             params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
+            if offset is not None:
+                params["offset"] = offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            trades = response.json()
+            return trades if isinstance(trades, list) else []
+
+        # If limit is None, fetch ALL data using pagination
+        all_trades = []
+        seen_ids = set()
+        fetch_limit = 50  # API max is 50
+        current_offset = offset or 0
+        max_pages = 200 # Support up to 10,000 items
         
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        
-        trades = response.json()
-        if isinstance(trades, list):
-            return trades
-        return []
+        for _ in range(max_pages):
+            params["limit"] = fetch_limit
+            params["offset"] = current_offset
+            
+            response = await async_client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            if not isinstance(data, list) or not data:
+                break
+            
+            new_items = []
+            for item in data:
+                item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
+                if item_id:
+                    if item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
+            
+            if not new_items:
+                break
+                
+            all_trades.extend(new_items)
+            
+            # If fewer than requested, we likely reached the end
+            if len(data) < fetch_limit:
+                break
+            
+            current_offset += len(data)
+            
+        print(f"✓ Successfully fetched {len(all_trades)} trades for {wallet_address}")
+        return all_trades
+
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user trades from Polymarket API: {str(e)}")
         return []
@@ -976,23 +1121,56 @@ async def fetch_closed_positions(
 
         # If limit is None, fetch ALL data using pagination (no maximum limit)
         all_positions = []
-        fetch_limit = 1000  # Fetch in chunks
+        seen_ids = set()
+        fetch_limit = 50  # API max is 50
         current_offset = offset or 0
+        max_pages = 200 # Support up to 10,000 items
         
-        while True:
+        for _ in range(max_pages):
             params["limit"] = fetch_limit
             params["offset"] = current_offset
             
-            response = await async_client.get(url, params=params)
-            response.raise_for_status()
+            # Implementation with retry for 408/Timeout
+            max_retries = 3
+            retry_count = 0
+            response = None
+            
+            while retry_count < max_retries:
+                try:
+                    response = await async_client.get(url, params=params)
+                    response.raise_for_status()
+                    break # Success
+                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
+                    if is_timeout and retry_count < max_retries - 1:
+                        retry_count += 1
+                        wait_time = 2 ** retry_count
+                        print(f"⚠️ Timeout fetching closed positions (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    raise e
             
             data = response.json()
             if not isinstance(data, list) or not data:
                 break
-                
-            all_positions.extend(data)
             
-            # If we got fewer results than requested, we've reached the end
+            new_items = []
+            for item in data:
+                # Closed positions are unique per conditionId
+                item_id = item.get("conditionId") or item.get("condition_id")
+                if item_id:
+                    if item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        new_items.append(item)
+                else:
+                    new_items.append(item)
+            
+            if not new_items:
+                break
+                
+            all_positions.extend(new_items)
+            
+            # If fewer than requested, we likely reached the end
             if len(data) < fetch_limit:
                 break
             
@@ -1125,6 +1303,7 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all")
             item = data[0]
             stats["volume"] = float(item.get("vol", 0.0))
             stats["pnl"] = float(item.get("pnl", 0.0))
+            stats["rank"] = item.get("rank")
             return stats
         return stats
     except httpx.HTTPStatusError as e:
@@ -1460,4 +1639,32 @@ def fetch_user_leaderboard_data(wallet_address: str, category: str = "politics")
     
     # If all categories failed, return None
     return None
+
+
+async def fetch_user_traded_count(wallet_address: str) -> int:
+    """Fetch the number of trades counted by Polymarket (/traded endpoint)."""
+    try:
+        url = f"{settings.POLYMARKET_DATA_API_URL}/traded"
+        params = {"user": wallet_address}
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        # {"user":"0x...","traded":1312}
+        if isinstance(data, dict):
+            return int(data.get("traded", 0))
+        return 0
+    except Exception:
+        return 0
+
+
+async def fetch_user_profile_data_v2(wallet_address: str) -> Dict[str, Any]:
+    """Fetch user profile data from the official Polymarket API."""
+    try:
+        url = "https://polymarket.com/api/profile/userData"
+        params = {"address": wallet_address}
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return {}
 

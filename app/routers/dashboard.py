@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
 from app.db.session import get_db
-from app.services.dashboard_service import get_db_dashboard_data
+from app.services.dashboard_service import get_db_dashboard_data, get_live_dashboard_data
 from app.services.sync_service import sync_trader_full_data
 
 router = APIRouter(
@@ -49,6 +49,25 @@ async def get_dashboard_db(
         
     try:
         data = await get_db_dashboard_data(session, wallet_address)
+        return data
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/live/{wallet_address}", response_model=Dict[str, Any])
+async def get_dashboard_live(
+    wallet_address: str
+):
+    """
+    Get comprehensive dashboard data for a wallet by fetching directly from Polymarket APIs.
+    Bypasses the local database.
+    """
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        raise HTTPException(status_code=400, detail="Invalid wallet address")
+        
+    try:
+        data = await get_live_dashboard_data(wallet_address)
         return data
     except Exception as e:
         import traceback
