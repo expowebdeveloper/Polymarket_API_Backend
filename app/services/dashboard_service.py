@@ -599,10 +599,9 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         fetch_portfolio_value,
         fetch_leaderboard_stats,
         fetch_user_traded_count,
-        fetch_portfolio_value,
-        fetch_leaderboard_stats,
-        fetch_user_traded_count,
-        fetch_user_profile_data_v2
+        fetch_user_profile_data_v2,
+        fetch_resolved_markets,
+        get_market_resolution
     )
 
     # 1. Fetch everything concurrently
@@ -616,7 +615,8 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         "portfolio_value": fetch_portfolio_value(wallet_address),
         "leaderboard": fetch_leaderboard_stats(wallet_address),
         "traded_count": fetch_user_traded_count(wallet_address),
-        "profile_v2": fetch_user_profile_data_v2(wallet_address)
+        "profile_v2": fetch_user_profile_data_v2(wallet_address),
+        "resolved_markets": fetch_resolved_markets(limit=2000)
     }
 
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
@@ -637,6 +637,48 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     leaderboard_stats = safe_get("leaderboard", {})
     traded_count = safe_get("traded_count", 0)
     profile_v2 = safe_get("profile_v2", {})
+    resolved_markets = safe_get("resolved_markets", [])
+
+    # 1.5. Check for resolved positions in active positions and move them to closed
+    actual_active_positions = []
+    newly_closed_positions = []
+    
+    for pos in active_positions:
+        market_id = pos.get("conditionId") or pos.get("condition_id") or pos.get("slug")
+        if not market_id:
+            actual_active_positions.append(pos)
+            continue
+            
+        # Check if market is resolved
+        # get_market_resolution will first check resolved_markets cache
+        # then fallback to fetch_market_by_slug (which now handles conditionId)
+        market_resolution = await get_market_resolution(market_id, resolved_markets)
+        
+        if market_resolution:
+            # Position is resolved! Move to closed
+            # Calculate realized PnL
+            # For Polymarket: final price is 1.0 (if outcome wins) or 0.0 (if it loses)
+            outcome = pos.get("outcome")
+            final_price = 1.0 if outcome and str(outcome).upper() == str(market_resolution).upper() else 0.0
+            avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
+            size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+            
+            realized_pnl = (final_price - avg_price) * size
+            
+            # Create a closed position object
+            cp = pos.copy()
+            cp["realizedPnl"] = realized_pnl
+            cp["realized_pnl"] = realized_pnl
+            cp["curPrice"] = final_price
+            cp["cur_price"] = final_price
+            cp["resolved"] = True
+            
+            newly_closed_positions.append(cp)
+        else:
+            actual_active_positions.append(pos)
+            
+    active_positions = actual_active_positions
+    closed_positions = newly_closed_positions + closed_positions
 
     # Username Fallback
     username = profile_stats.get("username") if profile_stats else "Unknown"
@@ -680,11 +722,10 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         # Explicitly calculate PnL breakdowns for Live Dashboard
         # Support both camelCase (API) and snake_case (Internal)
         
-        # Debug: Print first item keys to verify structure
         if active_positions:
-            print(f"DEBUG: Active Position Keys: {list(active_positions[0].keys())}")
+            pass
         if closed_positions:
-            print(f"DEBUG: Closed Position Keys: {list(closed_positions[0].keys())}")
+            pass
 
         unrealized_pnl = sum(float(p.get("cashPnl") or p.get("cash_pnl") or 0) for p in (active_positions or []))
         realized_pnl = sum(float(cp.get("realizedPnl") or cp.get("realized_pnl") or 0) for cp in (closed_positions or []))

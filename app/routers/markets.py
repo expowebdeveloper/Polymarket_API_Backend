@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, status, Query, BackgroundTasks
 from typing import Optional, Dict, Any
 from app.schemas.markets import MarketsResponse, PaginationInfo
-from app.services.data_fetcher import fetch_markets, fetch_market_orders, fetch_market_by_slug
+from app.services.data_fetcher import fetch_markets, fetch_market_orders, fetch_market_by_slug, fetch_live_trending_markets
 from app.services.market_service import update_all_markets
 
 router = APIRouter(prefix="/markets", tags=["Markets"])
@@ -17,6 +17,25 @@ async def trigger_market_update(background_tasks: BackgroundTasks):
     """
     background_tasks.add_task(update_all_markets)
     return {"message": "Market update job started in the background."}
+
+
+@router.get("/live")
+async def get_live_markets():
+    """
+    Fetch live trending markets directly from Polymarket Next.js API.
+    This bypasses the local DB and provides the most up-to-date 'trending' views.
+    """
+    try:
+        markets = await fetch_live_trending_markets()
+        return {
+            "count": len(markets),
+            "markets": markets
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching live markets: {str(e)}"
+        )
 
 
 @router.get("", response_model=MarketsResponse)

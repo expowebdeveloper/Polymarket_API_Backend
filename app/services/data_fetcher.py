@@ -542,24 +542,31 @@ def fetch_market_by_slug_from_dome(market_slug: str) -> Optional[Dict]:
 
 async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
     """
-    Fetch market details by slug from Polymarket API only (async).
+    Fetch market details by slug or conditionId from Polymarket API (async).
     
     Args:
-        market_slug: Market slug identifier
+        market_slug: Market slug identifier OR conditionId (0x...)
     
     Returns:
         Market dictionary or None if not found
     """
     try:
-        # Try api.polymarket.com first
-        api_endpoints = [
-            "https://api.polymarket.com",
-            "https://data-api.polymarket.com",
-        ]
-        
         async with DNSAwareAsyncClient(timeout=10.0) as client:
-            # Try Gamma API /events endpoint with slug filter
-            # Gamma API: https://gamma-api.polymarket.com/events?slug={slug}
+            # Case 1: conditionId Lookup (starts with 0x)
+            if market_slug.startswith("0x") and len(market_slug) >= 42:
+                # Gamma API: https://gamma-api.polymarket.com/markets?conditionId={id}
+                gamma_url = "https://gamma-api.polymarket.com/markets"
+                params = {"conditionId": market_slug}
+                try:
+                    response = await client.get(gamma_url, params=params)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            return data[0]
+                except Exception as e:
+                    print(f"Error fetching from Gamma API /markets: {e}")
+
+            # Case 2: Slug Lookup
             gamma_url = "https://gamma-api.polymarket.com/events"
             params = {"slug": market_slug}
             
@@ -567,52 +574,25 @@ async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
                 response = await client.get(gamma_url, params=params)
                 if response.status_code == 200:
                     data = response.json()
-                    # Response is list of events. Each event has 'markets' list.
                     if isinstance(data, list) and len(data) > 0:
                         event = data[0]
-                        # Look for specific market if multiple, or just return the first/main one
-                        # If the slug matches the event slug, usually we want the main market or all markets.
-                        # For this function which returns 1 market, we'll take the first one or try to match slug if market-level slug exists.
                         markets = event.get("markets", [])
                         if markets:
-                            # Enhance market data with event info
                             market = markets[0]
-                            market["input_slug"] = market_slug # Keep track of what we looked up
+                            market["input_slug"] = market_slug 
                             if not market.get("title") and event.get("title"):
                                 market["title"] = event.get("title")
                             if not market.get("icon") and event.get("icon"):
                                 market["icon"] = event.get("icon")
-                            if not market.get("image") and event.get("image"):
-                                market["image"] = event.get("image")
                             if not market.get("description") and event.get("description"):
                                 market["description"] = event.get("description")
                             return market
             except Exception as e:
                 print(f"Error fetching from Gamma API /events: {e}")
-
-            # Try Data API as fallback (if it supports this endpoint)
-            # data-api usually mirrors or aggregates
-        
-        # If direct slug endpoint doesn't work, try fetching from markets list and filtering
-        # This is a fallback approach
-        try:
-            markets, _ = await fetch_markets(status="active", limit=100, offset=0)
-            for market in markets:
-                market_slug_field = (
-                    market.get("slug") or 
-                    market.get("market_slug") or 
-                    market.get("id") or
-                    market.get("market_id")
-                )
-                if market_slug_field and str(market_slug_field).lower() == market_slug.lower():
-                    return market
-        except Exception:
-            pass
         
         return None
-        
     except Exception as e:
-        print(f"Error fetching market by slug '{market_slug}': {e}")
+        print(f"Error fetching market details for '{market_slug}': {e}")
     return None
 
 
@@ -871,13 +851,6 @@ async def fetch_user_activity(
         current_offset = offset or 0
         max_pages = 200 # Support up to 10,000 items
         
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        
-        activity = response.json()
-        if isinstance(activity, list):
-            return activity
-        return []
         for _ in range(max_pages):
             params["limit"] = fetch_limit
             params["offset"] = current_offset
@@ -1614,4 +1587,105 @@ async def fetch_user_profile_data_v2(wallet_address: str) -> Dict[str, Any]:
         return response.json()
     except Exception:
         return {}
+
+
+async def get_polymarket_build_id() -> str:
+    """
+    Dynamically retrieve the Polymarket Next.js build ID from the homepage.
+    """
+    try:
+        url = "https://polymarket.com/"
+        # Use sync client or shared async client
+        response = await async_client.get(url)
+        if response.status_code != 200:
+            return "E318riu5ztoJC_Kf28jRT"
+            
+        html = response.text
+        
+        # Look for buildId in script tag: "buildId":"..."
+        import re
+        match = re.search(r'"buildId":"([^"]+)"', html)
+        if match:
+            build_id = match.group(1)
+            print(f"📡 Found Polymarket Build ID: {build_id}")
+            return build_id
+        
+        return "E318riu5ztoJC_Kf28jRT"
+    except Exception as e:
+        print(f"⚠️ Error retrieving build ID: {e}")
+        return "E318riu5ztoJC_Kf28jRT"
+
+
+async def fetch_live_trending_markets() -> List[Dict[str, Any]]:
+    """
+    Fetch trending markets from Polymarket Next.js JSON API.
+    Standardizes output to the format requested by the user.
+    """
+    build_id = await get_polymarket_build_id()
+    url = f"https://polymarket.com/_next/data/{build_id}/index.json"
+    
+    try:
+        response = await async_client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        
+        markets_list = []
+        
+        if "pageProps" in data:
+            pp = data["pageProps"]
+            if "dehydratedState" in pp:
+                ds = pp["dehydratedState"]
+                queries = ds.get("queries", [])
+                if queries:
+                    # Query 0 is typically the trending/homepage events
+                    q = queries[0]
+                    state = q.get("state", {})
+                    data_obj = state.get("data", {})
+                    
+                    if isinstance(data_obj, dict) and "pages" in data_obj:
+                        for page in data_obj["pages"]:
+                            events = page.get("events", [])
+                            for event in events:
+                                markets = event.get("markets", [])
+                                for m in markets:
+                                    # Standardize to requested format
+                                    markets_list.append({
+                                        "id": m.get("id"),
+                                        "conditionId": m.get("conditionId"),
+                                        "question": m.get("question"),
+                                        "slug": m.get("slug"),
+                                        "outcomes": m.get("outcomes", []),
+                                        "outcomePrices": m.get("outcomePrices", []),
+                                        "bestAsk": m.get("bestAsk"),
+                                        "bestBid": m.get("bestBid"),
+                                        "spread": m.get("spread"),
+                                        "active": m.get("active", True),
+                                        "closed": m.get("closed", False),
+                                        "archived": m.get("archived", False),
+                                        "volume": m.get("volume"),
+                                        "volume_num": m.get("volume_num"),
+                                        "liquidity": m.get("liquidity"),
+                                        "liquidity_num": m.get("liquidity_num"),
+                                        "groupItemTitle": m.get("groupItemTitle"),
+                                        "groupItemThreshold": m.get("groupItemThreshold"),
+                                        "clobTokenIds": m.get("clobTokenIds", []),
+                                        "rewardsMinSize": m.get("rewardsMinSize"),
+                                        "rewardsMaxSpread": m.get("rewardsMaxSpread"),
+                                        "holdingRewardsEnabled": m.get("holdingRewardsEnabled", False),
+                                        "sportsMarketType": m.get("sportsMarketType"),
+                                        "negRisk": m.get("negRisk", False),
+                                        "orderPriceMinTickSize": m.get("orderPriceMinTickSize"),
+                                        "image": m.get("image") or event.get("image"),
+                                        "icon": m.get("icon") or event.get("icon"),
+                                        "gameStartTime": m.get("gameStartTime"),
+                                        "eventStartTime": event.get("startTime"),
+                                        "startDate": event.get("startDate"),
+                                        "endDate": event.get("endDate")
+                                    })
+        
+        print(f"✓ Successfully fetched {len(markets_list)} live trending markets from Next.js API")
+        return markets_list
+    except Exception as e:
+        print(f"⚠️ Error fetching live markets: {e}")
+        return []
 
