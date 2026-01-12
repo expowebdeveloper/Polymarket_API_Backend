@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, distinct
 from decimal import Decimal
 import math
-from app.db.models import Trade, Position, Activity
+from app.db.models import Trade, Position, Activity, ClosedPosition
 from app.core.scoring_config import ScoringConfig, default_scoring_config
+from app.services.confidence_scoring import calculate_confidence_score
+from app.services.scoring_engine import calculate_pnl_score, calculate_new_roi_score
 
 def calculate_median(values: List[float]) -> float:
     """Calculate median of a list of numbers."""
@@ -650,20 +652,45 @@ def calculate_scores_and_rank(
         
         t['score_win_rate'] = calculate_win_score(win_rate_trade, win_rate_stake)
         
-        # Final Rating Formula (0-100 scale)
-        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-        w_score = t.get('score_win_rate', 0.0)
-        r_score = t.get('score_roi', 0.0)
-        p_score = t.get('score_pnl', 0.0)
-        risk_score = t.get('score_risk', 0.0)
+        # Use Deterministic Scoring for ROI and PnL
+        # This overrides population percentiles to ensure consistency
+        roi_val = t.get('roi', 0.0) / 100.0 # Input as decimal
+        pnl_val = t.get('total_pnl', 0.0)
         
-        final_score = 100.0 * (
-            config.weight_win_rate * w_score + 
-            config.weight_roi * r_score + 
-            config.weight_pnl * p_score + 
-            config.weight_risk * (1.0 - risk_score)
+        t['score_roi'] = calculate_new_roi_score(roi_val) # returns 0-1
+        t['score_pnl'] = calculate_pnl_score(pnl_val) # returns 0-1
+        
+        # Risk Score is already 0-1
+        risk_score = t.get('score_risk', 0.0)
+        risk_factor = 1.0 - risk_score
+        
+        # Final Rating Formula (Deterministic matching Specifications)
+        # Formula: Rating = 100 * Conf(N) * [ 0.30 * W_score + 0.30 * ROI_score + 0.30 * PnL_score + 0.10 * Risk_factor ]
+        
+        # Calculate Confidence Score based on number of trades
+        num_predictions = t.get('total_trades_with_pnl', 0)
+        confidence_multiplier = calculate_confidence_score(num_predictions)
+        
+        # Win Score (Blended) is already 0-1
+        w_score_final = t.get('score_win_rate', 0.0)
+        
+        # Calculate weighted sum (0-1 range)
+        weighted_sum = (
+            config.weight_win_rate * w_score_final + 
+            config.weight_roi * t['score_roi'] + 
+            config.weight_pnl * t['score_pnl'] + 
+            config.weight_risk * risk_factor
         )
+        
+        # Apply Confidence Multiplier and scale to 100
+        final_score = 100.0 * confidence_multiplier * weighted_sum
+        
         t['final_score'] = clamp(final_score, 0, 100)
+        t['confidence_score'] = confidence_multiplier
+        
+        # Also scale component scores to 0-100 for display compatibility if needed
+        t['score_roi'] *= 100.0
+        t['score_pnl'] *= 100.0
         
     return traders_metrics
 
@@ -854,28 +881,45 @@ def calculate_scores_and_rank_with_percentiles(
         # Risk Score is 0-1
         risk_score = t.get('score_risk', 0.0)
         
-        # Final Rating Formula (0-100 scale)
-        # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-        # We use the calculated scores which are now 0-100 (except risk which is 0-1)
+        # Use Deterministic Scoring for ROI and PnL
+        # This overrides population percentiles to ensure consistency
+        roi_val = t.get('roi', 0.0) / 100.0 # Input as decimal
+        pnl_val = t.get('total_pnl', 0.0)
         
-        # Note: weights in config sum to 1.0 usually. 
-        # If scores are 0-100, we just multiply.
+        t['score_roi'] = calculate_new_roi_score(roi_val) # returns 0-1
+        t['score_pnl'] = calculate_pnl_score(pnl_val) # returns 0-1
         
-        # Normalize W_shrunk contribution to 0-100
-        w_score_val = clamp(w_factor, 0.0, 1.0) * 100.0
+        # Risk Score is already 0-1
+        risk_score = t.get('score_risk', 0.0)
+        risk_factor = 1.0 - risk_score
         
-        # Use Blended Win Score as the primary Win Score component? 
-        # Or combine them? The prompt implies "Custom Win Score" which is Blended.
-        # Let's use Blended Win Score for the final score as it captures both trade and stake win rates.
-        w_score_final = t['score_win_rate'] * 100.0 # blended is 0-1
+        # Final Rating Formula (Deterministic matching Specifications)
+        # Formula: Rating = 100 * Conf(N) * [ 0.30 * W_score + 0.30 * ROI_score + 0.30 * PnL_score + 0.10 * Risk_factor ]
         
-        final_score = (
+        # Calculate Confidence Score based on number of trades
+        num_predictions = t.get('total_trades_with_pnl', 0)
+        confidence_multiplier = calculate_confidence_score(num_predictions)
+        
+        # Win Score (Blended) is already 0-1
+        w_score_final = t.get('score_win_rate', 0.0)
+        
+        # Calculate weighted sum (0-1 range)
+        weighted_sum = (
             config.weight_win_rate * w_score_final + 
             config.weight_roi * t['score_roi'] + 
             config.weight_pnl * t['score_pnl'] + 
-            config.weight_risk * (1.0 - risk_score) * 100.0
+            config.weight_risk * risk_factor
         )
+        
+        # Apply Confidence Multiplier and scale to 100
+        final_score = 100.0 * confidence_multiplier * weighted_sum
+        
         t['final_score'] = clamp(final_score, 0, 100)
+        t['confidence_score'] = confidence_multiplier
+        
+        # Also scale component scores to 0-100 for display compatibility
+        t['score_roi'] *= 100.0
+        t['score_pnl'] *= 100.0
     
     return {
         "traders": traders_metrics,
