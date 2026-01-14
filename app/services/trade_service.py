@@ -5,10 +5,204 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
 from sqlalchemy.orm import defer
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from app.db.models import Trade
-from app.services.data_fetcher import fetch_user_trades
+from app.db.models import Trade, ClosedPosition
+from app.services.data_fetcher import fetch_user_trades, fetch_market_by_slug, get_market_resolution
 from decimal import Decimal
 import asyncio
+from sqlalchemy import select, text, func, and_
+
+async def process_resolved_markets_for_trades(
+    session: AsyncSession,
+    wallet_address: str,
+    trades: List[Dict]
+):
+    """
+    Check if any of the trades belong to resolved markets.
+    If so, ensure they are present in the ClosedPosition table.
+    If not, calculate PnL and add them.
+    """
+    if not trades:
+        return
+
+    # 1. Identify unique markets (by condition_id AND asset to be handling specific outcomes correctly)
+    # Group trades by (asset, condition_id)
+    market_groups = {}
+    for trade in trades:
+        # Key: condition_id (market identifier), asset (specific outcome token)
+        condition_id = trade.get("conditionId") or trade.get("condition_id")
+        asset = trade.get("asset")
+        
+        if not condition_id or not asset:
+            continue
+            
+        key = (condition_id, asset)
+        if key not in market_groups:
+            market_groups[key] = []
+        market_groups[key].append(trade)
+    
+    unique_condition_ids = set(k[0] for k in market_groups.keys())
+    
+    # 2. For each market, check if it is resolved
+    # We can check DB first if we store markets, but likely we need to index or check API
+    # Optimization: Check if we ALREADY have a closed position for this (condition_id, asset)
+    # If we do, we don't need to do anything (unless we want to update it, but usually closed is closed)
+    
+    existing_closed_stm = select(ClosedPosition.condition_id, ClosedPosition.asset).where(
+        ClosedPosition.proxy_wallet == wallet_address,
+        ClosedPosition.condition_id.in_(unique_condition_ids)
+    )
+    existing_result = await session.execute(existing_closed_stm)
+    existing_set = set(existing_result.all()) # Set of (condition_id, asset)
+    
+    # Filter out groups that already exist
+    groups_to_process = {k: v for k, v in market_groups.items() if k not in existing_set}
+    
+    if not groups_to_process:
+        return
+
+    print(f"Checking {len(groups_to_process)} potential resolved markets for {wallet_address}...")
+    
+    # 3. Fetch market status for remaining
+    # We might have many, so maybe limit concurrency
+    processed_count = 0
+    
+    for (condition_id, asset), market_trades in groups_to_process.items():
+        # Get market details to check resolution
+        # Use simple caching or just fetch
+        # The trade contains 'slug' usually, which is faster for lookup than condition_id sometimes
+        slug = market_trades[0].get("slug")
+        outcome_token = market_trades[0].get("outcome") # e.g. "Yes"
+        
+        # Identifier for fetching
+        market_id = slug if slug else condition_id
+        
+        market_data = await fetch_market_by_slug(market_id)
+        if not market_data:
+            continue
+            
+        # Check if resolved
+        is_resolved = False
+        resolved_outcome = None
+        
+        # Check 'closed' or 'resolved' status
+        if market_data.get("closed") or market_data.get("resolved") or market_data.get("status") in ["closed", "resolved"]:
+             is_resolved = True
+        
+        # Try to determine winning outcome
+        # Usually 'winningOutcome' in API data if resolved
+        # Or 'question' might imply it.
+        # But for binary yes/no, typically we check if 1 or 0 is winner.
+        
+        # If not resolved, skip
+        if not is_resolved:
+            continue
+            
+        # 4. Calculate PnL "Same Formula"
+        # We need to determine if User WON or LOST
+        
+        # Polymarket API usually provides 'winningOutcome' if resolved.
+        # Format can be "Yes", "No", or an ID.
+        winning_outcome = market_data.get("winningOutcome")
+        
+        # Determine settlement price (1 or 0)
+        settlement_price = 0.0
+        if winning_outcome:
+            # If user holds "Yes" and winner is "Yes" -> 1.0
+            # If user holds "No" and winner is "No" -> 1.0
+            # Else -> 0.0
+            
+            # Normalize strings
+            user_outcome = str(outcome_token).lower() if outcome_token else ""
+            winner = str(winning_outcome).lower()
+            
+            if user_outcome == winner:
+                settlement_price = 1.0
+            else:
+                # Handle cases where winningOutcome is an ID ?? (Rare for simple binary)
+                # Assume 0.0 if not match
+                settlement_price = 0.0
+        else:
+             # Fallback: check prices. If One is 1 and other 0.
+             # Or TokensRedeemable...
+             # If we can't be sure, SKIP to avoid bad data.
+             # Actually, if 'resolution' field exists?
+             pass
+        
+        # Calculate stats for this position
+        total_bought = Decimal(0)
+        total_cost = Decimal(0)
+        
+        buy_trades = [t for t in market_trades if t.get("side") == "BUY"]
+        
+        for t in buy_trades:
+            size = Decimal(str(t.get("size", 0)))
+            price = Decimal(str(t.get("price", 0)))
+            total_bought += size
+            total_cost += (size * price)
+            
+        if total_bought == 0:
+            continue
+            
+        avg_price = total_cost / total_bought
+        
+        # Realized PnL = (SettlementPrice - AvgPrice) * Size
+        # Note: If they sold some, we should handle that. But simplified "Closed Position"
+        # usually implies the final result of held tokens.
+        # If they successfully exited before resolution, it's already "closed" via trade matching logic (maybe).
+        # But here valid for "Held until resolution".
+        
+        # net bought = bought - sold
+        total_sold = Decimal(0)
+        sell_trades = [t for t in market_trades if t.get("side") == "SELL"]
+        for t in sell_trades:
+            size = Decimal(str(t.get("size", 0)))
+            total_sold += size
+        
+        net_position = total_bought - total_sold
+        
+        if net_position <= 0:
+            # They already closed it manually or have no position
+            continue
+            
+        # Valid "Held to resolution" position
+        realized_pnl = (Decimal(settlement_price) - avg_price) * net_position
+        
+        # Create ClosedPosition entry
+        # MAPPING
+        cp = ClosedPosition(
+            proxy_wallet=wallet_address,
+            asset=asset,
+            condition_id=condition_id,
+            avg_price=avg_price,
+            total_bought=net_position, # The amount settled
+            realized_pnl=realized_pnl,
+            cur_price=Decimal(settlement_price), # Final price
+            title=market_data.get("title") or market_trades[0].get("title"),
+            slug=market_data.get("slug") or slug,
+            icon=market_data.get("icon") or market_trades[0].get("icon"),
+            event_slug=market_data.get("eventSlug") or market_trades[0].get("eventSlug"),
+            outcome=outcome_token,
+            outcome_index=market_trades[0].get("outcomeIndex"),
+            end_date=market_data.get("endDate"),
+            timestamp=market_data.get("updatedAt") or market_data.get("endDate") or market_trades[0].get("timestamp"), # Use resolution time ideally
+        )
+        
+        # Handle timestamp format
+        if isinstance(cp.timestamp, str):
+             # Try parse or default to current
+             from datetime import datetime
+             try:
+                 dt = datetime.fromisoformat(cp.timestamp.replace('Z', '+00:00'))
+                 cp.timestamp = int(dt.timestamp())
+             except:
+                 cp.timestamp = int(market_trades[0].get("timestamp", 0))
+
+        session.add(cp)
+        processed_count += 1
+        
+    if processed_count > 0:
+        await session.commit()
+        print(f"✓ Added {processed_count} auto-resolved closed positions for {wallet_address}")
 
 
 async def save_trades_to_db(
@@ -141,7 +335,15 @@ async def save_trades_to_db(
             except Exception as inner_e:
                 print(f"Failed to save individual trade: {inner_e}")
         await session.commit()
-        
+    
+    # After successful save, check for resolved markets
+    try:
+         await process_resolved_markets_for_trades(session, wallet_address, trades)
+    except Exception as e:
+         print(f"Error processing resolved markets: {e}")
+         # Don't fail the whole trade save if this fails
+         pass
+         
     return saved_count
 
 
@@ -165,14 +367,30 @@ async def get_trades_from_db(
     """
     # Query using raw SQL to handle missing columns gracefully
     # First check which optional columns exist
-    check_sql = text("""
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'trades' 
-        AND column_name IN ('entry_price', 'exit_price', 'pnl', 'trader_id')
-    """)
-    check_result = await session.execute(check_sql)
-    existing_columns = {row[0] for row in check_result.all()}
+    
+    # Check dialect to see if we are using SQLite or PostgreSQL
+    dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+    existing_columns = set()
+    
+    if dialect_name == "sqlite":
+        # SQLite uses PRAGMA table_info
+        check_sql = text("PRAGMA table_info(trades)")
+        check_result = await session.execute(check_sql)
+        # Row format: (cid, name, type, notnull, dflt_value, pk)
+        # We verify by checking if the column name exists in the results
+        all_cols = {row[1] for row in check_result.all()}
+        # Intersect with our optional columns
+        existing_columns = all_cols.intersection({'entry_price', 'exit_price', 'pnl', 'trader_id'})
+    else:
+        # PostgreSQL uses information_schema
+        check_sql = text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'trades' 
+            AND column_name IN ('entry_price', 'exit_price', 'pnl', 'trader_id')
+        """)
+        check_result = await session.execute(check_sql)
+        existing_columns = {row[0] for row in check_result.all()}
     
     # Build SQL query with only existing columns
     base_columns = [

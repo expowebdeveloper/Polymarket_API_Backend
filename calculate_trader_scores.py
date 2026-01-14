@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.core.config import settings
 from app.db.models import Base, TraderCalculatedScore, TraderLeaderboard
 from app.services.leaderboard_service import (
@@ -34,16 +35,22 @@ from app.services.data_fetcher import async_client
 async def check_table_exists(engine):
     """Check if trader_calculated_scores table exists, create if not."""
     async with engine.begin() as conn:
-        result = await conn.execute(
-            text("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'trader_calculated_scores'
-                )
-            """)
-        )
-        exists = result.scalar()
+        if "sqlite" in settings.DATABASE_URL:
+             result = await conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='trader_calculated_scores'")
+            )
+             exists = bool(result.scalar())
+        else:
+            result = await conn.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'trader_calculated_scores'
+                    )
+                """)
+            )
+            exists = result.scalar()
         
         if not exists:
             print("Creating trader_calculated_scores table...")
@@ -512,39 +519,74 @@ async def calculate_and_store_scores(
                 "pnl_shrunk_99_percent": Decimal(str(p_99))
             }
             
-            stmt = pg_insert(TraderCalculatedScore).values(**score_data)
-            stmt = stmt.on_conflict_do_update(
-                constraint="uq_trader_calculated_score_trader",
-                set_={
-                    "rank": stmt.excluded.rank,
-                    "total_pnl": stmt.excluded.total_pnl,
-                    "roi": stmt.excluded.roi,
-                    "win_rate": stmt.excluded.win_rate,
-                    "trades": stmt.excluded.trades,
-                    "w_shrunk": stmt.excluded.w_shrunk,
-                    "roi_shrunk": stmt.excluded.roi_shrunk,
-                    "pnl_shrunk": stmt.excluded.pnl_shrunk,
-                    "w_score": stmt.excluded.w_score,
-                    "roi_score": stmt.excluded.roi_score,
-                    "pnl_score": stmt.excluded.pnl_score,
-                    "risk_score": stmt.excluded.risk_score,
-                    "final_score": stmt.excluded.final_score,
-                    "total_stakes": stmt.excluded.total_stakes,
-                    "winning_stakes": stmt.excluded.winning_stakes,
-                    "sum_sq_stakes": stmt.excluded.sum_sq_stakes,
-                    "max_stake": stmt.excluded.max_stake,
-                    "worst_loss": stmt.excluded.worst_loss,
-                    "total_trades_with_pnl": stmt.excluded.total_trades_with_pnl,
-                    "winning_trades": stmt.excluded.winning_trades,
-                    "w_shrunk_1_percent": stmt.excluded.w_shrunk_1_percent,
-                    "w_shrunk_99_percent": stmt.excluded.w_shrunk_99_percent,
-                    "roi_shrunk_1_percent": stmt.excluded.roi_shrunk_1_percent,
-                    "roi_shrunk_99_percent": stmt.excluded.roi_shrunk_99_percent,
-                    "pnl_shrunk_1_percent": stmt.excluded.pnl_shrunk_1_percent,
-                    "pnl_shrunk_99_percent": stmt.excluded.pnl_shrunk_99_percent,
-                    "updated_at": text("NOW()")
-                }
-            )
+            if "sqlite" in settings.DATABASE_URL:
+                stmt = sqlite_insert(TraderCalculatedScore).values(**score_data)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['trader_id'],
+                    set_={
+                        "rank": stmt.excluded.rank,
+                        "total_pnl": stmt.excluded.total_pnl,
+                        "roi": stmt.excluded.roi,
+                        "win_rate": stmt.excluded.win_rate,
+                        "trades": stmt.excluded.trades,
+                        "w_shrunk": stmt.excluded.w_shrunk,
+                        "roi_shrunk": stmt.excluded.roi_shrunk,
+                        "pnl_shrunk": stmt.excluded.pnl_shrunk,
+                        "w_score": stmt.excluded.w_score,
+                        "roi_score": stmt.excluded.roi_score,
+                        "pnl_score": stmt.excluded.pnl_score,
+                        "risk_score": stmt.excluded.risk_score,
+                        "final_score": stmt.excluded.final_score,
+                        "total_stakes": stmt.excluded.total_stakes,
+                        "winning_stakes": stmt.excluded.winning_stakes,
+                        "sum_sq_stakes": stmt.excluded.sum_sq_stakes,
+                        "max_stake": stmt.excluded.max_stake,
+                        "worst_loss": stmt.excluded.worst_loss,
+                        "total_trades_with_pnl": stmt.excluded.total_trades_with_pnl,
+                        "winning_trades": stmt.excluded.winning_trades,
+                        "w_shrunk_1_percent": stmt.excluded.w_shrunk_1_percent,
+                        "w_shrunk_99_percent": stmt.excluded.w_shrunk_99_percent,
+                        "roi_shrunk_1_percent": stmt.excluded.roi_shrunk_1_percent,
+                        "roi_shrunk_99_percent": stmt.excluded.roi_shrunk_99_percent,
+                        "pnl_shrunk_1_percent": stmt.excluded.pnl_shrunk_1_percent,
+                        "pnl_shrunk_99_percent": stmt.excluded.pnl_shrunk_99_percent,
+                        "updated_at": text("CURRENT_TIMESTAMP")
+                    }
+                )
+            else:
+                stmt = pg_insert(TraderCalculatedScore).values(**score_data)
+                stmt = stmt.on_conflict_do_update(
+                    constraint="uq_trader_calculated_score_trader",
+                    set_={
+                        "rank": stmt.excluded.rank,
+                        "total_pnl": stmt.excluded.total_pnl,
+                        "roi": stmt.excluded.roi,
+                        "win_rate": stmt.excluded.win_rate,
+                        "trades": stmt.excluded.trades,
+                        "w_shrunk": stmt.excluded.w_shrunk,
+                        "roi_shrunk": stmt.excluded.roi_shrunk,
+                        "pnl_shrunk": stmt.excluded.pnl_shrunk,
+                        "w_score": stmt.excluded.w_score,
+                        "roi_score": stmt.excluded.roi_score,
+                        "pnl_score": stmt.excluded.pnl_score,
+                        "risk_score": stmt.excluded.risk_score,
+                        "final_score": stmt.excluded.final_score,
+                        "total_stakes": stmt.excluded.total_stakes,
+                        "winning_stakes": stmt.excluded.winning_stakes,
+                        "sum_sq_stakes": stmt.excluded.sum_sq_stakes,
+                        "max_stake": stmt.excluded.max_stake,
+                        "worst_loss": stmt.excluded.worst_loss,
+                        "total_trades_with_pnl": stmt.excluded.total_trades_with_pnl,
+                        "winning_trades": stmt.excluded.winning_trades,
+                        "w_shrunk_1_percent": stmt.excluded.w_shrunk_1_percent,
+                        "w_shrunk_99_percent": stmt.excluded.w_shrunk_99_percent,
+                        "roi_shrunk_1_percent": stmt.excluded.roi_shrunk_1_percent,
+                        "roi_shrunk_99_percent": stmt.excluded.roi_shrunk_99_percent,
+                        "pnl_shrunk_1_percent": stmt.excluded.pnl_shrunk_1_percent,
+                        "pnl_shrunk_99_percent": stmt.excluded.pnl_shrunk_99_percent,
+                        "updated_at": text("NOW()")
+                    }
+                )
             await session.execute(stmt)
             stored_count += 1
             

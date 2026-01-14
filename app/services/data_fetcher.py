@@ -475,19 +475,26 @@ def get_market_by_id(market_id: str, markets: List[Dict]) -> Optional[Dict]:
     return None
 
 
-async def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional[str]:
+async def get_market_resolution(market_id: str, markets: List[Dict], client: Optional[httpx.AsyncClient] = None) -> Optional[str]:
     """Get the resolution (YES/NO) for a given market ID."""
     market = get_market_by_id(market_id, markets)
     
     # If market not found in our list, try fetching from Polymarket API
     if not market:
-        market = await fetch_market_by_slug(market_id)
+        market = await fetch_market_by_slug(market_id, client=client)
         if market:
             # Add to markets list for future lookups
             markets.append(market)
     
     if not market:
         return None
+    
+    # Check tokens array (CLOB API format)
+    tokens = market.get("tokens")
+    if tokens and isinstance(tokens, list):
+        for token in tokens:
+            if token.get("winner") is True:
+                return str(token.get("outcome"))
     
     # Check various resolution field formats
     resolution = (
@@ -511,7 +518,7 @@ async def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional
         return "YES" if "yes" in str(resolution_source).lower() else "NO"
     
     # Check if resolved to Yes/No
-    if market.get("resolved") or market.get("isResolved") or market.get("is_resolved"):
+    if market.get("resolved") or market.get("isResolved") or market.get("is_resolved") or market.get("closed"):
         # Try to infer from other fields
         outcome = market.get("outcome") or market.get("winningOutcome") or market.get("winning_outcome")
         if outcome:
@@ -520,6 +527,9 @@ async def get_market_resolution(market_id: str, markets: List[Dict]) -> Optional
                 return "YES"
             elif "no" in outcome_str or outcome_str == "0" or "false" in outcome_str:
                 return "NO"
+        
+        # If it's closed but no outcome found in standard fields, check if we missed the tokens check above
+        # (Already done at valid CLOB response start)
     
     # Check status field
     status = market.get("status") or market.get("marketStatus")
@@ -540,59 +550,68 @@ def fetch_market_by_slug_from_dome(market_slug: str) -> Optional[Dict]:
     return None
 
 
-async def fetch_market_by_slug(market_slug: str) -> Optional[Dict]:
+async def fetch_market_by_slug(market_slug: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict]:
     """
     Fetch market details by slug or conditionId from Polymarket API (async).
     
     Args:
         market_slug: Market slug identifier OR conditionId (0x...)
+        client: Optional shared HTTP client
     
     Returns:
         Market dictionary or None if not found
     """
     try:
-        async with DNSAwareAsyncClient(timeout=10.0) as client:
-            # Case 1: conditionId Lookup (starts with 0x)
-            if market_slug.startswith("0x") and len(market_slug) >= 42:
-                # Gamma API: https://gamma-api.polymarket.com/markets?conditionId={id}
-                gamma_url = "https://gamma-api.polymarket.com/markets"
-                params = {"conditionId": market_slug}
-                try:
-                    response = await client.get(gamma_url, params=params)
-                    if response.status_code == 200:
-                        data = response.json()
-                        if isinstance(data, list) and len(data) > 0:
-                            return data[0]
-                except Exception as e:
-                    print(f"Error fetching from Gamma API /markets: {e}")
-
-            # Case 2: Slug Lookup
-            gamma_url = "https://gamma-api.polymarket.com/events"
-            params = {"slug": market_slug}
-            
-            try:
-                response = await client.get(gamma_url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    if isinstance(data, list) and len(data) > 0:
-                        event = data[0]
-                        markets = event.get("markets", [])
-                        if markets:
-                            market = markets[0]
-                            market["input_slug"] = market_slug 
-                            if not market.get("title") and event.get("title"):
-                                market["title"] = event.get("title")
-                            if not market.get("icon") and event.get("icon"):
-                                market["icon"] = event.get("icon")
-                            if not market.get("description") and event.get("description"):
-                                market["description"] = event.get("description")
-                            return market
-            except Exception as e:
-                print(f"Error fetching from Gamma API /events: {e}")
-        
-        return None
+        # Use provided client or create a new one
+        if client:
+            return await _fetch_market_internal(client, market_slug)
+        else:
+            async with DNSAwareAsyncClient(timeout=10.0) as new_client:
+                return await _fetch_market_internal(new_client, market_slug)
     except Exception as e:
         print(f"Error fetching market details for '{market_slug}': {e}")
+    return None
+
+async def _fetch_market_internal(client: httpx.AsyncClient, market_slug: str) -> Optional[Dict]:
+    """Internal helper to fetch market with a guaranteed client"""
+    # Case 1: conditionId Lookup (starts with 0x)
+    if market_slug.startswith("0x") and len(market_slug) >= 42:
+        # Use CLOB API for reliable conditionId lookup
+        # https://clob.polymarket.com/markets/{condition_id}
+        clob_url = f"https://clob.polymarket.com/markets/{market_slug}"
+        try:
+            response = await client.get(clob_url)
+            if response.status_code == 200:
+                data = response.json()
+                if data and data.get("condition_id") == market_slug:
+                    return data
+        except Exception as e:
+            print(f"Error fetching from CLOB API /markets: {e}")
+
+    # Case 2: Slug Lookup
+    gamma_url = "https://gamma-api.polymarket.com/events"
+    params = {"slug": market_slug}
+    
+    try:
+        response = await client.get(gamma_url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                event = data[0]
+                markets = event.get("markets", [])
+                if markets:
+                    market = markets[0]
+                    market["input_slug"] = market_slug 
+                    if not market.get("title") and event.get("title"):
+                        market["title"] = event.get("title")
+                    if not market.get("icon") and event.get("icon"):
+                        market["icon"] = event.get("icon")
+                    if not market.get("description") and event.get("description"):
+                        market["description"] = event.get("description")
+                    return market
+    except Exception as e:
+        print(f"Error fetching from Gamma API /events: {e}")
+    
     return None
 
 
@@ -918,6 +937,7 @@ async def fetch_user_trades(
 ) -> List[Dict]:
     """
     Fetch user trades from Polymarket Data API (async version).
+    Uses parallel fetching for max speed.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
@@ -929,11 +949,10 @@ async def fetch_user_trades(
     """
     try:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
-        params = {"user": wallet_address}
         
-        # If limit is specified, just fetch that page
+        # If limit is specified, just fetch that page (simple case)
         if limit is not None:
-            params["limit"] = limit
+            params = {"user": wallet_address, "limit": limit}
             if offset is not None:
                 params["offset"] = offset
             
@@ -942,47 +961,107 @@ async def fetch_user_trades(
             trades = response.json()
             return trades if isinstance(trades, list) else []
 
-        # If limit is None, fetch ALL data using pagination
+        # If limit is None, fetch ALL data using PARALLEL pagination
         all_trades = []
-        seen_ids = set()
-        fetch_limit = 50  # API max is 50
-        current_offset = offset or 0
-        max_pages = 200 # Support up to 10,000 items
+        fetch_limit = 100  # API max is usually 100
+        initial_offset = offset or 0
         
-        for _ in range(max_pages):
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
+        # Step 1: Fetch first page to see if we have data and how much
+        params = {"user": wallet_address, "limit": fetch_limit, "offset": initial_offset}
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        first_page_data = response.json()
+        
+        if not isinstance(first_page_data, list) or not first_page_data:
+            return []
             
-            response = await async_client.get(url, params=params)
-            response.raise_for_status()
+        all_trades.extend(first_page_data)
+        
+        # If we got less than limit, we are done
+        if len(first_page_data) < fetch_limit:
+            print(f"✓ Fetched {len(all_trades)} trades (single page)")
+            return all_trades
             
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                break
+        # Step 2: We have more data. Launch parallel requests.
+        # We don't know the exact total, so we'll fetch in chunks of pages.
+        # Polymarket usually has < 10k trades for most users, but let's be robust.
+        
+        # Parallel fetch config
+        PARALLEL_BATCH_SIZE = 10 # Number of concurrent requests
+        batch_offset = initial_offset + fetch_limit
+        
+        # We will keep fetching until we hit an empty page or partial page
+        more_data_available = True
+        page_num = 1
+        
+        while more_data_available:
+            tasks = []
+            for i in range(PARALLEL_BATCH_SIZE):
+                current_req_offset = batch_offset + (i * fetch_limit)
+                task_params = {"user": wallet_address, "limit": fetch_limit, "offset": current_req_offset}
+                tasks.append(async_client.get(url, params=task_params))
             
-            new_items = []
-            for item in data:
-                item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
-                if item_id:
-                    if item_id not in seen_ids:
-                        seen_ids.add(item_id)
-                        new_items.append(item)
+            # Execute batch
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            batch_has_end = False
+            valid_batch_items = []
+            
+            for res in results:
+                if isinstance(res, Exception):
+                    print(f"✗ Error in parallel fetch: {res}")
+                    continue
+                    
+                if res.status_code != 200:
+                     print(f"✗ API Error in parallel fetch: {res.status_code}")
+                     continue
+                     
+                page_data = res.json()
+                if isinstance(page_data, list) and page_data:
+                    valid_batch_items.extend(page_data)
+                    if len(page_data) < fetch_limit:
+                        batch_has_end = True
                 else:
-                    new_items.append(item)
+                    batch_has_end = True
             
-            if not new_items:
-                break
+            # Add to main list
+            if valid_batch_items:
+                all_trades.extend(valid_batch_items)
+            
+            # Check if we should stop
+            # Note: valid_batch_items might not be in perfect order, but we sort later or DB handles it
+            if batch_has_end or len(valid_batch_items) == 0:
+                more_data_available = False
+            else:
+                # Prepare next batch
+                batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
                 
-            all_trades.extend(new_items)
-            
-            # If fewer than requested, we likely reached the end
-            if len(data) < fetch_limit:
-                break
-            
-            current_offset += len(data)
-            
-        print(f"✓ Successfully fetched {len(all_trades)} trades for {wallet_address}")
-        return all_trades
+                # Safety break for massive accounts (e.g. > 20k trades) to prevent RAM issues
+                if len(all_trades) > 20000:
+                    print("⚠️ Reached safety limit of 20k trades")
+                    break
+        
+        # Dedup based on ID or Transaction Hash
+        unique_trades = {}
+        for item in all_trades:
+            # Prefer ID, then tx hash
+            item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
+            if item_id:
+                unique_trades[item_id] = item
+            else:
+                # If no ID, use arbitrary index or keep all (safest to keep)
+                # But to fit in map, we might lose them. Let's keep distinct list.
+                pass
+        
+        # Given we might have duplicates from retry logic or overlaps (less likely here as we use exact offsets),
+        # but let's just return unique list if IDs exist, else all.
+        if unique_trades:
+             final_list = list(unique_trades.values())
+        else:
+             final_list = all_trades
+
+        print(f"✓ Successfully fetched {len(final_list)} trades for {wallet_address} (Parallel)")
+        return final_list
 
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user trades from Polymarket API: {str(e)}")

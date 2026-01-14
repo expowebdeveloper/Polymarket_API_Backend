@@ -601,7 +601,9 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         fetch_user_traded_count,
         fetch_user_profile_data_v2,
         fetch_resolved_markets,
-        get_market_resolution
+        fetch_market_by_slug,
+        get_market_resolution,
+        DNSAwareAsyncClient
     )
 
     # 1. Fetch everything concurrently
@@ -643,39 +645,58 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     actual_active_positions = []
     newly_closed_positions = []
     
+    # Prepare concurrent tasks for market resolution
+    positions_to_check = []
+    
     for pos in active_positions:
         market_id = pos.get("conditionId") or pos.get("condition_id") or pos.get("slug")
-        if not market_id:
-            actual_active_positions.append(pos)
-            continue
-            
-        # Check if market is resolved
-        # get_market_resolution will first check resolved_markets cache
-        # then fallback to fetch_market_by_slug (which now handles conditionId)
-        market_resolution = await get_market_resolution(market_id, resolved_markets)
-        
-        if market_resolution:
-            # Position is resolved! Move to closed
-            # Calculate realized PnL
-            # For Polymarket: final price is 1.0 (if outcome wins) or 0.0 (if it loses)
-            outcome = pos.get("outcome")
-            final_price = 1.0 if outcome and str(outcome).upper() == str(market_resolution).upper() else 0.0
-            avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
-            size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
-            
-            realized_pnl = (final_price - avg_price) * size
-            
-            # Create a closed position object
-            cp = pos.copy()
-            cp["realizedPnl"] = realized_pnl
-            cp["realized_pnl"] = realized_pnl
-            cp["curPrice"] = final_price
-            cp["cur_price"] = final_price
-            cp["resolved"] = True
-            
-            newly_closed_positions.append(cp)
+        if market_id:
+            positions_to_check.append(pos)
         else:
+            # No ID, keep as active (can't check resolution)
             actual_active_positions.append(pos)
+            
+    # Execute checks in parallel with a shared client
+    if positions_to_check:
+        # Create a single client for all requests to reuse connections (TCP/TLS)
+        async with DNSAwareAsyncClient(timeout=10.0) as client:
+             resolution_tasks = []
+             for pos in positions_to_check:
+                 market_id = pos.get("conditionId") or pos.get("condition_id") or pos.get("slug")
+                 resolution_tasks.append(get_market_resolution(market_id, resolved_markets, client=client))
+                 
+             resolutions = await asyncio.gather(*resolution_tasks, return_exceptions=True)
+        
+        for i, pos in enumerate(positions_to_check):
+            market_resolution = resolutions[i]
+            
+             # Handle exceptions from gather
+            if isinstance(market_resolution, Exception):
+                print(f"Error checking resolution for position {pos.get('slug')}: {market_resolution}")
+                market_resolution = None
+
+            if market_resolution:
+                # Position is resolved! Move to closed
+                # Calculate realized PnL
+                # For Polymarket: final price is 1.0 (if outcome wins) or 0.0 (if it loses)
+                outcome = pos.get("outcome")
+                final_price = 1.0 if outcome and str(outcome).upper() == str(market_resolution).upper() else 0.0
+                avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
+                size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+                
+                realized_pnl = (final_price - avg_price) * size
+                
+                # Create a closed position object
+                cp = pos.copy()
+                cp["realizedPnl"] = realized_pnl
+                cp["realized_pnl"] = realized_pnl
+                cp["curPrice"] = final_price
+                cp["cur_price"] = final_price
+                cp["resolved"] = True
+                
+                newly_closed_positions.append(cp)
+            else:
+                actual_active_positions.append(pos)
             
     active_positions = actual_active_positions
     closed_positions = newly_closed_positions + closed_positions

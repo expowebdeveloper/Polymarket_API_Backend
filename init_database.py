@@ -15,6 +15,11 @@ async def create_database_if_not_exists():
     """Create the database if it doesn't exist."""
     # Extract database name from DATABASE_URL
     db_url = settings.DATABASE_URL
+    
+    if "sqlite" in db_url:
+        print("Using SQLite, database file will be created automatically.")
+        return
+
     # Parse the database name
     # Format: postgresql+asyncpg://user:password@host:port/database
     if "/" in db_url:

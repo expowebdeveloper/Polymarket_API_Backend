@@ -16,7 +16,7 @@ class Settings:
     # API Configuration
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://user:password@localhost:5432/polymarket"
+        "sqlite+aiosqlite:///./sql_app.db"
     )
 
     class Config:

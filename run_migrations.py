@@ -22,6 +22,13 @@ from app.db.session import AsyncSessionLocal
 async def check_table_exists(session, table_name: str) -> bool:
     """Check if a table exists."""
     try:
+        if "sqlite" in settings.DATABASE_URL:
+             result = await session.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"),
+                {"table_name": table_name}
+            )
+             return bool(result.scalar())
+        
         result = await session.execute(
             text("""
                 SELECT EXISTS (
@@ -49,30 +56,28 @@ async def migrate_users_table(session):
     """Add missing columns to users table if needed."""
     try:
         # First check if table exists
-        table_check = await session.execute(
-            text("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = 'users'
-                )
-            """)
-        )
-        table_exists = table_check.scalar()
+        # First check if table exists
+        table_exists = await check_table_exists(session, 'users')
         
         if not table_exists:
             print("⚠️  Users table doesn't exist. It will be created in Step 1.")
             return
         
         # Check if password_hash column exists
-        result = await session.execute(
-            text("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'users' AND column_name = 'password_hash'
-            """)
-        )
-        exists = result.scalar_one_or_none()
+        if "sqlite" in settings.DATABASE_URL:
+            result = await session.execute(text("PRAGMA table_info(users)"))
+            # Row structure: (cid, name, type, notnull, dflt_value, pk)
+            columns = [row[1] for row in result.fetchall()]
+            exists = 'password_hash' in columns
+        else:
+            result = await session.execute(
+                text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'password_hash'
+                """)
+            )
+            exists = result.scalar_one_or_none()
         
         if not exists:
             print("Adding password_hash, created_at, and updated_at columns to users table...")
