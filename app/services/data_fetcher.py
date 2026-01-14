@@ -1091,8 +1091,12 @@ async def fetch_closed_positions(
         List of closed position dictionaries
     """
     try:
-        url = f"{settings.POLYMARKET_DATA_API_URL}/closed-positions"
-        params = {"user": wallet_address}
+        url = f"{settings.POLYMARKET_DATA_API_URL}/v1/closed-positions"
+        params = {
+            "user": wallet_address,
+            "sortBy": "timestamp",
+            "sortDirection": "DESC"
+        }
         
         # If limit is specified, just fetch that single page
         if limit is not None:
@@ -1164,8 +1168,9 @@ async def fetch_closed_positions(
             
             new_items = []
             for item in data:
-                # Closed positions are unique per conditionId
-                item_id = item.get("conditionId") or item.get("condition_id")
+                # Use asset as primary ID if available (handles multiple outcomes per market)
+                item_id = item.get("asset") or item.get("id") or item.get("conditionId") or item.get("condition_id")
+                
                 if item_id:
                     if item_id not in seen_ids:
                         seen_ids.add(item_id)

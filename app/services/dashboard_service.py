@@ -583,6 +583,53 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
     }
 
 
+
+def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize closed position data from API for frontend display.
+    Ensures fields like size, avgPrice, realizedPnl are correctly populated.
+    """
+    # Create a copy to avoid mutating original
+    normalized = pos.copy()
+    
+    # 1. Size / Total Bought
+    # API v1 uses 'totalBought' for the position size usually
+    size = pos.get("size")
+    if size is None:
+        size = pos.get("totalBought") or pos.get("total_bought") or 0.0
+    normalized["size"] = float(size)
+    
+    # 2. Avg Price
+    avg_price = pos.get("avgPrice") or pos.get("avg_price")
+    if avg_price is None:
+        avg_price = 0.0
+    normalized["avgPrice"] = float(avg_price)
+    normalized["avg_price"] = float(avg_price)
+
+    # 3. Realized PnL
+    pnl = pos.get("realizedPnl") or pos.get("realized_pnl") or pos.get("pnl")
+    if pnl is None:
+        pnl = 0.0
+    normalized["realizedPnl"] = float(pnl)
+    normalized["realized_pnl"] = float(pnl)
+    
+    # 4. Exit Price
+    # API might not return exitPrice. We can sometimes derive it?
+    # realizedPnl = (exitPrice - avgPrice) * size
+    # exitPrice = (realizedPnl / size) + avgPrice  (if size != 0)
+    exit_price = pos.get("exitPrice") or pos.get("exit_price")
+    if exit_price is None:
+        if normalized["size"] > 0:
+            exit_price = (normalized["realizedPnl"] / normalized["size"]) + normalized["avgPrice"]
+        else:
+            exit_price = 0.0
+            
+    normalized["exitPrice"] = float(exit_price)
+    normalized["exit_price"] = float(exit_price)
+    
+    return normalized
+
+
 async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     """
     Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
@@ -645,59 +692,49 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     actual_active_positions = []
     newly_closed_positions = []
     
-    # Prepare concurrent tasks for market resolution
-    positions_to_check = []
-    
+    # Execute checks using heuristic (No external API calls)
+    # User heuristic: if curPrice is 0 or redeemable is True, the market is resolved.
     for pos in active_positions:
-        market_id = pos.get("conditionId") or pos.get("condition_id") or pos.get("slug")
-        if market_id:
-            positions_to_check.append(pos)
-        else:
-            # No ID, keep as active (can't check resolution)
-            actual_active_positions.append(pos)
-            
-    # Execute checks in parallel with a shared client
-    if positions_to_check:
-        # Create a single client for all requests to reuse connections (TCP/TLS)
-        async with DNSAwareAsyncClient(timeout=10.0) as client:
-             resolution_tasks = []
-             for pos in positions_to_check:
-                 market_id = pos.get("conditionId") or pos.get("condition_id") or pos.get("slug")
-                 resolution_tasks.append(get_market_resolution(market_id, resolved_markets, client=client))
-                 
-             resolutions = await asyncio.gather(*resolution_tasks, return_exceptions=True)
+        cur_price = float(pos.get("curPrice") or pos.get("cur_price") or 0)
+        is_redeemable = pos.get("redeemable") is True
         
-        for i, pos in enumerate(positions_to_check):
-            market_resolution = resolutions[i]
+        # Check if market is resolved based on heuristic
+        if cur_price == 0 or is_redeemable:
+            # Position is resolved! Move to closed
             
-             # Handle exceptions from gather
-            if isinstance(market_resolution, Exception):
-                print(f"Error checking resolution for position {pos.get('slug')}: {market_resolution}")
-                market_resolution = None
+            # Determine final price for PnL calculation
+            # If curPrice is 0, likely a loss (0.0).
+            # If redeemable is True, it could be a win (1.0) or loss (0.0).
+            # But usually if it's in "active" list with redeemable=True, it requires action.
+            # The user's specific case was curPrice=0 -> Loss.
+            
+            # We trust the current metric or derive it.
+            # If curPrice is 0, we assume final_price is 0.
+            # If curPrice is > 0 and redeemable, maybe it's 1.0? 
+            # Or we just rely on PnL calc.
+            
+            final_price = 0.0 if cur_price == 0 else 1.0 
+            # Note: This is a simplification. A redeemable YES token might be worth 1.0.
+            # If curPrice is 0.99 and redeemable, it's essentially 1.0.
+            # However, for the specific "Loss Discrepancy" bug, curPrice was 0.
+            
+            avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
+            size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+            
+            realized_pnl = (final_price - avg_price) * size
+            
+            # Create a closed position object
+            cp = pos.copy()
+            cp["realizedPnl"] = realized_pnl
+            cp["realized_pnl"] = realized_pnl
+            cp["curPrice"] = final_price
+            cp["cur_price"] = final_price
+            cp["resolved"] = True
+            
+            newly_closed_positions.append(cp)
+        else:
+            actual_active_positions.append(pos)
 
-            if market_resolution:
-                # Position is resolved! Move to closed
-                # Calculate realized PnL
-                # For Polymarket: final price is 1.0 (if outcome wins) or 0.0 (if it loses)
-                outcome = pos.get("outcome")
-                final_price = 1.0 if outcome and str(outcome).upper() == str(market_resolution).upper() else 0.0
-                avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
-                size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
-                
-                realized_pnl = (final_price - avg_price) * size
-                
-                # Create a closed position object
-                cp = pos.copy()
-                cp["realizedPnl"] = realized_pnl
-                cp["realized_pnl"] = realized_pnl
-                cp["curPrice"] = final_price
-                cp["cur_price"] = final_price
-                cp["resolved"] = True
-                
-                newly_closed_positions.append(cp)
-            else:
-                actual_active_positions.append(pos)
-            
     active_positions = actual_active_positions
     closed_positions = newly_closed_positions + closed_positions
 
@@ -871,7 +908,7 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         },
         "scoring_metrics": scoring_metrics,
         "positions": active_positions,
-        "closed_positions": closed_positions,
+        "closed_positions": [_normalize_closed_position(cp) for cp in closed_positions],
         "activities": activities,
         "trade_history": {
             "trades": user_pnl
