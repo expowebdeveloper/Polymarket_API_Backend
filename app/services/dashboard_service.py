@@ -339,26 +339,30 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         print(f"Error calculating rewards: {e}")
     
     # --- Calculate Total Volume ---
+    # optimization: Prefer official Leaderboard API volume (fast & accurate).
+    # If missing, fallback to summing Closed + Active positions (which are fetched fully).
+    # Do NOT rely on 'all_trades' for volume sum anymore, as we now Limit trades to 1000 for speed.
     total_volume = 0.0
-    try:
-        # From closed positions
-        for cp in closed_positions:
-            stake = float(cp.total_bought or 0) * float(cp.avg_price or 0)
-            total_volume += stake
-        
-        # From active positions
-        for pos in active_positions:
-            stake = float(pos.initial_value or 0)
-            total_volume += stake
-        
-        # From trades
-        for trade in all_trades:
-            stake = float(trade.size or 0) * float(trade.price or 0)
-            total_volume += stake
-    except Exception as e:
-        print(f"Error calculating total volume: {e}")
-        # Fallback to aggregated metrics
-        total_volume = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else total_investment
+    
+    if leaderboard_data and leaderboard_data.get("volume", 0) > 0:
+        total_volume = float(leaderboard_data.get("volume"))
+    else:
+        try:
+            # Fallback: Sum Closed + Active Positions (Full History)
+            for cp in closed_positions:
+                stake = float(cp.total_bought or 0) * float(cp.avg_price or 0)
+                total_volume += stake
+            
+            for pos in active_positions:
+                stake = float(pos.initial_value or 0)
+                total_volume += stake
+                
+            # Note: We skip 'all_trades' here because it's now truncated (1000 items).
+            # Using partial trades list would under-report volume. 
+            # Positions data is full history (limit=None), so it's the better fallback.
+        except Exception as e:
+            print(f"Error calculating total volume fallback: {e}")
+            total_volume = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else total_investment
 
     # --- Helper function to categorize market ---
     def categorize_market(title: str, slug: str) -> str:
@@ -558,7 +562,7 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
     # --- Total Number of Trades ---
     total_trades_count = len(all_trades) if all_trades else 0
 
-    return {
+    result_data = {
         "profile": profile_data,
         "leaderboard": leaderboard_data,
         "portfolio": portfolio_data,
@@ -581,6 +585,11 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         "profit_trend": profit_trend,  # Last 7 days profit trend
         "largest_win": trader_metrics.get("largest_win", 0.0),
     }
+
+    # Save to Cache
+    _DASHBOARD_CACHE[wallet_address] = (time.time(), result_data)
+    
+    return result_data
 
 
 
@@ -630,11 +639,31 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
+# Simple In-Memory Cache for Dashboard Data
+# Format: { wallet_address: (timestamp, data_dict) }
+_DASHBOARD_CACHE = {}
+CACHE_TTL = 30  # Seconds
+
+async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False) -> Dict[str, Any]:
     """
     Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
     Bypasses the local database entirely.
+    
+    Includes a 30-second in-memory cache to prevent API rate limiting and speed up reloads.
     """
+    import time
+    
+    # Check Cache
+    if not force_refresh:
+        now = time.time()
+        if wallet_address in _DASHBOARD_CACHE:
+            ts, cached_data = _DASHBOARD_CACHE[wallet_address]
+            if now - ts < CACHE_TTL:
+                print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
+                return cached_data
+            else:
+                print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
+    
     import asyncio
     from app.services.data_fetcher import (
         fetch_positions_for_wallet,
@@ -646,30 +675,53 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         fetch_portfolio_value,
         fetch_leaderboard_stats,
         fetch_user_traded_count,
-        fetch_user_profile_data_v2,
-        fetch_resolved_markets,
-        fetch_market_by_slug,
-        get_market_resolution,
-        DNSAwareAsyncClient
+        fetch_user_profile_data_v2
     )
 
     # 1. Fetch everything concurrently
     tasks = {
-        "positions": fetch_positions_for_wallet(wallet_address), # limit=None by default
-        "closed_positions": fetch_closed_positions(wallet_address, limit=None),
-        "activities": fetch_user_activity(wallet_address),
-        "trades": fetch_user_trades(wallet_address),
+        "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
+        "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
+        "trades": fetch_user_trades(wallet_address, limit=1000), # Limit to 1000 for speed. Volume uses Leaderboard.
         "user_pnl": fetch_user_pnl(wallet_address),
         "profile": fetch_profile_stats(wallet_address),
         "portfolio_value": fetch_portfolio_value(wallet_address),
         "leaderboard": fetch_leaderboard_stats(wallet_address),
         "traded_count": fetch_user_traded_count(wallet_address),
-        "profile_v2": fetch_user_profile_data_v2(wallet_address),
-        "resolved_markets": fetch_resolved_markets(limit=2000)
+        "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
 
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
     f = dict(zip(tasks.keys(), results))
+    
+    
+    # Optimization: Reconstruct "activities" for Trade History using "trades" data
+    # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
+    # The "Activity" tab will only show Trades (no rewards/redeems) which is acceptable for speed.
+    activities_from_trades = []
+    trades_data = f.get("trades", []) or []
+    
+    for t in trades_data:
+        # Map trade object to activity schema expected by frontend
+        # Schema: type, title, side, size, price, timestamp, transactionHash
+        act = {
+            "type": "TRADE",
+            "title": t.get("title") or t.get("market_slug") or "Market",
+            "slug": t.get("market_slug"),
+            "side": t.get("side"),
+            "size": t.get("size"),
+            "usdcSize": float(t.get("size") or 0) * float(t.get("price") or 0), # Approx value
+            "usdc_size": float(t.get("size") or 0) * float(t.get("price") or 0),
+            "price": t.get("price"),
+            "timestamp": t.get("timestamp"),
+            "transactionHash": t.get("match_id") or t.get("transactionHash") or "", 
+            "transaction_hash": t.get("match_id") or t.get("transactionHash") or "",
+            "asset": t.get("asset"),
+            "outcome": t.get("outcome")
+        }
+        activities_from_trades.append(act)
+        
+    f["activities"] = activities_from_trades
 
     # Helper to handle exceptions
     def safe_get(key, default=[]):
@@ -686,40 +738,28 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     leaderboard_stats = safe_get("leaderboard", {})
     traded_count = safe_get("traded_count", 0)
     profile_v2 = safe_get("profile_v2", {})
-    resolved_markets = safe_get("resolved_markets", [])
 
     # 1.5. Check for resolved positions in active positions and move them to closed
     actual_active_positions = []
     newly_closed_positions = []
     
     # Execute checks using heuristic (No external API calls)
-    # User heuristic: if curPrice is 0 or redeemable is True, the market is resolved.
+    # User heuristic: if curPrice is 0 or currentValue is 0, the market is resolved/closed.
     for pos in active_positions:
         cur_price = float(pos.get("curPrice") or pos.get("cur_price") or 0)
-        is_redeemable = pos.get("redeemable") is True
+        current_value = float(pos.get("currentValue") or pos.get("current_value") or 0)
         
         # Check if market is resolved based on heuristic
-        if cur_price == 0 or is_redeemable:
+        # If curPrice is 0 (or currentValue is 0), then market is closed
+        if cur_price == 0 or current_value == 0:
             # Position is resolved! Move to closed
             
-            # Determine final price for PnL calculation
-            # If curPrice is 0, likely a loss (0.0).
-            # If redeemable is True, it could be a win (1.0) or loss (0.0).
-            # But usually if it's in "active" list with redeemable=True, it requires action.
-            # The user's specific case was curPrice=0 -> Loss.
-            
-            # We trust the current metric or derive it.
-            # If curPrice is 0, we assume final_price is 0.
-            # If curPrice is > 0 and redeemable, maybe it's 1.0? 
-            # Or we just rely on PnL calc.
-            
-            final_price = 0.0 if cur_price == 0 else 1.0 
-            # Note: This is a simplification. A redeemable YES token might be worth 1.0.
-            # If curPrice is 0.99 and redeemable, it's essentially 1.0.
-            # However, for the specific "Loss Discrepancy" bug, curPrice was 0.
-            
+            # Use current metrics for final PnL
             avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
             size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+            
+            # If curPrice is 0, we assume the final price/payout is 0 (Loss)
+            final_price = 0.0 
             
             realized_pnl = (final_price - avg_price) * size
             

@@ -163,6 +163,7 @@ async def fetch_markets(
     """
     Fetch markets from Polymarket Gamma API with pagination (async).
     Uses https://gamma-api.polymarket.com/events/pagination endpoint.
+    Uses parallel fetching for max speed.
     Returns a tuple of (markets list, pagination info).
     
     Args:
@@ -202,90 +203,25 @@ async def fetch_markets(
         elif status == "archived":
             archived = True
         
-        # Build query parameters
-        # Optimize: Only fetch what we need (limit + offset) but cap at reasonable size
-        # For better performance, we fetch only the required amount
-        fetch_limit = min(offset + limit, 200)  # Cap at 200 to avoid huge requests
-        
-        params = {
-            "limit": fetch_limit,
+        # Base params for all requests
+        base_params = {
+            "order": "volume",
+            "ascending": "false"
         }
         
         if active is not None:
-            params["active"] = str(active).lower()
+            base_params["active"] = str(active).lower()
         if closed is not None:
-            params["closed"] = str(closed).lower()
+            base_params["closed"] = str(closed).lower()
         if archived is not None:
-            params["archived"] = str(archived).lower()
+            base_params["archived"] = str(archived).lower()
         if tag_slug:
-            params["tag_slug"] = tag_slug
-        
-        # Add ordering by volume (descending) for better results
-        params["order"] = "volume"
-        params["ascending"] = "false"
-        
-        # Use shared async HTTP client for better performance
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-                
-        # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
-        events = data.get("data", [])
-        pagination = data.get("pagination", {})
-        
-        # Convert events to market format efficiently
-        # IMPORTANT: Don't include nested markets array to keep response size small
-        all_markets = []
-        
-        # Pagination loop
-        current_offset = offset
-        items_to_fetch = limit if limit is not None else float('inf')
-        fetched_so_far = 0
-        
-        # Fetch in chunks (default 100 for safety and speed)
-        chunk_size = 100 
-        
-        while fetched_so_far < items_to_fetch:
-            # Determine current limit
-            current_limit = min(chunk_size, items_to_fetch - fetched_so_far)
-            # The API might be finicky with very large limits, so stick to reasonable chunks
-            if current_limit > 100: 
-                current_limit = 100
-
-            params = {
-                "limit": current_limit,
-                "offset": current_offset
-            }
+            base_params["tag_slug"] = tag_slug
             
-            if active is not None:
-                params["active"] = str(active).lower()
-            if closed is not None:
-                params["closed"] = str(closed).lower()
-            if archived is not None:
-                params["archived"] = str(archived).lower()
-            if tag_slug:
-                params["tag_slug"] = tag_slug
-            
-            # Add ordering by volume (descending) for better results
-            params["order"] = "volume"
-            params["ascending"] = "false"
-            
-            # Use async HTTP client for better performance
-            async with DNSAwareAsyncClient(timeout=30.0) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
-                    
-            # Gamma API returns: {"data": [...events...], "pagination": {"hasMore": bool, "totalResults": int}}
-            events = data.get("data", [])
-            pagination = data.get("pagination", {})
-            
-            if not events:
-                break
-                
-            # Convert events to market format efficiently
-            for event in events:
-                # Create a market object from the event
+        # Helper to process events into markets
+        def process_events(events_list):
+            processed_markets = []
+            for event in events_list:
                 tags = event.get("tags", [])
                 market = {
                     "id": event.get("id"),
@@ -302,7 +238,7 @@ async def fetch_markets(
                     "icon": event.get("icon"),
                     "startDate": event.get("startDate"),
                     "endDate": event.get("endDate"),
-                    "end_date": event.get("endDate"),  # Also include snake_case for compatibility
+                    "end_date": event.get("endDate"),
                     "creationDate": event.get("creationDate"),
                     "createdAt": event.get("createdAt"),
                     "updatedAt": event.get("updatedAt"),
@@ -313,93 +249,135 @@ async def fetch_markets(
                     "competitive": event.get("competitive"),
                     "tags": [tag.get("slug") for tag in tags] if tags else [],
                     "category": tags[0].get("label", "Uncategorized") if tags else "Uncategorized",
-                    "markets_count": len(event.get("markets", [])),  # Just include count instead
+                    "markets_count": len(event.get("markets", [])),
                     "featured": event.get("featured", False),
                     "restricted": event.get("restricted", False),
                 }
                 
-                # Extract outcome prices from the first nested market if available
-                # This fixes the issue where all probabilities show as 50%
+                # Extract outcome prices per previous logic
                 event_markets = event.get("markets", [])
                 if event_markets and isinstance(event_markets, list) and len(event_markets) > 0:
                     primary_market = event_markets[0]
-                    
-                    # Extract outcomes and prices
                     outcomes = primary_market.get("outcomes", [])
                     outcome_prices = primary_market.get("outcomePrices", [])
                     
-                    # Create outcomePrices map if both lists exist and have same length
                     if outcomes and outcome_prices and len(outcomes) == len(outcome_prices):
                         try:
                             prices_map = {}
                             for i, outcome in enumerate(outcomes):
-                                # Clean outcome name (sometimes valid JSON string) and price
                                 name = str(outcome).strip()
                                 price = float(outcome_prices[i])
                                 prices_map[name] = price
                             
                             market["outcomePrices"] = prices_map
-                            
-                            # Set main price (usually the first outcome's price, e.g., Yes)
                             if len(outcome_prices) > 0:
                                 market["price"] = float(outcome_prices[0])
-                                
                         except (ValueError, TypeError):
                             pass
                 
-                all_markets.append(market)
-            
-            # Update counters
-            fetched_so_far += len(events)
-            current_offset += len(events)
-            
-            # Check if we're done
-            if not pagination.get("hasMore", False) or len(events) < current_limit:
-                break
-                
-            # If explicit limit was provided and we reached it
-            if limit is not None and fetched_so_far >= limit:
-                break
+                processed_markets.append(market)
+            return processed_markets
 
-        total_results = pagination.get("totalResults", len(all_markets))
-        has_more = pagination.get("hasMore", False) or (current_offset < total_results)
+        # Initial request to get total results and first page
+        fetch_limit = min(limit, 100) # Max 100 per request
+        initial_params = base_params.copy()
+        initial_params["limit"] = fetch_limit
+        initial_params["offset"] = offset
+        
+        response = await async_client.get(url, params=initial_params)
+        response.raise_for_status()
+        data = response.json()
+        
+        events = data.get("data", [])
+        pagination = data.get("pagination", {})
+        total_results = pagination.get("totalResults", 0)
+        
+        all_markets = process_events(events)
+        
+        # If we need more and there are more
+        needed_more = limit - len(all_markets)
+        has_more = pagination.get("hasMore", False)
+        
+        if needed_more > 0 and has_more:
+            # Parallel fetch logic
+            PARALLEL_BATCH_SIZE = 10
+            batch_offset = offset + len(all_markets)
             
+            # Don't fetch more than total available
+            # Note: Gamma API totalResults is sometimes approximate or capped, relying on hasMore is safer
+            # But we can assume we can fetch up to 'limit' total
+            
+            # We will loop until we have enough
+            while needed_more > 0:
+                tasks = []
+                current_batch_count = 0
+                
+                for i in range(PARALLEL_BATCH_SIZE):
+                     if current_batch_count >= needed_more:
+                         break
+                         
+                     req_offset = batch_offset + (i * 100)
+                     # Don't go beyond total results if we know it
+                     if req_offset >= total_results:
+                         break
+
+                     req_limit = min(100, needed_more - current_batch_count)
+                     if req_limit <= 0:
+                         break
+                         
+                     task_params = base_params.copy()
+                     task_params["limit"] = req_limit
+                     task_params["offset"] = req_offset
+                     tasks.append(async_client.get(url, params=task_params))
+                     current_batch_count += req_limit
+                
+                if not tasks:
+                    break
+                    
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                batch_has_end = False
+                fetched_in_batch = 0
+                
+                for res in results:
+                    if isinstance(res, Exception) or res.status_code != 200:
+                        print(f"✗ Error in parallel fetch markets")
+                        continue
+                        
+                    p_data = res.json()
+                    p_events = p_data.get("data", [])
+                    p_mkts = process_events(p_events)
+                    all_markets.extend(p_mkts)
+                    fetched_in_batch += len(p_mkts)
+                    
+                    if not p_data.get("pagination", {}).get("hasMore", False) or not p_events:
+                        batch_has_end = True
+                
+                needed_more = limit - len(all_markets)
+                batch_offset += (len(tasks) * 100)
+                
+                if batch_has_end or fetched_in_batch == 0:
+                    break
+
         pagination_info = {
-            "limit": limit if limit else len(all_markets),
+            "limit": limit,
             "offset": offset,
             "total": total_results,
-            "has_more": has_more
+            "has_more": len(all_markets) < total_results and (offset + len(all_markets) < total_results)
         }
             
-        print(f"✓ Successfully fetched {len(all_markets)} markets from Gamma API (total requested: {limit if limit else 'ALL'}, available: {total_results})")
+        print(f"✓ Successfully fetched {len(all_markets)} markets from Gamma API (Parallel)")
         return all_markets, pagination_info
     
     except httpx.HTTPStatusError as e:
         print(f"✗ HTTP error fetching markets from Gamma API: {e}")
-        pagination_info = {
-            "limit": limit,
-            "offset": offset,
-            "total": 0,
-            "has_more": False
-        }
-        return [], pagination_info
+        return [], {"limit": limit, "offset": offset, "total": 0, "has_more": False}
     except httpx.RequestError as e:
         print(f"✗ Request error fetching markets from Gamma API: {e}")
-        pagination_info = {
-            "limit": limit,
-            "offset": offset,
-            "total": 0,
-            "has_more": False
-        }
-        return [], pagination_info
+        return [], {"limit": limit, "offset": offset, "total": 0, "has_more": False}
     except Exception as e:
         print(f"✗ Unexpected error fetching markets from Gamma API: {e}")
-    pagination_info = {
-        "limit": limit,
-        "offset": offset,
-        "total": 0,
-        "has_more": False
-    }
+        return [], {"limit": limit, "offset": offset, "total": 0, "has_more": False}
     return [], pagination_info
 
 
@@ -835,6 +813,7 @@ async def fetch_user_activity(
 ) -> List[Dict]:
     """
     Fetch user activity from Polymarket Data API.
+    Uses parallel fetching for max speed.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
@@ -852,75 +831,117 @@ async def fetch_user_activity(
         if activity_type:
             params["type"] = activity_type
         
-        # If limit is specified, just fetch that page
-        if limit is not None:
-            params["limit"] = limit
-            if offset is not None:
-                params["offset"] = offset
-            
-            response = await async_client.get(url, params=params)
-            response.raise_for_status()
-            activity = response.json()
-            return activity if isinstance(activity, list) else []
-
-        # If limit is None, fetch ALL data using pagination
+        # Determine total target limit
+        # If limit is specified, use it (e.g. 1000)
+        # If limit is None, use a safety cap (e.g. 10000) to prevent infinite loops
+        target_limit = limit if limit is not None else 10000
+        
         all_activities = []
         seen_ids = set()
         fetch_limit = 50  # API max is 50
-        current_offset = offset or 0
-        max_pages = 200 # Support up to 10,000 items
+        initial_offset = offset or 0
         
-        for _ in range(max_pages):
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
-            
-            # Implementation with retry for 408/Timeout
-            max_retries = 3
-            retry_count = 0
-            response = None
-            
-            while retry_count < max_retries:
-                try:
-                    response = await async_client.get(url, params=params)
-                    response.raise_for_status()
-                    break # Success
-                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
-                    if is_timeout and retry_count < max_retries - 1:
-                        retry_count += 1
-                        wait_time = 2 ** retry_count
-                        print(f"⚠️ Timeout fetching activities (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    raise e
-            
-            data = response.json()
-            if not isinstance(data, list) or not data:
+        # Step 1: Fetch first page
+        params["limit"] = fetch_limit
+        params["offset"] = initial_offset
+        
+        # Retry logic for first page
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = await async_client.get(url, params=params)
+                response.raise_for_status()
                 break
+            except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
+                if attempt == max_retries - 1:
+                    print(f"✗ Failed to fetch first page of activity: {e}")
+                    return []
+                await asyncio.sleep(1)
+
+        first_page_data = response.json()
+        
+        if not isinstance(first_page_data, list) or not first_page_data:
+            return []
             
-            new_items = []
-            for item in data:
-                item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
-                if item_id:
-                    if item_id not in seen_ids:
-                        seen_ids.add(item_id)
-                        new_items.append(item)
-                else:
-                    new_items.append(item)
+        # Process first page
+        for item in first_page_data:
+            item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
+            if item_id:
+                seen_ids.add(item_id)
+            all_activities.append(item)
             
-            if not new_items:
+        # If we already have enough or that was everything, return
+        if len(all_activities) >= target_limit or len(first_page_data) < fetch_limit:
+            return all_activities[:target_limit]
+            
+        # Step 2: Parallel fetch for remaining
+        PARALLEL_BATCH_SIZE = 10
+        batch_offset = initial_offset + fetch_limit
+        more_data_available = True
+        
+        while more_data_available and len(all_activities) < target_limit:
+            tasks = []
+            # Calculate how many more we need
+            remaining_needed = target_limit - len(all_activities)
+            
+            # Prepare batch of requests
+            for i in range(PARALLEL_BATCH_SIZE):
+                current_req_offset = batch_offset + (i * fetch_limit)
+                
+                # Stop if we are initiating requests beyond reasonable bounds for this batch
+                if len(tasks) * fetch_limit >= remaining_needed:
+                    break
+                    
+                task_params = params.copy()
+                task_params["offset"] = current_req_offset
+                tasks.append(async_client.get(url, params=task_params))
+            
+            if not tasks:
                 break
                 
-            all_activities.extend(new_items)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # If fewer than requested, we likely reached the end
-            if len(data) < fetch_limit:
-                break
+            batch_has_end = False
+            valid_batch_items = []
+            fetched_in_batch = 0
             
-            current_offset += len(data)
+            for res in results:
+                if isinstance(res, Exception):
+                    # print(f"✗ Error in parallel fetch activity: {res}")
+                    continue
+                    
+                if res.status_code != 200:
+                    # print(f"✗ API Error in parallel fetch activity: {res.status_code}")
+                    continue
+                
+                page_data = res.json()
+                if isinstance(page_data, list) and page_data:
+                    valid_batch_items.extend(page_data)
+                    fetched_in_batch += len(page_data)
+                    if len(page_data) < fetch_limit:
+                        batch_has_end = True
+                else:
+                    batch_has_end = True
             
-        print(f"✓ Successfully fetched {len(all_activities)} activities for {wallet_address}")
-        return all_activities
+            # Order matters less here as we sort later, but ideally we append in order
+            if valid_batch_items:
+                for item in valid_batch_items:
+                    item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
+                    if item_id:
+                        if item_id not in seen_ids:
+                            seen_ids.add(item_id)
+                            all_activities.append(item)
+                    else:
+                        all_activities.append(item)
+            
+            if batch_has_end or fetched_in_batch == 0:
+                more_data_available = False
+            else:
+                batch_offset += (len(tasks) * fetch_limit)
+        
+        print(f"✓ Successfully fetched {len(all_activities)} activities for {wallet_address} (Target: {target_limit})")
+        return all_activities[:target_limit]
 
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user activity from Polymarket API: {str(e)}")
@@ -950,26 +971,30 @@ async def fetch_user_trades(
     try:
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         
-        # If limit is specified, just fetch that page (simple case)
-        if limit is not None:
-            params = {"user": wallet_address, "limit": limit}
-            if offset is not None:
-                params["offset"] = offset
-            
-            response = await async_client.get(url, params=params)
-            response.raise_for_status()
-            trades = response.json()
-            return trades if isinstance(trades, list) else []
+        # Determine total target limit: use explicit limit or safety cap (10000)
+        target_limit = limit if limit is not None else 10000
 
-        # If limit is None, fetch ALL data using PARALLEL pagination
         all_trades = []
         fetch_limit = 100  # API max is usually 100
         initial_offset = offset or 0
         
         # Step 1: Fetch first page to see if we have data and how much
         params = {"user": wallet_address, "limit": fetch_limit, "offset": initial_offset}
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
+        
+        # Retry logic for first page
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = await async_client.get(url, params=params)
+                response.raise_for_status()
+                break
+            except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.RequestError) as e:
+                if attempt == max_retries - 1:
+                    print(f"✗ Failed to fetch first page of trades: {e}")
+                    return []
+                await asyncio.sleep(1)
+
         first_page_data = response.json()
         
         if not isinstance(first_page_data, list) or not first_page_data:
@@ -977,91 +1002,68 @@ async def fetch_user_trades(
             
         all_trades.extend(first_page_data)
         
-        # If we got less than limit, we are done
-        if len(first_page_data) < fetch_limit:
-            print(f"✓ Fetched {len(all_trades)} trades (single page)")
-            return all_trades
-            
-        # Step 2: We have more data. Launch parallel requests.
-        # We don't know the exact total, so we'll fetch in chunks of pages.
-        # Polymarket usually has < 10k trades for most users, but let's be robust.
-        
-        # Parallel fetch config
-        PARALLEL_BATCH_SIZE = 10 # Number of concurrent requests
+        # If we already have enough or that was everything, return
+        if len(all_trades) >= target_limit or len(first_page_data) < fetch_limit:
+            return all_trades[:target_limit]
+
+        # Step 2: Parallel fetch for remaining
+        PARALLEL_BATCH_SIZE = 10
         batch_offset = initial_offset + fetch_limit
-        
-        # We will keep fetching until we hit an empty page or partial page
         more_data_available = True
-        page_num = 1
         
-        while more_data_available:
+        while more_data_available and len(all_trades) < target_limit:
             tasks = []
+            # Calculate how many more we need
+            remaining_needed = target_limit - len(all_trades)
+            
+            # Prepare batch of requests
             for i in range(PARALLEL_BATCH_SIZE):
                 current_req_offset = batch_offset + (i * fetch_limit)
-                task_params = {"user": wallet_address, "limit": fetch_limit, "offset": current_req_offset}
+                
+                 # Stop if we are initiating requests beyond reasonable bounds for this batch
+                if len(tasks) * fetch_limit >= remaining_needed:
+                    break
+                
+                task_params = params.copy()
+                task_params["offset"] = current_req_offset
                 tasks.append(async_client.get(url, params=task_params))
             
-            # Execute batch
+            if not tasks:
+                break
+                
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             batch_has_end = False
             valid_batch_items = []
+            fetched_in_batch = 0
             
             for res in results:
                 if isinstance(res, Exception):
-                    print(f"✗ Error in parallel fetch: {res}")
                     continue
-                    
                 if res.status_code != 200:
-                     print(f"✗ API Error in parallel fetch: {res.status_code}")
-                     continue
-                     
+                    continue
+                
                 page_data = res.json()
                 if isinstance(page_data, list) and page_data:
                     valid_batch_items.extend(page_data)
+                    fetched_in_batch += len(page_data)
                     if len(page_data) < fetch_limit:
                         batch_has_end = True
                 else:
                     batch_has_end = True
             
-            # Add to main list
             if valid_batch_items:
                 all_trades.extend(valid_batch_items)
             
-            # Check if we should stop
-            # Note: valid_batch_items might not be in perfect order, but we sort later or DB handles it
-            if batch_has_end or len(valid_batch_items) == 0:
+            if batch_has_end or fetched_in_batch == 0:
                 more_data_available = False
             else:
-                # Prepare next batch
-                batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
-                
-                # Safety break for massive accounts (e.g. > 20k trades) to prevent RAM issues
-                if len(all_trades) > 20000:
-                    print("⚠️ Reached safety limit of 20k trades")
-                    break
+                batch_offset += (len(tasks) * fetch_limit)
         
-        # Dedup based on ID or Transaction Hash
-        unique_trades = {}
-        for item in all_trades:
-            # Prefer ID, then tx hash
-            item_id = item.get("id") or item.get("transactionHash") or item.get("tx_hash")
-            if item_id:
-                unique_trades[item_id] = item
-            else:
-                # If no ID, use arbitrary index or keep all (safest to keep)
-                # But to fit in map, we might lose them. Let's keep distinct list.
-                pass
+        print(f"✓ Successfully fetched {len(all_trades)} trades for {wallet_address} (Target: {target_limit})")
+        return all_trades[:target_limit]
         
-        # Given we might have duplicates from retry logic or overlaps (less likely here as we use exact offsets),
-        # but let's just return unique list if IDs exist, else all.
-        if unique_trades:
-             final_list = list(unique_trades.values())
-        else:
-             final_list = all_trades
 
-        print(f"✓ Successfully fetched {len(final_list)} trades for {wallet_address} (Parallel)")
-        return final_list
 
     except httpx.HTTPStatusError as e:
         print(f"Error fetching user trades from Polymarket API: {str(e)}")
@@ -1079,6 +1081,7 @@ async def fetch_closed_positions(
 ) -> List[Dict]:
     """
     Fetch closed positions for a wallet address from Polymarket Data API.
+    Uses parallel fetching for max speed.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
@@ -1131,87 +1134,93 @@ async def fetch_closed_positions(
             
             return positions
 
-        # If limit is None, fetch ALL data using pagination (no maximum limit)
+        # If limit is None, fetch ALL data using PARALLEL pagination
         all_positions = []
         seen_ids = set()
         fetch_limit = 50  # API max is 50
-        current_offset = offset or 0
-        max_pages = 200 # Support up to 10,000 items
+        initial_offset = offset or 0
         
-        for _ in range(max_pages):
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
-            
-            # Implementation with retry for 408/Timeout
-            max_retries = 3
-            retry_count = 0
-            response = None
-            
-            while retry_count < max_retries:
-                try:
-                    response = await async_client.get(url, params=params)
-                    response.raise_for_status()
-                    break # Success
-                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
-                    if is_timeout and retry_count < max_retries - 1:
-                        retry_count += 1
-                        wait_time = 2 ** retry_count
-                        print(f"⚠️ Timeout fetching closed positions (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    raise e
-            
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                break
-            
-            new_items = []
-            for item in data:
-                # Use asset as primary ID if available (handles multiple outcomes per market)
-                item_id = item.get("asset") or item.get("id") or item.get("conditionId") or item.get("condition_id")
-                
-                if item_id:
-                    if item_id not in seen_ids:
-                        seen_ids.add(item_id)
-                        new_items.append(item)
-                else:
-                    new_items.append(item)
-            
-            if not new_items:
-                break
-                
-            all_positions.extend(new_items)
-            
-            # If fewer than requested, we likely reached the end
-            if len(data) < fetch_limit:
-                break
-            
-            current_offset += len(data)
+        # Step 1: Fetch first page
+        params["limit"] = fetch_limit
+        params["offset"] = initial_offset
         
-        # Apply time period filter if specified
-        if time_period and time_period != "all":
-            cutoff_timestamp = _get_cutoff_timestamp(time_period)
-            filtered_positions = []
-            for pos in all_positions:
-                # Check various timestamp fields that might exist
-                timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
-                if timestamp:
-                    # Handle both Unix timestamp (int) and ISO string
-                    if isinstance(timestamp, str):
-                        try:
-                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                            pos_timestamp = int(dt.timestamp())
-                        except:
-                            continue
-                    else:
-                        pos_timestamp = int(timestamp)
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        first_page_data = response.json()
+        
+        if not isinstance(first_page_data, list) or not first_page_data:
+            return []
+            
+        # Process first page
+        for item in first_page_data:
+            item_id = item.get("asset") or item.get("id") or item.get("conditionId")
+            if item_id:
+                seen_ids.add(item_id)
+            all_positions.append(item)
+            
+        if len(first_page_data) < fetch_limit:
+            # Done in one page
+            return _filter_by_time_period(all_positions, time_period)
+            
+        # Step 2: Parallel fetch for remaining
+        # Aggressive parallel fetching to speed up "Full History" download
+        PARALLEL_BATCH_SIZE = 30  # Increased from 10 to 30
+        batch_offset = initial_offset + fetch_limit
+        more_data_available = True
+        
+        while more_data_available:
+            tasks = []
+            for i in range(PARALLEL_BATCH_SIZE):
+                current_req_offset = batch_offset + (i * fetch_limit)
+                # Create a specific params dict for this request
+                task_params = params.copy()
+                task_params["offset"] = current_req_offset
+                tasks.append(async_client.get(url, params=task_params))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            batch_has_end = False
+            valid_batch_items = []
+            
+            for res in results:
+                if isinstance(res, Exception):
+                    print(f"✗ Error in parallel fetch closed positions: {res}")
+                    continue
+                
+                if res.status_code != 200:
+                    print(f"✗ API Error in parallel fetch closed ps: {res.status_code}")
+                    continue
                     
-                    if pos_timestamp >= cutoff_timestamp:
-                        filtered_positions.append(pos)
-            all_positions = filtered_positions
+                page_data = res.json()
+                if isinstance(page_data, list) and page_data:
+                    valid_batch_items.extend(page_data)
+                    if len(page_data) < fetch_limit:
+                        batch_has_end = True
+                else:
+                    batch_has_end = True
+            
+            if valid_batch_items:
+                for item in valid_batch_items:
+                    item_id = item.get("asset") or item.get("id") or item.get("conditionId")
+                    if item_id:
+                        if item_id not in seen_ids:
+                            seen_ids.add(item_id)
+                            all_positions.append(item)
+                    else:
+                        all_positions.append(item)
+            
+            if batch_has_end or len(valid_batch_items) == 0:
+                more_data_available = False
+            else:
+                batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
+                
+                # Safety break
+                if len(all_positions) > 10000:
+                    print("⚠️ Reached safety limit of 10k closed positions")
+                    break
         
-        return all_positions
+        print(f"✓ Successfully fetched {len(all_positions)} closed positions (Parallel)")
+        return _filter_by_time_period(all_positions, time_period)
 
     except httpx.HTTPStatusError as e:
         print(f"Error fetching closed positions from Polymarket API: {str(e)}")
@@ -1219,6 +1228,32 @@ async def fetch_closed_positions(
     except Exception as e:
         print(f"Unexpected error fetching closed positions: {str(e)}")
         return []
+
+def _filter_by_time_period(positions: List[Dict], time_period: Optional[str]) -> List[Dict]:
+    """Helper to filter positions by time period"""
+    if not time_period or time_period == "all":
+        return positions
+        
+    cutoff_timestamp = _get_cutoff_timestamp(time_period)
+    filtered = []
+    
+    for pos in positions:
+        timestamp = pos.get("timestamp") or pos.get("time") or pos.get("closedAt") or pos.get("updatedAt")
+        if timestamp:
+            pos_timestamp = 0
+            if isinstance(timestamp, str):
+                try:
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    pos_timestamp = int(dt.timestamp())
+                except:
+                    pass
+            else:
+                pos_timestamp = int(timestamp)
+            
+            if pos_timestamp >= cutoff_timestamp:
+                filtered.append(pos)
+                
+    return filtered
 
 
 def _get_cutoff_timestamp(time_period: str) -> int:
