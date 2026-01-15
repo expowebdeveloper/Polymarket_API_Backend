@@ -131,6 +131,7 @@ class DNSAwareClient(httpx.Client):
         
         return super().request(method, url, **kwargs)
 
+
 # Shared sync client instance
 sync_client = DNSAwareClient(
     timeout=30.0,
@@ -652,64 +653,89 @@ async def fetch_positions_for_wallet(
                 return []
             return positions if isinstance(positions, list) else []
             
-        # If limit is None, fetch ALL data using pagination
+        # If limit is None, fetch ALL data using parallel pagination
         all_positions = []
         seen_ids = set()
         fetch_limit = 50  # API max is 50
-        current_offset = offset or 0
-        max_pages = 200 # Support up to 10,000 items
+        initial_offset = offset or 0
         
-        for _ in range(max_pages):
-            params["limit"] = fetch_limit
-            params["offset"] = current_offset
+        # Step 1: Fetch first page
+        params["limit"] = fetch_limit
+        params["offset"] = initial_offset
+        
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        first_page_data = response.json()
+        
+        if not isinstance(first_page_data, list) or not first_page_data:
+            return []
             
-            # Implementation with retry for 408/Timeout
-            max_retries = 3
-            retry_count = 0
-            response = None
+        # Process first page
+        for item in first_page_data:
+            item_id = item.get("conditionId") or item.get("condition_id") or item.get("asset")
+            if item_id:
+                seen_ids.add(item_id)
+            all_positions.append(item)
             
-            while retry_count < max_retries:
-                try:
-                    response = await async_client.get(url, params=params)
-                    response.raise_for_status()
-                    break # Success
-                except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
-                    is_timeout = isinstance(e, httpx.TimeoutException) or (hasattr(e, 'response') and e.response.status_code == 408)
-                    if is_timeout and retry_count < max_retries - 1:
-                        retry_count += 1
-                        wait_time = 2 ** retry_count
-                        print(f"⚠️ Timeout fetching positions (attempt {retry_count}/{max_retries}). Retrying in {wait_time}s...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                    raise e
+        if len(first_page_data) < fetch_limit:
+            return all_positions
             
-            data = response.json()
-            if not isinstance(data, list) or not data:
-                break
-                
-            # Filter for new items to avoid infinite loops if offset is ignored
-            new_items = []
-            for item in data:
-                # Positions are unique per conditionId
-                item_id = item.get("conditionId") or item.get("condition_id") or item.get("asset")
-                if item_id:
-                    if item_id not in seen_ids:
-                        seen_ids.add(item_id)
-                        new_items.append(item)
+        # Step 2: Parallel fetch (similar to closed positions)
+        # Use moderate batch size to avoid rate limits
+        PARALLEL_BATCH_SIZE = 10
+        batch_offset = initial_offset + fetch_limit
+        more_data_available = True
+        # Safety cap
+        MAX_POSITIONS = 10000
+        
+        print(f"DEBUG: Starting parallel fetch for active positions. Initial count: {len(all_positions)}")
+        import time
+        t_start = time.time()
+        
+        while more_data_available and len(all_positions) < MAX_POSITIONS:
+            tasks = []
+            for i in range(PARALLEL_BATCH_SIZE):
+                current_req_offset = batch_offset + (i * fetch_limit)
+                task_params = params.copy()
+                task_params["offset"] = current_req_offset
+                tasks.append(async_client.get(url, params=task_params))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            batch_has_end = False
+            valid_batch_items = []
+            
+            for res in results:
+                if isinstance(res, Exception):
+                    continue
+                if res.status_code != 200:
+                    continue
+                    
+                page_data = res.json()
+                if isinstance(page_data, list) and page_data:
+                    valid_batch_items.extend(page_data)
+                    if len(page_data) < fetch_limit:
+                        batch_has_end = True
                 else:
-                    new_items.append(item)
+                    batch_has_end = True
             
-            if not new_items:
-                break
+            if valid_batch_items:
+                for item in valid_batch_items:
+                    item_id = item.get("conditionId") or item.get("condition_id") or item.get("asset")
+                    if item_id:
+                        if item_id not in seen_ids:
+                            seen_ids.add(item_id)
+                            all_positions.append(item)
+                    else:
+                        all_positions.append(item)
+            
+            if batch_has_end or len(valid_batch_items) == 0:
+                more_data_available = False
+            else:
+                batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
                 
-            all_positions.extend(new_items)
-            
-            # If we got fewer than requested, we likely reached the end
-            if len(data) < fetch_limit:
-                break
-                
-            current_offset += len(data)
-            
+        t_end = time.time()
+        print(f"✓ fetched {len(all_positions)} active positions in {round(t_end - t_start, 2)}s")
         return all_positions
 
     except httpx.HTTPStatusError as e:
@@ -1164,7 +1190,8 @@ async def fetch_closed_positions(
             
         # Step 2: Parallel fetch for remaining
         # Aggressive parallel fetching to speed up "Full History" download
-        PARALLEL_BATCH_SIZE = 30  # Increased from 10 to 30
+        PARALLEL_BATCH_SIZE = 10  # Reduced from 30 to 10 to avoid 408 Timeouts
+
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         

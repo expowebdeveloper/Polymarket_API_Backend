@@ -691,10 +691,21 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
 
+    import time
+    t0 = time.time()
     results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    t1 = time.time()
+    print(f"⏱️ [TIMING] Dashboard parallel fetch took {round(t1 - t0, 3)}s")
+    
+    # Log individual task times if possible (future improvement) or just inspect total
+    
     f = dict(zip(tasks.keys(), results))
     
-    
+    # Check for exceptions
+    for key, res in f.items():
+        if isinstance(res, Exception):
+            print(f"⚠️ Error fetching {key}: {res}")
+            
     # Optimization: Reconstruct "activities" for Trade History using "trades" data
     # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
     # The "Activity" tab will only show Trades (no rewards/redeems) which is acceptable for speed.
