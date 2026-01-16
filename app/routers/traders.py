@@ -718,12 +718,28 @@ async def get_polymarket_trader_profile(
         if total_volume >= 100000:  # $100K+ volume = Whale
             badges.append(Badge(label="Whale", color="blue"))
         
-        # Check for hot streak (recent wins)
-        recent_trades = trade_history_data.get("trades", [])
-        recent_wins = sum(1 for t in recent_trades[-10:] if t.get("pnl", 0) > 0)
-        recent_losses = sum(1 for t in recent_trades[-10:] if t.get("pnl", 0) < 0)
-        if recent_wins >= 5 and recent_losses <= 2:
-            badges.append(Badge(label="Hot Streak", color="purple"))
+        # Check for streak badge
+        from app.services.rank_service import get_streak_title
+        current_streak = enhanced_stats.get("current_streak", 0)
+        streak_title = get_streak_title(current_streak)
+        
+        if streak_title:
+             # Extract emoji and name or just use full title
+             # We want "Warm Streak", "Hot Streak" etc as Label
+             # And map colors.
+             # Parse title: "Title - Emoji"
+             # actually standard badge format is Label, Color.
+             
+             # Map streak levels to colors
+             streak_color = "purple" # Default
+             if "Inferno" in streak_title or "Unstoppable" in streak_title or "Legendary" in streak_title:
+                 streak_color = "red"
+             elif "Scorching" in streak_title or "Blazing" in streak_title:
+                 streak_color = "orange"
+             
+             # Clean up title for badge label (optional, or just use full string)
+             # User requested "Name — Emoji", let's use that as label
+             badges.append(Badge(label=streak_title, color=streak_color))
         
         # 7. Format trade history
         closed_positions = trade_history_data.get("closed_positions", [])
