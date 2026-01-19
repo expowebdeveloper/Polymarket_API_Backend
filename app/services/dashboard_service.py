@@ -18,6 +18,81 @@ from app.services.leaderboard_service import (
 from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.confidence_scoring import calculate_confidence_score, calculate_confidence_with_details
 
+# --- Helper function to categorize market (shared across functions) ---
+def categorize_market(title: str, slug: str) -> str:
+    """Categorize market into the standard Polymarket categories."""
+    title_lower = (title or "").lower()
+    slug_lower = (slug or "").lower()
+    combined = f"{title_lower} {slug_lower}"
+    
+    # Elections (check first as it's more specific)
+    if any(keyword in combined for keyword in ['election', 'electoral', 'vote', 'voting', 'ballot']):
+        return "Elections"
+    
+    # Politics (check before geopolitics)
+    if any(keyword in combined for keyword in ['politics', 'political', 'president', 'trump', 'biden', 'senate', 
+                                                'congress', 'democrat', 'republican', 'party', 'campaign']):
+        return "Politics"
+    
+    # Geopolitics
+    if any(keyword in combined for keyword in ['geopolitics', 'geopolitical', 'war', 'conflict', 'military', 
+                                                'nato', 'alliance', 'diplomacy', 'sanctions']):
+        return "Geopolitics"
+    
+    # Sports
+    if any(keyword in combined for keyword in ['sports', 'sport', 'nfl', 'nba', 'mlb', 'soccer', 'football', 
+                                                'basketball', 'baseball', 'hockey', 'tennis', 'golf', 'game', 
+                                                'match', 'championship', 'super bowl', 'world cup', 'olympics', 
+                                                'tournament', 'league']):
+        return "Sports"
+    
+    # Crypto
+    if any(keyword in combined for keyword in ['crypto', 'cryptocurrency', 'bitcoin', 'btc', 'ethereum', 'eth', 
+                                                'blockchain', 'defi', 'nft', 'token', 'coin', 'altcoin', 
+                                                'dogecoin', 'solana', 'cardano']):
+        return "Crypto"
+    
+    # Tech
+    if any(keyword in combined for keyword in ['tech', 'technology', 'ai', 'artificial intelligence', 'software', 
+                                                'hardware', 'startup', 'silicon valley', 'apple', 'google', 
+                                                'microsoft', 'meta', 'amazon', 'tesla', 'nvidia', 'chip', 
+                                                'semiconductor']):
+        return "Tech"
+    
+    # Finance
+    if any(keyword in combined for keyword in ['finance', 'financial', 'bank', 'banking', 'investment', 'trading', 
+                                                'stock', 'market', 'hedge fund', 'private equity', 'venture capital']):
+        return "Finance"
+    
+    # Economy
+    if any(keyword in combined for keyword in ['economy', 'economic', 'gdp', 'unemployment', 'inflation', 'recession', 
+                                                'growth', 'productivity', 'trade', 'commerce', 'business cycle']):
+        return "Economy"
+    
+    # Earnings
+    if any(keyword in combined for keyword in ['earnings', 'revenue', 'profit', 'quarterly', 'q1', 'q2', 'q3', 'q4', 
+                                                'eps', 'guidance', 'beat', 'miss']):
+        return "Earnings"
+    
+    # Climate & Science
+    if any(keyword in combined for keyword in ['climate', 'environment', 'environmental', 'science', 'scientific', 
+                                                'research', 'global warming', 'carbon', 'emissions', 'renewable', 
+                                                'solar', 'wind', 'energy', 'green', 'sustainability']):
+        return "Climate & Science"
+    
+    # Culture
+    if any(keyword in combined for keyword in ['culture', 'cultural', 'entertainment', 'movie', 'film', 'music', 
+                                                'celebrity', 'tv', 'television', 'award', 'oscar', 'grammy', 
+                                                'fashion', 'art', 'media']):
+        return "Culture"
+    
+    # World
+    if any(keyword in combined for keyword in ['world', 'global', 'international', 'country', 'nation', 
+                                                'united nations', 'un', 'eu', 'european union']):
+        return "World"
+    
+    return "Other"
+
 async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> Dict[str, Any]:
     """
     Aggregate all necessary data for the wallet dashboard from the local database.
@@ -364,30 +439,6 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
             print(f"Error calculating total volume fallback: {e}")
             total_volume = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else total_investment
 
-    # --- Helper function to categorize market ---
-    def categorize_market(title: str, slug: str) -> str:
-        """Categorize market into Politics, Crypto, Sports, Macro/Rates, or Other."""
-        title_lower = (title or "").lower()
-        slug_lower = (slug or "").lower()
-        combined = f"{title_lower} {slug_lower}"
-        
-        # Politics keywords
-        if any(keyword in combined for keyword in ['president', 'election', 'politics', 'trump', 'biden', 'senate', 'congress', 'vote', 'poll', 'democrat', 'republican', 'political']):
-            return "Politics"
-        
-        # Crypto keywords
-        if any(keyword in combined for keyword in ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cryptocurrency', 'blockchain', 'defi', 'nft', 'token', 'coin']):
-            return "Crypto"
-        
-        # Sports keywords
-        if any(keyword in combined for keyword in ['nfl', 'nba', 'mlb', 'soccer', 'football', 'basketball', 'baseball', 'hockey', 'sports', 'game', 'match', 'championship', 'super bowl', 'world cup']):
-            return "Sports"
-        
-        # Macro/Rates keywords
-        if any(keyword in combined for keyword in ['fed', 'federal reserve', 'interest rate', 'inflation', 'gdp', 'unemployment', 'macro', 'rates', 'treasury', 'bond', 'economic']):
-            return "Macro / Rates"
-        
-        return "Other"
     
     # --- Calculate Detailed Market Distribution with ROI and Win Rate ---
     market_distribution = []
@@ -642,7 +693,7 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 # Simple In-Memory Cache for Dashboard Data
 # Format: { wallet_address: (timestamp, data_dict) }
 _DASHBOARD_CACHE = {}
-CACHE_TTL = 30  # Seconds
+CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
 async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False) -> Dict[str, Any]:
     """
@@ -680,7 +731,7 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         fetch_wallet_address_from_profile_page # Added import
     )
 
-    # 1. Fetch everything concurrently
+    # 1. Fetch everything concurrently with timeout
     tasks = {
         "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
         "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
@@ -695,7 +746,16 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
 
     import time
     t0 = time.time()
-    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    # Add overall timeout of 45 seconds for all API calls
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks.values(), return_exceptions=True),
+            timeout=45.0
+        )
+    except asyncio.TimeoutError:
+        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 45s timeout for {wallet_address}")
+        # Return partial results with defaults
+        results = [Exception("Timeout")] * len(tasks)
     t1 = time.time()
     print(f"⏱️ [TIMING] Dashboard parallel fetch took {round(t1 - t0, 3)}s")
     
@@ -703,10 +763,25 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
     
     f = dict(zip(tasks.keys(), results))
     
-    # Check for exceptions
+    # Check for exceptions and handle timeouts
     for key, res in f.items():
         if isinstance(res, Exception):
             print(f"⚠️ Error fetching {key}: {res}")
+            # Set default empty values for failed fetches
+            if key == "positions":
+                f[key] = []
+            elif key == "closed_positions":
+                f[key] = []
+            elif key == "trades":
+                f[key] = []
+            elif key == "activities":
+                f[key] = []
+            elif key == "user_pnl":
+                f[key] = []
+            elif key in ["profile", "leaderboard", "profile_v2"]:
+                f[key] = {}
+            elif key in ["portfolio_value", "traded_count"]:
+                f[key] = 0
             
     # Optimization: Reconstruct "activities" for Trade History using "trades" data
     # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
@@ -936,8 +1011,17 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
     username = profile_v2.get("name") or profile_v2.get("pseudonym") or username
     profile_image = profile_v2.get("profileImage") or (profile_stats.get("profileImage") if profile_stats else None)
 
-    # Enrich positions with actual Polymarket categories from market tags
-    await enrich_positions_with_categories(active_positions, closed_positions)
+    # Categorize positions using our fast categorization function (no API calls needed)
+    # This is much faster than fetching market data for each position
+    for pos in active_positions:
+        title = pos.get("title") or ""
+        slug = pos.get("slug") or pos.get("market_slug") or ""
+        pos["category"] = categorize_market(title, slug)
+    
+    for pos in closed_positions:
+        title = pos.get("title") or ""
+        slug = pos.get("slug") or pos.get("market_slug") or ""
+        pos["category"] = categorize_market(title, slug)
 
     return {
         "profile": {
@@ -1140,9 +1224,26 @@ async def enrich_positions_with_categories(positions: List[Dict], closed_positio
             print(f"Error fetching market {slug}: {e}")
         return (slug, DEFAULT_CATEGORY)
     
-    # Fetch all markets concurrently
-    tasks = [fetch_with_slug(slug) for slug in slugs_to_fetch]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Fetch all markets concurrently with semaphore to limit concurrent requests
+    # Limit to 10 concurrent requests to avoid rate limiting
+    semaphore = asyncio.Semaphore(10)
+    
+    async def fetch_with_slug_limited(slug: str):
+        async with semaphore:
+            return await fetch_with_slug(slug)
+    
+    tasks = [fetch_with_slug_limited(slug) for slug in slugs_to_fetch]
+    
+    # Add timeout to prevent hanging if there are many markets
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=15.0  # 15 second timeout for category enrichment
+        )
+    except asyncio.TimeoutError:
+        print(f"⚠️ [TIMEOUT] Category enrichment exceeded 15s timeout for {len(slugs_to_fetch)} markets")
+        # Return default category for all
+        results = [(slug, DEFAULT_CATEGORY) for slug in slugs_to_fetch]
     
     # Build slug -> category mapping
     slug_to_category = {}
