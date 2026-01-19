@@ -675,7 +675,9 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         fetch_portfolio_value,
         fetch_leaderboard_stats,
         fetch_user_traded_count,
-        fetch_user_profile_data_v2
+        fetch_user_profile_data_v2,
+        fetch_traders_from_leaderboard, # Added this based on the provided snippet context
+        fetch_wallet_address_from_profile_page # Added import
     )
 
     # 1. Fetch everything concurrently
@@ -933,6 +935,9 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
     username = profile_v2.get("name") or profile_v2.get("pseudonym") or username
     profile_image = profile_v2.get("profileImage") or (profile_stats.get("profileImage") if profile_stats else None)
 
+    # Enrich positions with actual Polymarket categories from market tags
+    await enrich_positions_with_categories(active_positions, closed_positions)
+
     return {
         "profile": {
             "username": username,
@@ -970,12 +975,203 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         "portfolio_value": portfolio_value
     }
 
-def row_to_dict(obj):
-    """Helper to convert SQLAlchemy model to dict."""
-    d = {}
-    for column in obj.__table__.columns:
-        val = getattr(obj, column.name)
-        if isinstance(val, (datetime)):
-             val = val.isoformat()
-        d[column.name] = val
-    return d
+async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dict[str, Any]]:
+    """
+    Search for a user by name or pseudonym in the database.
+    Query is matched against TraderLeaderboard and Trader tables.
+    Returns a dict with wallet_address and name/pseudonym, or None if not found.
+    """
+    from app.db.models import TraderLeaderboard, Trader
+    from sqlalchemy import select, or_
+    
+    # Clean query
+    search_term = query.strip()
+    if not search_term:
+        return None
+        
+    # Remove @ if present
+    if search_term.startswith("@"):
+        search_term = search_term[1:]
+        
+    pattern = f"%{search_term}%"
+    
+    # 1. Search in TraderLeaderboard (Highest Priority)
+    # Check userName and xUsername
+    stmt = select(TraderLeaderboard).where(
+        or_(
+            TraderLeaderboard.name.ilike(pattern),
+            TraderLeaderboard.pseudonym.ilike(pattern),
+            TraderLeaderboard.wallet_address.ilike(pattern)
+        )
+    ).limit(1)
+    
+    result = await session.execute(stmt)
+    leaderboard_entry = result.scalars().first()
+    
+    if leaderboard_entry:
+        return {
+            "wallet_address": leaderboard_entry.wallet_address,
+            "name": leaderboard_entry.name,
+            "pseudonym": leaderboard_entry.pseudonym,
+            "profile_image": leaderboard_entry.profile_image
+        }
+        
+    # 2. Search in Trader table (Fallback)
+    stmt = select(Trader).where(
+        or_(
+            Trader.name.ilike(pattern),
+            Trader.pseudonym.ilike(pattern)
+        )
+    ).limit(1)
+    
+    result = await session.execute(stmt)
+    trader_entry = result.scalars().first()
+    
+    if trader_entry:
+        return {
+            "wallet_address": trader_entry.wallet_address,
+            "name": trader_entry.name,
+            "pseudonym": trader_entry.pseudonym,
+            "profile_image": trader_entry.profile_image
+        }
+    
+    
+    # 3. Fallback: Search in Remote Leaderboard via API
+    # If local DB is empty or user not found, try the live API (top 100)
+    try:
+        from app.services.data_fetcher import (
+            fetch_traders_from_leaderboard,
+            fetch_wallet_address_from_profile_page
+        )
+        
+        # Check top 100 traders
+        traders, _ = await fetch_traders_from_leaderboard(limit=100, time_period="all")
+        
+        query_lower = search_term.lower()
+        for t in traders:
+            # Check username
+            u_name = t.get("userName") or ""
+            if u_name.lower() == query_lower:
+                return {
+                    "wallet_address": t.get("wallet_address"),
+                    "name": t.get("userName"),
+                    "pseudonym": t.get("xUsername"),
+                    "profile_image": t.get("profileImage"),
+                    "user_id": None
+                }
+            
+            # Check pseudonym (xUsername)
+            x_name = t.get("xUsername") or ""
+            if x_name.lower() == query_lower:
+                return {
+                    "wallet_address": t.get("wallet_address"),
+                    "name": t.get("userName"), 
+                    "pseudonym": t.get("xUsername"),
+                    "profile_image": t.get("profileImage"),
+                    "user_id": None
+                }
+                
+    except Exception as e:
+        print(f"Error in fallback search API: {e}")
+
+    # 4. Final Fallback: Scraping Profile Page
+    # If not in top 100, try direct profile lookup (e.g. for users like BetOnHope)
+    try:
+        print(f"Checking profile page fallback for: {search_term}")
+        scraped_address = await fetch_wallet_address_from_profile_page(search_term)
+        if scraped_address:
+            return {
+                "wallet_address": scraped_address,
+                "name": search_term, # Best effort name
+                "pseudonym": None,
+                "profile_image": None,
+                "user_id": None
+            }
+    except Exception as e:
+        print(f"Error in final fallback scraping: {e}")
+
+    return None
+
+async def enrich_positions_with_categories(positions: List[Dict], closed_positions: List[Dict]) -> None:
+    """
+    Enrich positions and closed positions with actual Polymarket categories from market tags.
+    Modifies the position dictionaries in-place by adding a 'category' field.
+    
+    Args:
+        positions: List of active position dictionaries
+        closed_positions: List of closed position dictionaries
+    """
+    from app.services.data_fetcher import fetch_market_by_slug, get_market_category
+    from app.core.constants import DEFAULT_CATEGORY
+    import asyncio
+    
+    # Collect all unique slugs from both active and closed positions
+    slugs_to_fetch = set()
+    
+    for pos in positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        if slug:
+            slugs_to_fetch.add(slug)
+    
+    for pos in closed_positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        if slug:
+            slugs_to_fetch.add(slug)
+    
+    if not slugs_to_fetch:
+        # No slugs to fetch, set all to default category
+        for pos in positions:
+            pos["category"] = DEFAULT_CATEGORY
+        for pos in closed_positions:
+            pos["category"] = DEFAULT_CATEGORY
+        return
+    
+    # Fetch all market data in parallel
+    print(f"🔍 Fetching market data for {len(slugs_to_fetch)} unique markets to extract categories...")
+    
+    async def fetch_with_slug(slug: str):
+        try:
+            market = await fetch_market_by_slug(slug)
+            if market:
+                category = get_market_category(market)
+                return (slug, category)
+        except Exception as e:
+            print(f"Error fetching market {slug}: {e}")
+        return (slug, DEFAULT_CATEGORY)
+    
+    # Fetch all markets concurrently
+    tasks = [fetch_with_slug(slug) for slug in slugs_to_fetch]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Build slug -> category mapping
+    slug_to_category = {}
+    for result in results:
+        if isinstance(result, tuple) and len(result) == 2:
+            slug, category = result
+            slug_to_category[slug] = category
+        elif isinstance(result, Exception):
+            print(f"Exception during market fetch: {result}")
+    
+    print(f"✓ Fetched categories for {len(slug_to_category)} markets")
+    
+    # Enrich active positions
+    for pos in positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        pos["category"] = slug_to_category.get(slug, DEFAULT_CATEGORY) if slug else DEFAULT_CATEGORY
+    
+    # Enrich closed positions
+    for pos in closed_positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        pos["category"] = slug_to_category.get(slug, DEFAULT_CATEGORY) if slug else DEFAULT_CATEGORY
+
+
+def row_to_dict(row) -> Dict[str, Any]:
+    """Convert SQLAlchemy row to dictionary."""
+    if hasattr(row, '__dict__'):
+        d = {k: v for k, v in row.__dict__.items() if not k.startswith('_')}
+        # Convert Decimal to float for JSON serialization
+        for key, value in d.items():
+            if isinstance(value, Decimal):
+                d[key] = float(value)
+        return d
+    return {}

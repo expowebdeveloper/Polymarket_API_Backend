@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
 from app.db.session import get_db
-from app.services.dashboard_service import get_db_dashboard_data, get_live_dashboard_data
+from app.services.dashboard_service import get_db_dashboard_data, get_live_dashboard_data, search_user_by_name
 from app.services.sync_service import sync_trader_full_data
 
 router = APIRouter(
@@ -69,6 +69,47 @@ async def get_dashboard_live(
     try:
         data = await get_live_dashboard_data(wallet_address)
         return data
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/search/{query}", response_model=Dict[str, Any])
+async def search_wallet_or_user(
+    query: str,
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    Search for a wallet address or username.
+    - If query is 42-char hex, assumes wallet address.
+    - Else, assumes username/pseudonym and looks up local DB.
+    """
+    # 1. Check if valid wallet address
+    if query.startswith("0x") and len(query) == 42:
+        return {
+            "wallet_address": query,
+            "type": "address",
+            "name": None,
+            "pseudonym": None
+        }
+    
+    # 2. Lookup username in DB
+    try:
+        user_info = await search_user_by_name(session, query)
+        if user_info:
+            return {
+                "wallet_address": user_info["wallet_address"],
+                "type": "username",
+                "name": user_info["name"],
+                "pseudonym": user_info["pseudonym"],
+                "profile_image": user_info["profile_image"]
+            }
+        
+        # Not found
+        raise HTTPException(status_code=404, detail=f"User '{query}' not found")
+        
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

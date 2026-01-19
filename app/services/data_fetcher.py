@@ -142,7 +142,7 @@ sync_client = DNSAwareClient(
 # We use a single instance to reuse connection pools and SSL handshakes
 async_client = DNSAwareAsyncClient(
     timeout=httpx.Timeout(30.0, connect=10.0),
-    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    limits=httpx.Limits(max_connections=100, max_keepalive_connections=50),
     headers={"User-Agent": USER_AGENT}
 )
 
@@ -581,12 +581,19 @@ async def _fetch_market_internal(client: httpx.AsyncClient, market_slug: str) ->
                 if markets:
                     market = markets[0]
                     market["input_slug"] = market_slug 
+                    
+                    # Copy event-level data to market
                     if not market.get("title") and event.get("title"):
                         market["title"] = event.get("title")
                     if not market.get("icon") and event.get("icon"):
                         market["icon"] = event.get("icon")
                     if not market.get("description") and event.get("description"):
                         market["description"] = event.get("description")
+                    
+                    # CRITICAL: Copy tags from event to market for category extraction
+                    if event.get("tags"):
+                        market["tags"] = event.get("tags")
+                    
                     return market
     except Exception as e:
         print(f"Error fetching from Gamma API /events: {e}")
@@ -599,10 +606,20 @@ def get_market_category(market: Dict) -> str:
     from app.core.constants import DEFAULT_CATEGORY
     
     category = market.get("category") or market.get("group") or market.get("tags")
+    
+    # If tags is a list of dictionaries (Polymarket format)
     if isinstance(category, list) and category:
-        return category[0]
+        first_tag = category[0]
+        # Extract label from tag dictionary
+        if isinstance(first_tag, dict):
+            return first_tag.get("label", DEFAULT_CATEGORY)
+        # If it's already a string
+        return str(first_tag)
+    
+    # If category is already a string
     if isinstance(category, str):
         return category
+    
     return DEFAULT_CATEGORY
 
 
@@ -686,7 +703,7 @@ async def fetch_positions_for_wallet(
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         # Safety cap
-        MAX_POSITIONS = 10000
+        MAX_POSITIONS = 1000000
         
         print(f"DEBUG: Starting parallel fetch for active positions. Initial count: {len(all_positions)}")
         import time
@@ -860,7 +877,7 @@ async def fetch_user_activity(
         # Determine total target limit
         # If limit is specified, use it (e.g. 1000)
         # If limit is None, use a safety cap (e.g. 10000) to prevent infinite loops
-        target_limit = limit if limit is not None else 10000
+        target_limit = limit if limit is not None else 1000000
         
         all_activities = []
         seen_ids = set()
@@ -902,7 +919,9 @@ async def fetch_user_activity(
             return all_activities[:target_limit]
             
         # Step 2: Parallel fetch for remaining
-        PARALLEL_BATCH_SIZE = 10
+        MAX_BATCH_SIZE = 15
+        current_batch_size = 5
+        
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         
@@ -912,7 +931,7 @@ async def fetch_user_activity(
             remaining_needed = target_limit - len(all_activities)
             
             # Prepare batch of requests
-            for i in range(PARALLEL_BATCH_SIZE):
+            for i in range(current_batch_size):
                 current_req_offset = batch_offset + (i * fetch_limit)
                 
                 # Stop if we are initiating requests beyond reasonable bounds for this batch
@@ -965,6 +984,7 @@ async def fetch_user_activity(
                 more_data_available = False
             else:
                 batch_offset += (len(tasks) * fetch_limit)
+                current_batch_size = MAX_BATCH_SIZE
         
         print(f"✓ Successfully fetched {len(all_activities)} activities for {wallet_address} (Target: {target_limit})")
         return all_activities[:target_limit]
@@ -998,7 +1018,9 @@ async def fetch_user_trades(
         url = f"{settings.POLYMARKET_DATA_API_URL}/trades"
         
         # Determine total target limit: use explicit limit or safety cap (10000)
-        target_limit = limit if limit is not None else 10000
+        # Determine total target limit: use explicit limit or default to a very high number if None
+        # User requested ALL data, so we set a very high safety cap (e.g. 1M) or handle None
+        target_limit = limit if limit is not None else 1000000
 
         all_trades = []
         fetch_limit = 100  # API max is usually 100
@@ -1190,14 +1212,15 @@ async def fetch_closed_positions(
             
         # Step 2: Parallel fetch for remaining
         # Aggressive parallel fetching to speed up "Full History" download
-        PARALLEL_BATCH_SIZE = 10  # Reduced from 30 to 10 to avoid 408 Timeouts
+        MAX_BATCH_SIZE = 15  # Max parallel requests
+        current_batch_size = 5  # Start smaller to avoid overhead for small wallets (~150-200 items)
 
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         
         while more_data_available:
             tasks = []
-            for i in range(PARALLEL_BATCH_SIZE):
+            for i in range(current_batch_size):
                 current_req_offset = batch_offset + (i * fetch_limit)
                 # Create a specific params dict for this request
                 task_params = params.copy()
@@ -1239,12 +1262,16 @@ async def fetch_closed_positions(
             if batch_has_end or len(valid_batch_items) == 0:
                 more_data_available = False
             else:
-                batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
+                batch_offset += (current_batch_size * fetch_limit)
+                
+                # If we filled this batch, ramp up to max speed
+                current_batch_size = MAX_BATCH_SIZE
                 
                 # Safety break
-                if len(all_positions) > 10000:
-                    print("⚠️ Reached safety limit of 10k closed positions")
-                    break
+                # Safety break removed as per user request to fetch ALL positions
+                # if len(all_positions) > 10000:
+                #    print("⚠️ Reached safety limit of 10k closed positions")
+                #    break
         
         print(f"✓ Successfully fetched {len(all_positions)} closed positions (Parallel)")
         return _filter_by_time_period(all_positions, time_period)
@@ -1835,3 +1862,61 @@ async def fetch_live_trending_markets() -> List[Dict[str, Any]]:
         print(f"⚠️ Error fetching live markets: {e}")
         return []
 
+
+async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]:
+    """
+    Fallback method: Fetch user profile page HTML and regex search for wallet address.
+    Used when username is not found in DB or Leaderboard API.
+    """
+    try:
+        url = f"https://polymarket.com/@{username}"
+        print(f"Fetching profile HTML: {url}")
+        
+        # Use a real browser-like user agent to avoid bot detection
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        resp = await async_client.get(url, headers=headers, follow_redirects=True)
+        
+        if resp.status_code == 200:
+            html = resp.text
+            
+            # Patterns to find address in JSON blobs or JS variables in the HTML
+            patterns = [
+                r'"userAddress":"(0x[a-fA-F0-9]{40})"',
+                r'"proxyWallet":"(0x[a-fA-F0-9]{40})"',
+                r'"address":"(0x[a-fA-F0-9]{40})"'
+            ]
+            
+            import re
+            for p in patterns:
+                match = re.search(p, html)
+                if match:
+                    print(f"✓ Found address via profile scrape: {match.group(1)}")
+                    return match.group(1)
+            
+            # Check __NEXT_DATA__ as secondary robust check
+            match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>', html)
+            if match:
+                import json
+                try:
+                    data = json.loads(match.group(1))
+                    page_props = data.get("pageProps", {})
+                    if "dehydratedState" in page_props:
+                        queries = page_props["dehydratedState"].get("queries", [])
+                        for q in queries:
+                             # Look for profile query key usually containing the username
+                             if "profile" in str(q.get("queryKey")):
+                                  user_data = q.get("state", {}).get("data", {})
+                                  addr = user_data.get('proxyWallet') or user_data.get('userAddress')
+                                  if addr:
+                                      print(f"✓ Found address via __NEXT_DATA__: {addr}")
+                                      return addr
+                except:
+                    pass
+
+    except Exception as e:
+        print(f"Error scraping profile page: {e}")
+        
+    return None
