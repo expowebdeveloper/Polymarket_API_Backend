@@ -916,6 +916,7 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         "losing_stakes": losing_stakes,
         "w_trade": w_trade,
         "w_stake": w_stake,
+        "stake_weighted_win_rate": w_stake * 100.0,  # Convert to percentage
         "open_positions": len(active_positions),
         "closed_positions": len(closed_positions),
     }
