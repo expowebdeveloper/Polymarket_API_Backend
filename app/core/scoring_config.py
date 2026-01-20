@@ -15,10 +15,10 @@ class ScoringConfig:
     """
     
     # === Final Rating Formula Weights ===
-    # Rating = 100 × [ wW · Wscore + wR · Rscore + wP · Pscore + wrisk · (1 − Risk Score) ]
-    weight_win_rate: float = 0.30      # wW - Win Rate weight
-    weight_roi: float = 0.30            # wR - ROI weight  
-    weight_pnl: float = 0.30            # wP - PnL weight
+    # Rating = 100 × Conf(N) × [ 0.225·W_score + 0.225·ROI_score + 0.45·PnL_score + 0.10·R_score ]
+    weight_win_rate: float = 0.225      # wW - Win Rate weight
+    weight_roi: float = 0.225            # wR - ROI weight  
+    weight_pnl: float = 0.45            # wP - PnL weight
     weight_risk: float = 0.10           # wrisk - Risk weight
     
     # === Percentile Ranges for Normalization ===

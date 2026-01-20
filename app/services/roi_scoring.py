@@ -8,24 +8,27 @@ Where:
 - sign(ROI): +1 if ROI > 0, -1 if ROI < 0, 0 if ROI = 0
 - ln: Natural logarithm
 - tanh: Hyperbolic tangent (outputs −1 → +1)
-- s_ROI: Sensitivity parameter (default 0.6)
+- s_ROI: Sensitivity parameter (default 0.1)
 
 Output range: [0, 1]
 - 0 = extremely bad ROI
 - 0.5 = break-even
 - 1 = extremely good ROI
+
+With s_ROI = 0.1, the ROI score becomes extremely "binary": 
+small positive ROI quickly goes near 1, and moderate negative ROI quickly goes near 0.
 """
 
 import math
 
 
-def calculate_roi_score(roi: float, s_roi: float = 0.6) -> float:
+def calculate_roi_score(roi: float, s_roi: float = 0.1) -> float:
     """
     Calculate ROI score using logarithmic compression and tanh saturation.
     
     Args:
         roi: Return on investment in decimal form (e.g., 0.10 for 10%, 1.0 for 100%)
-        s_roi: Sensitivity parameter (default 0.6). Smaller = more aggressive curve, larger = flatter curve
+        s_roi: Sensitivity parameter (default 0.1). Smaller = more aggressive curve, larger = flatter curve
     
     Returns:
         Score between 0 and 1
@@ -67,7 +70,7 @@ def calculate_roi_score(roi: float, s_roi: float = 0.6) -> float:
     return score
 
 
-def calculate_roi_score_from_percentage(roi_percentage: float, s_roi: float = 0.6) -> float:
+def calculate_roi_score_from_percentage(roi_percentage: float, s_roi: float = 0.1) -> float:
     """
     Calculate ROI score from percentage format.
     
