@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from app.db.session import get_db
 from app.services.dashboard_service import get_db_dashboard_data, get_live_dashboard_data, search_user_by_name
+from app.services.dashboard_service_trades import get_filtered_trades
 from app.services.sync_service import sync_trader_full_data
 
 router = APIRouter(
@@ -57,17 +58,49 @@ async def get_dashboard_db(
 
 @router.get("/live/{wallet_address}", response_model=Dict[str, Any])
 async def get_dashboard_live(
-    wallet_address: str
+    wallet_address: str,
+    skip_trades: bool = False
 ):
     """
     Get comprehensive dashboard data for a wallet by fetching directly from Polymarket APIs.
     Bypasses the local database.
+    
+    Args:
+        wallet_address: Wallet address
+        skip_trades: Skip fetching trade history for faster initial load
     """
     if not wallet_address.startswith("0x") or len(wallet_address) != 42:
         raise HTTPException(status_code=400, detail="Invalid wallet address")
         
     try:
-        data = await get_live_dashboard_data(wallet_address)
+        data = await get_live_dashboard_data(wallet_address, skip_trades=skip_trades)
+        return data
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/live/{wallet_address}/trades", response_model=Dict[str, Any])
+async def get_dashboard_trades(
+    wallet_address: str,
+    filter: str = "all"
+):
+    """
+    Get filtered trade history for a wallet.
+    
+    Args:
+        wallet_address: Wallet address
+        filter: Filter type - "recent10", "7days", "30days", "1year", "all"
+    """
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        raise HTTPException(status_code=400, detail="Invalid wallet address")
+    
+    valid_filters = ["recent10", "7days", "30days", "1year", "all"]
+    if filter not in valid_filters:
+        raise HTTPException(status_code=400, detail=f"Invalid filter. Must be one of: {', '.join(valid_filters)}")
+        
+    try:
+        data = await get_filtered_trades(wallet_address, filter)
         return data
     except Exception as e:
         import traceback

@@ -695,10 +695,15 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 _DASHBOARD_CACHE = {}
 CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
-async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False) -> Dict[str, Any]:
+async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
     """
     Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
     Bypasses the local database entirely.
+    
+    Args:
+        wallet_address: Wallet address to fetch data for
+        force_refresh: Force refresh cache
+        skip_trades: Skip fetching trade history (for initial load performance)
     
     Includes a 30-second in-memory cache to prevent API rate limiting and speed up reloads.
     """
@@ -735,7 +740,6 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
     tasks = {
         "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
         "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
-        "trades": fetch_user_trades(wallet_address, limit=1000), # Limit to 1000 for speed. Volume uses Leaderboard.
         "user_pnl": fetch_user_pnl(wallet_address),
         "profile": fetch_profile_stats(wallet_address),
         "portfolio_value": fetch_portfolio_value(wallet_address),
@@ -743,6 +747,10 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         "traded_count": fetch_user_traded_count(wallet_address),
         "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
+    
+    # Only fetch trades if not skipped
+    if not skip_trades:
+        tasks["trades"] = fetch_user_trades(wallet_address, limit=1000) # Limit to 1000 for speed. Volume uses Leaderboard.
 
     import time
     t0 = time.time()
