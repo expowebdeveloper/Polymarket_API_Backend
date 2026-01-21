@@ -5,7 +5,11 @@ FastAPI application main file.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+<<<<<<< HEAD
 from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, websocket
+=======
+from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, marketing
+>>>>>>> c4a7339c72d418ec74e27f55dca1c6b036172343
 from app.db.session import init_db
 
 app = FastAPI(
@@ -86,5 +90,9 @@ app.include_router(closed_positions.router)
 app.include_router(scoring.router)
 app.include_router(trade_history.router)
 app.include_router(dashboard.router)
+<<<<<<< HEAD
 app.include_router(websocket.router)  # WebSocket for real-time activity feed
+=======
+app.include_router(marketing.router)
+>>>>>>> c4a7339c72d418ec74e27f55dca1c6b036172343
 

@@ -18,6 +18,81 @@ from app.services.leaderboard_service import (
 from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.confidence_scoring import calculate_confidence_score, calculate_confidence_with_details
 
+# --- Helper function to categorize market (shared across functions) ---
+def categorize_market(title: str, slug: str) -> str:
+    """Categorize market into the standard Polymarket categories."""
+    title_lower = (title or "").lower()
+    slug_lower = (slug or "").lower()
+    combined = f"{title_lower} {slug_lower}"
+    
+    # Elections (check first as it's more specific)
+    if any(keyword in combined for keyword in ['election', 'electoral', 'vote', 'voting', 'ballot']):
+        return "Elections"
+    
+    # Politics (check before geopolitics)
+    if any(keyword in combined for keyword in ['politics', 'political', 'president', 'trump', 'biden', 'senate', 
+                                                'congress', 'democrat', 'republican', 'party', 'campaign']):
+        return "Politics"
+    
+    # Geopolitics
+    if any(keyword in combined for keyword in ['geopolitics', 'geopolitical', 'war', 'conflict', 'military', 
+                                                'nato', 'alliance', 'diplomacy', 'sanctions']):
+        return "Geopolitics"
+    
+    # Sports
+    if any(keyword in combined for keyword in ['sports', 'sport', 'nfl', 'nba', 'mlb', 'soccer', 'football', 
+                                                'basketball', 'baseball', 'hockey', 'tennis', 'golf', 'game', 
+                                                'match', 'championship', 'super bowl', 'world cup', 'olympics', 
+                                                'tournament', 'league']):
+        return "Sports"
+    
+    # Crypto
+    if any(keyword in combined for keyword in ['crypto', 'cryptocurrency', 'bitcoin', 'btc', 'ethereum', 'eth', 
+                                                'blockchain', 'defi', 'nft', 'token', 'coin', 'altcoin', 
+                                                'dogecoin', 'solana', 'cardano']):
+        return "Crypto"
+    
+    # Tech
+    if any(keyword in combined for keyword in ['tech', 'technology', 'ai', 'artificial intelligence', 'software', 
+                                                'hardware', 'startup', 'silicon valley', 'apple', 'google', 
+                                                'microsoft', 'meta', 'amazon', 'tesla', 'nvidia', 'chip', 
+                                                'semiconductor']):
+        return "Tech"
+    
+    # Finance
+    if any(keyword in combined for keyword in ['finance', 'financial', 'bank', 'banking', 'investment', 'trading', 
+                                                'stock', 'market', 'hedge fund', 'private equity', 'venture capital']):
+        return "Finance"
+    
+    # Economy
+    if any(keyword in combined for keyword in ['economy', 'economic', 'gdp', 'unemployment', 'inflation', 'recession', 
+                                                'growth', 'productivity', 'trade', 'commerce', 'business cycle']):
+        return "Economy"
+    
+    # Earnings
+    if any(keyword in combined for keyword in ['earnings', 'revenue', 'profit', 'quarterly', 'q1', 'q2', 'q3', 'q4', 
+                                                'eps', 'guidance', 'beat', 'miss']):
+        return "Earnings"
+    
+    # Climate & Science
+    if any(keyword in combined for keyword in ['climate', 'environment', 'environmental', 'science', 'scientific', 
+                                                'research', 'global warming', 'carbon', 'emissions', 'renewable', 
+                                                'solar', 'wind', 'energy', 'green', 'sustainability']):
+        return "Climate & Science"
+    
+    # Culture
+    if any(keyword in combined for keyword in ['culture', 'cultural', 'entertainment', 'movie', 'film', 'music', 
+                                                'celebrity', 'tv', 'television', 'award', 'oscar', 'grammy', 
+                                                'fashion', 'art', 'media']):
+        return "Culture"
+    
+    # World
+    if any(keyword in combined for keyword in ['world', 'global', 'international', 'country', 'nation', 
+                                                'united nations', 'un', 'eu', 'european union']):
+        return "World"
+    
+    return "Other"
+
 async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> Dict[str, Any]:
     """
     Aggregate all necessary data for the wallet dashboard from the local database.
@@ -339,51 +414,31 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         print(f"Error calculating rewards: {e}")
     
     # --- Calculate Total Volume ---
+    # optimization: Prefer official Leaderboard API volume (fast & accurate).
+    # If missing, fallback to summing Closed + Active positions (which are fetched fully).
+    # Do NOT rely on 'all_trades' for volume sum anymore, as we now Limit trades to 1000 for speed.
     total_volume = 0.0
-    try:
-        # From closed positions
-        for cp in closed_positions:
-            stake = float(cp.total_bought or 0) * float(cp.avg_price or 0)
-            total_volume += stake
-        
-        # From active positions
-        for pos in active_positions:
-            stake = float(pos.initial_value or 0)
-            total_volume += stake
-        
-        # From trades
-        for trade in all_trades:
-            stake = float(trade.size or 0) * float(trade.price or 0)
-            total_volume += stake
-    except Exception as e:
-        print(f"Error calculating total volume: {e}")
-        # Fallback to aggregated metrics
-        total_volume = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else total_investment
+    
+    if leaderboard_data and leaderboard_data.get("volume", 0) > 0:
+        total_volume = float(leaderboard_data.get("volume"))
+    else:
+        try:
+            # Fallback: Sum Closed + Active Positions (Full History)
+            for cp in closed_positions:
+                stake = float(cp.total_bought or 0) * float(cp.avg_price or 0)
+                total_volume += stake
+            
+            for pos in active_positions:
+                stake = float(pos.initial_value or 0)
+                total_volume += stake
+                
+            # Note: We skip 'all_trades' here because it's now truncated (1000 items).
+            # Using partial trades list would under-report volume. 
+            # Positions data is full history (limit=None), so it's the better fallback.
+        except Exception as e:
+            print(f"Error calculating total volume fallback: {e}")
+            total_volume = float(agg_metrics.total_volume) if agg_metrics and agg_metrics.total_volume else total_investment
 
-    # --- Helper function to categorize market ---
-    def categorize_market(title: str, slug: str) -> str:
-        """Categorize market into Politics, Crypto, Sports, Macro/Rates, or Other."""
-        title_lower = (title or "").lower()
-        slug_lower = (slug or "").lower()
-        combined = f"{title_lower} {slug_lower}"
-        
-        # Politics keywords
-        if any(keyword in combined for keyword in ['president', 'election', 'politics', 'trump', 'biden', 'senate', 'congress', 'vote', 'poll', 'democrat', 'republican', 'political']):
-            return "Politics"
-        
-        # Crypto keywords
-        if any(keyword in combined for keyword in ['bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cryptocurrency', 'blockchain', 'defi', 'nft', 'token', 'coin']):
-            return "Crypto"
-        
-        # Sports keywords
-        if any(keyword in combined for keyword in ['nfl', 'nba', 'mlb', 'soccer', 'football', 'basketball', 'baseball', 'hockey', 'sports', 'game', 'match', 'championship', 'super bowl', 'world cup']):
-            return "Sports"
-        
-        # Macro/Rates keywords
-        if any(keyword in combined for keyword in ['fed', 'federal reserve', 'interest rate', 'inflation', 'gdp', 'unemployment', 'macro', 'rates', 'treasury', 'bond', 'economic']):
-            return "Macro / Rates"
-        
-        return "Other"
     
     # --- Calculate Detailed Market Distribution with ROI and Win Rate ---
     market_distribution = []
@@ -558,7 +613,7 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
     # --- Total Number of Trades ---
     total_trades_count = len(all_trades) if all_trades else 0
 
-    return {
+    result_data = {
         "profile": profile_data,
         "leaderboard": leaderboard_data,
         "portfolio": portfolio_data,
@@ -581,6 +636,11 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
         "profit_trend": profit_trend,  # Last 7 days profit trend
         "largest_win": trader_metrics.get("largest_win", 0.0),
     }
+
+    # Save to Cache
+    _DASHBOARD_CACHE[wallet_address] = (time.time(), result_data)
+    
+    return result_data
 
 
 
@@ -630,11 +690,36 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
+# Simple In-Memory Cache for Dashboard Data
+# Format: { wallet_address: (timestamp, data_dict) }
+_DASHBOARD_CACHE = {}
+CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
+
+async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
     """
     Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
     Bypasses the local database entirely.
+    
+    Args:
+        wallet_address: Wallet address to fetch data for
+        force_refresh: Force refresh cache
+        skip_trades: Skip fetching trade history (for initial load performance)
+    
+    Includes a 30-second in-memory cache to prevent API rate limiting and speed up reloads.
     """
+    import time
+    
+    # Check Cache
+    if not force_refresh:
+        now = time.time()
+        if wallet_address in _DASHBOARD_CACHE:
+            ts, cached_data = _DASHBOARD_CACHE[wallet_address]
+            if now - ts < CACHE_TTL:
+                print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
+                return cached_data
+            else:
+                print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
+    
     import asyncio
     from app.services.data_fetcher import (
         fetch_positions_for_wallet,
@@ -647,29 +732,92 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         fetch_leaderboard_stats,
         fetch_user_traded_count,
         fetch_user_profile_data_v2,
-        fetch_resolved_markets,
-        fetch_market_by_slug,
-        get_market_resolution,
-        DNSAwareAsyncClient
+        fetch_traders_from_leaderboard, # Added this based on the provided snippet context
+        fetch_wallet_address_from_profile_page # Added import
     )
 
-    # 1. Fetch everything concurrently
+    # 1. Fetch everything concurrently with timeout
     tasks = {
-        "positions": fetch_positions_for_wallet(wallet_address), # limit=None by default
-        "closed_positions": fetch_closed_positions(wallet_address, limit=None),
-        "activities": fetch_user_activity(wallet_address),
-        "trades": fetch_user_trades(wallet_address),
+        "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
+        "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
         "user_pnl": fetch_user_pnl(wallet_address),
         "profile": fetch_profile_stats(wallet_address),
         "portfolio_value": fetch_portfolio_value(wallet_address),
         "leaderboard": fetch_leaderboard_stats(wallet_address),
         "traded_count": fetch_user_traded_count(wallet_address),
-        "profile_v2": fetch_user_profile_data_v2(wallet_address),
-        "resolved_markets": fetch_resolved_markets(limit=2000)
+        "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
+    
+    # Only fetch trades if not skipped
+    if not skip_trades:
+        tasks["trades"] = fetch_user_trades(wallet_address, limit=1000) # Limit to 1000 for speed. Volume uses Leaderboard.
 
-    results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    import time
+    t0 = time.time()
+    # Add overall timeout of 45 seconds for all API calls
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks.values(), return_exceptions=True),
+            timeout=45.0
+        )
+    except asyncio.TimeoutError:
+        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 45s timeout for {wallet_address}")
+        # Return partial results with defaults
+        results = [Exception("Timeout")] * len(tasks)
+    t1 = time.time()
+    print(f"⏱️ [TIMING] Dashboard parallel fetch took {round(t1 - t0, 3)}s")
+    
+    # Log individual task times if possible (future improvement) or just inspect total
+    
     f = dict(zip(tasks.keys(), results))
+    
+    # Check for exceptions and handle timeouts
+    for key, res in f.items():
+        if isinstance(res, Exception):
+            print(f"⚠️ Error fetching {key}: {res}")
+            # Set default empty values for failed fetches
+            if key == "positions":
+                f[key] = []
+            elif key == "closed_positions":
+                f[key] = []
+            elif key == "trades":
+                f[key] = []
+            elif key == "activities":
+                f[key] = []
+            elif key == "user_pnl":
+                f[key] = []
+            elif key in ["profile", "leaderboard", "profile_v2"]:
+                f[key] = {}
+            elif key in ["portfolio_value", "traded_count"]:
+                f[key] = 0
+            
+    # Optimization: Reconstruct "activities" for Trade History using "trades" data
+    # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
+    # The "Activity" tab will only show Trades (no rewards/redeems) which is acceptable for speed.
+    activities_from_trades = []
+    trades_data = f.get("trades", []) or []
+    
+    for t in trades_data:
+        # Map trade object to activity schema expected by frontend
+        # Schema: type, title, side, size, price, timestamp, transactionHash
+        act = {
+            "type": "TRADE",
+            "title": t.get("title") or t.get("market_slug") or "Market",
+            "slug": t.get("market_slug"),
+            "side": t.get("side"),
+            "size": t.get("size"),
+            "usdcSize": float(t.get("size") or 0) * float(t.get("price") or 0), # Approx value
+            "usdc_size": float(t.get("size") or 0) * float(t.get("price") or 0),
+            "price": t.get("price"),
+            "timestamp": t.get("timestamp"),
+            "transactionHash": t.get("match_id") or t.get("transactionHash") or "", 
+            "transaction_hash": t.get("match_id") or t.get("transactionHash") or "",
+            "asset": t.get("asset"),
+            "outcome": t.get("outcome")
+        }
+        activities_from_trades.append(act)
+        
+    f["activities"] = activities_from_trades
 
     # Helper to handle exceptions
     def safe_get(key, default=[]):
@@ -686,40 +834,28 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     leaderboard_stats = safe_get("leaderboard", {})
     traded_count = safe_get("traded_count", 0)
     profile_v2 = safe_get("profile_v2", {})
-    resolved_markets = safe_get("resolved_markets", [])
 
     # 1.5. Check for resolved positions in active positions and move them to closed
     actual_active_positions = []
     newly_closed_positions = []
     
     # Execute checks using heuristic (No external API calls)
-    # User heuristic: if curPrice is 0 or redeemable is True, the market is resolved.
+    # User heuristic: if curPrice is 0 or currentValue is 0, the market is resolved/closed.
     for pos in active_positions:
         cur_price = float(pos.get("curPrice") or pos.get("cur_price") or 0)
-        is_redeemable = pos.get("redeemable") is True
+        current_value = float(pos.get("currentValue") or pos.get("current_value") or 0)
         
         # Check if market is resolved based on heuristic
-        if cur_price == 0 or is_redeemable:
+        # If curPrice is 0 (or currentValue is 0), then market is closed
+        if cur_price == 0 or current_value == 0:
             # Position is resolved! Move to closed
             
-            # Determine final price for PnL calculation
-            # If curPrice is 0, likely a loss (0.0).
-            # If redeemable is True, it could be a win (1.0) or loss (0.0).
-            # But usually if it's in "active" list with redeemable=True, it requires action.
-            # The user's specific case was curPrice=0 -> Loss.
-            
-            # We trust the current metric or derive it.
-            # If curPrice is 0, we assume final_price is 0.
-            # If curPrice is > 0 and redeemable, maybe it's 1.0? 
-            # Or we just rely on PnL calc.
-            
-            final_price = 0.0 if cur_price == 0 else 1.0 
-            # Note: This is a simplification. A redeemable YES token might be worth 1.0.
-            # If curPrice is 0.99 and redeemable, it's essentially 1.0.
-            # However, for the specific "Loss Discrepancy" bug, curPrice was 0.
-            
+            # Use current metrics for final PnL
             avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
             size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+            
+            # If curPrice is 0, we assume the final price/payout is 0 (Loss)
+            final_price = 0.0 
             
             realized_pnl = (final_price - avg_price) * size
             
@@ -863,6 +999,7 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         "losing_stakes": losing_stakes,
         "w_trade": w_trade,
         "w_stake": w_stake,
+        "stake_weighted_win_rate": w_stake * 100.0,  # Convert to percentage
         "open_positions": len(active_positions),
         "closed_positions": len(closed_positions),
     }
@@ -881,6 +1018,18 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
     # Update username and profile image from official userData API
     username = profile_v2.get("name") or profile_v2.get("pseudonym") or username
     profile_image = profile_v2.get("profileImage") or (profile_stats.get("profileImage") if profile_stats else None)
+
+    # Categorize positions using our fast categorization function (no API calls needed)
+    # This is much faster than fetching market data for each position
+    for pos in active_positions:
+        title = pos.get("title") or ""
+        slug = pos.get("slug") or pos.get("market_slug") or ""
+        pos["category"] = categorize_market(title, slug)
+    
+    for pos in closed_positions:
+        title = pos.get("title") or ""
+        slug = pos.get("slug") or pos.get("market_slug") or ""
+        pos["category"] = categorize_market(title, slug)
 
     return {
         "profile": {
@@ -919,12 +1068,220 @@ async def get_live_dashboard_data(wallet_address: str) -> Dict[str, Any]:
         "portfolio_value": portfolio_value
     }
 
-def row_to_dict(obj):
-    """Helper to convert SQLAlchemy model to dict."""
-    d = {}
-    for column in obj.__table__.columns:
-        val = getattr(obj, column.name)
-        if isinstance(val, (datetime)):
-             val = val.isoformat()
-        d[column.name] = val
-    return d
+async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dict[str, Any]]:
+    """
+    Search for a user by name or pseudonym in the database.
+    Query is matched against TraderLeaderboard and Trader tables.
+    Returns a dict with wallet_address and name/pseudonym, or None if not found.
+    """
+    from app.db.models import TraderLeaderboard, Trader
+    from sqlalchemy import select, or_
+    
+    # Clean query
+    search_term = query.strip()
+    if not search_term:
+        return None
+        
+    # Remove @ if present
+    if search_term.startswith("@"):
+        search_term = search_term[1:]
+        
+    pattern = f"%{search_term}%"
+    
+    # 1. Search in TraderLeaderboard (Highest Priority)
+    # Check userName and xUsername
+    stmt = select(TraderLeaderboard).where(
+        or_(
+            TraderLeaderboard.name.ilike(pattern),
+            TraderLeaderboard.pseudonym.ilike(pattern),
+            TraderLeaderboard.wallet_address.ilike(pattern)
+        )
+    ).limit(1)
+    
+    result = await session.execute(stmt)
+    leaderboard_entry = result.scalars().first()
+    
+    if leaderboard_entry:
+        return {
+            "wallet_address": leaderboard_entry.wallet_address,
+            "name": leaderboard_entry.name,
+            "pseudonym": leaderboard_entry.pseudonym,
+            "profile_image": leaderboard_entry.profile_image
+        }
+        
+    # 2. Search in Trader table (Fallback)
+    stmt = select(Trader).where(
+        or_(
+            Trader.name.ilike(pattern),
+            Trader.pseudonym.ilike(pattern)
+        )
+    ).limit(1)
+    
+    result = await session.execute(stmt)
+    trader_entry = result.scalars().first()
+    
+    if trader_entry:
+        return {
+            "wallet_address": trader_entry.wallet_address,
+            "name": trader_entry.name,
+            "pseudonym": trader_entry.pseudonym,
+            "profile_image": trader_entry.profile_image
+        }
+    
+    
+    # 3. Fallback: Search in Remote Leaderboard via API
+    # If local DB is empty or user not found, try the live API (top 100)
+    try:
+        from app.services.data_fetcher import (
+            fetch_traders_from_leaderboard,
+            fetch_wallet_address_from_profile_page
+        )
+        
+        # Check top 100 traders
+        traders, _ = await fetch_traders_from_leaderboard(limit=100, time_period="all")
+        
+        query_lower = search_term.lower()
+        for t in traders:
+            # Check username
+            u_name = t.get("userName") or ""
+            if u_name.lower() == query_lower:
+                return {
+                    "wallet_address": t.get("wallet_address"),
+                    "name": t.get("userName"),
+                    "pseudonym": t.get("xUsername"),
+                    "profile_image": t.get("profileImage"),
+                    "user_id": None
+                }
+            
+            # Check pseudonym (xUsername)
+            x_name = t.get("xUsername") or ""
+            if x_name.lower() == query_lower:
+                return {
+                    "wallet_address": t.get("wallet_address"),
+                    "name": t.get("userName"), 
+                    "pseudonym": t.get("xUsername"),
+                    "profile_image": t.get("profileImage"),
+                    "user_id": None
+                }
+                
+    except Exception as e:
+        print(f"Error in fallback search API: {e}")
+
+    # 4. Final Fallback: Scraping Profile Page
+    # If not in top 100, try direct profile lookup (e.g. for users like BetOnHope)
+    try:
+        print(f"Checking profile page fallback for: {search_term}")
+        scraped_address = await fetch_wallet_address_from_profile_page(search_term)
+        if scraped_address:
+            return {
+                "wallet_address": scraped_address,
+                "name": search_term, # Best effort name
+                "pseudonym": None,
+                "profile_image": None,
+                "user_id": None
+            }
+    except Exception as e:
+        print(f"Error in final fallback scraping: {e}")
+
+    return None
+
+async def enrich_positions_with_categories(positions: List[Dict], closed_positions: List[Dict]) -> None:
+    """
+    Enrich positions and closed positions with actual Polymarket categories from market tags.
+    Modifies the position dictionaries in-place by adding a 'category' field.
+    
+    Args:
+        positions: List of active position dictionaries
+        closed_positions: List of closed position dictionaries
+    """
+    from app.services.data_fetcher import fetch_market_by_slug, get_market_category
+    from app.core.constants import DEFAULT_CATEGORY
+    import asyncio
+    
+    # Collect all unique slugs from both active and closed positions
+    slugs_to_fetch = set()
+    
+    for pos in positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        if slug:
+            slugs_to_fetch.add(slug)
+    
+    for pos in closed_positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        if slug:
+            slugs_to_fetch.add(slug)
+    
+    if not slugs_to_fetch:
+        # No slugs to fetch, set all to default category
+        for pos in positions:
+            pos["category"] = DEFAULT_CATEGORY
+        for pos in closed_positions:
+            pos["category"] = DEFAULT_CATEGORY
+        return
+    
+    # Fetch all market data in parallel
+    print(f"🔍 Fetching market data for {len(slugs_to_fetch)} unique markets to extract categories...")
+    
+    async def fetch_with_slug(slug: str):
+        try:
+            market = await fetch_market_by_slug(slug)
+            if market:
+                category = get_market_category(market)
+                return (slug, category)
+        except Exception as e:
+            print(f"Error fetching market {slug}: {e}")
+        return (slug, DEFAULT_CATEGORY)
+    
+    # Fetch all markets concurrently with semaphore to limit concurrent requests
+    # Limit to 10 concurrent requests to avoid rate limiting
+    semaphore = asyncio.Semaphore(10)
+    
+    async def fetch_with_slug_limited(slug: str):
+        async with semaphore:
+            return await fetch_with_slug(slug)
+    
+    tasks = [fetch_with_slug_limited(slug) for slug in slugs_to_fetch]
+    
+    # Add timeout to prevent hanging if there are many markets
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=15.0  # 15 second timeout for category enrichment
+        )
+    except asyncio.TimeoutError:
+        print(f"⚠️ [TIMEOUT] Category enrichment exceeded 15s timeout for {len(slugs_to_fetch)} markets")
+        # Return default category for all
+        results = [(slug, DEFAULT_CATEGORY) for slug in slugs_to_fetch]
+    
+    # Build slug -> category mapping
+    slug_to_category = {}
+    for result in results:
+        if isinstance(result, tuple) and len(result) == 2:
+            slug, category = result
+            slug_to_category[slug] = category
+        elif isinstance(result, Exception):
+            print(f"Exception during market fetch: {result}")
+    
+    print(f"✓ Fetched categories for {len(slug_to_category)} markets")
+    
+    # Enrich active positions
+    for pos in positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        pos["category"] = slug_to_category.get(slug, DEFAULT_CATEGORY) if slug else DEFAULT_CATEGORY
+    
+    # Enrich closed positions
+    for pos in closed_positions:
+        slug = pos.get("slug") or pos.get("market_slug")
+        pos["category"] = slug_to_category.get(slug, DEFAULT_CATEGORY) if slug else DEFAULT_CATEGORY
+
+
+def row_to_dict(row) -> Dict[str, Any]:
+    """Convert SQLAlchemy row to dictionary."""
+    if hasattr(row, '__dict__'):
+        d = {k: v for k, v in row.__dict__.items() if not k.startswith('_')}
+        # Convert Decimal to float for JSON serialization
+        for key, value in d.items():
+            if isinstance(value, Decimal):
+                d[key] = float(value)
+        return d
+    return {}
