@@ -852,7 +852,7 @@ async def fetch_and_save_all_traders_details(
     }
     
     # Process traders with concurrency limit (reduced to avoid rate limits)
-    semaphore = asyncio.Semaphore(5)  # Reduced from 15 to 5
+    semaphore = asyncio.Semaphore(2)  # Reduced from 5 to 2 to avoid rate limits
     
     skipped_counts = {
         "profile": 0,
@@ -931,17 +931,17 @@ async def fetch_and_save_all_traders_details(
             
             return True
     
-    # Process in batches (reduced for better stability)
-    batch_size = 20  # Reduced from 50 to 20
+    # Process in batches (reduced for better stability and rate limiting)
+    batch_size = 10  # Reduced from 20 to 10
     for i in range(0, len(traders), batch_size):
         batch = traders[i:i + batch_size]
         tasks = [process_trader(trader_id, wallet) for trader_id, wallet in batch]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         total_processed += sum(1 for r in results if r is True)
         
-        # Delay between batches (increased from 0.1s to 1.0s)
+        # Delay between batches (increased to avoid rate limits)
         if i + batch_size < len(traders):
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(3.0)  # Increased from 1.0s to 3.0s
     
     summary["skipped"] = skipped_counts
     return {

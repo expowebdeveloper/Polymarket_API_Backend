@@ -19,6 +19,10 @@ from app.services.live_leaderboard_service import (
     fetch_polymarket_biggest_winners,
     transform_polymarket_api_entry
 )
+from app.services.leaderboard_storage_service import (
+    get_leaderboard_from_db,
+    get_total_leaderboard_count
+)
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
@@ -1225,6 +1229,64 @@ async def get_all_db_leaderboards(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating all leaderboards: {str(e)}"
+        )
+
+
+@router.get(
+    "/db/paginated",
+    response_model=LeaderboardResponse,
+    summary="Get Paginated Leaderboard from Database",
+    description="Get leaderboard data directly from the database with pagination and sorting."
+)
+async def get_paginated_leaderboard(
+    limit: int = Query(10, ge=1, le=1000, description="Number of items per page"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    sort_by: str = Query("final_score", description="Field to sort by"),
+    sort_desc: bool = Query(True, description="Sort descending"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get paginated leaderboard from database.
+    """
+    try:
+        # Get entries
+        entries = await get_leaderboard_from_db(
+            session=db,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_desc=sort_desc
+        )
+
+        # Get total count
+        count = await get_total_leaderboard_count(db)
+
+        # Convert to LeaderboardEntry model objects
+        # Note: The service returns dicts, but our Pydantic model response expects objects or dicts that match the schema
+        # LeaderboardResponse expects 'entries' to be a list of LeaderboardEntry items
+        
+        # Mapping dicts to the temporary class or just returning them if response_model handles it (it usually does for dicts)
+        # However, to be safe and match the previous patterns:
+        
+        formatted_entries = []
+        for e in entries:
+             # Map keys if necessary, but get_leaderboard_from_db uses keys matching the model mostly
+             formatted_entries.append(LeaderboardEntry(**e))
+
+        return LeaderboardResponse(
+            period="all",
+            metric="final_score",
+            count=count,
+            entries=formatted_entries
+        )
+
+    except Exception as e:
+        import traceback
+        print(f"Error fetching paginated leaderboard: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching paginated leaderboard: {str(e)}"
         )
 
 

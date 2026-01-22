@@ -50,24 +50,8 @@ app.add_middleware(
 async def startup_event():
     """Initialize database on application startup."""
     await init_db()
-    
-    # Start periodic leaderboard recalculation (every 6.5 hours)
-    # This calculates leaderboard metrics for traders in the database
-    try:
-        from app.services.leaderboard_scheduler import start_periodic_recalculation
-        await start_periodic_recalculation(interval_hours=6.5)
-        print("✅ Periodic leaderboard recalculation scheduler started (every 6.5 hours)")
-    except Exception as e:
-        print(f"⚠️  Failed to start leaderboard scheduler: {e}")
-    
-    # Start activity broadcaster for real-time WebSocket updates
-    try:
-        from app.services.activity_broadcaster import broadcaster
-        import asyncio
-        asyncio.create_task(broadcaster.start())
-        print("✅ Activity broadcaster started for real-time feed")
-    except Exception as e:
-        print(f"⚠️  Failed to start activity broadcaster: {e}")
+    # Leaderboard scheduler and activity broadcaster are NOT started on startup.
+    # Start them manually via API or scripts when needed.
     
 
 # Include routers

@@ -208,52 +208,60 @@ async def process_resolved_markets_for_trades(
 async def save_trades_to_db(
     session: AsyncSession,
     wallet_address: str,
-    trades: List[Dict]
+    trades: List[Dict],
+    batch_size: int = 1000
 ) -> int:
     """
-    Save trades to database. Updates existing trades or inserts new ones.
+    Save trades to database efficiently using bulk operations.
+    Updates existing trades or inserts new ones.
     
     Args:
         session: Database session
         wallet_address: Wallet address
         trades: List of trade dictionaries from API
+        batch_size: Number of trades to process per batch (default: 1000)
     
     Returns:
         Number of trades saved
     """
-    saved_count = 0
-    
     if not trades:
         return 0
 
+    saved_count = 0
+    
     try:
-        for trade_data in trades:
-            # Convert trade data to database model
-            trade_dict = {
-                "proxy_wallet": trade_data.get("proxyWallet", wallet_address),
-                "side": trade_data.get("side", ""),
-                "asset": str(trade_data.get("asset", "")),
-                "condition_id": trade_data.get("conditionId", ""),
-                "size": Decimal(str(trade_data.get("size", 0))),
-                "price": Decimal(str(trade_data.get("price", 0))),
-                "timestamp": trade_data.get("timestamp", 0),
-                "title": trade_data.get("title"),
-                "slug": trade_data.get("slug"),
-                "icon": trade_data.get("icon"),
-                "event_slug": trade_data.get("eventSlug"),
-                "outcome": trade_data.get("outcome"),
-                "outcome_index": trade_data.get("outcomeIndex"),
-                "name": trade_data.get("name"),
-                "pseudonym": trade_data.get("pseudonym"),
-                "bio": trade_data.get("bio"),
-                "profile_image": trade_data.get("profileImage"),
-                "profile_image_optimized": trade_data.get("profileImageOptimized"),
-                "transaction_hash": trade_data.get("transactionHash", ""),
-            }
+        # Process in batches for better performance and memory management
+        for i in range(0, len(trades), batch_size):
+            batch = trades[i:i + batch_size]
             
-            # Use PostgreSQL upsert (INSERT ... ON CONFLICT DO UPDATE)
-            # Conflict on unique combination of proxy_wallet, transaction_hash, timestamp, and asset
-            stmt = pg_insert(Trade).values(**trade_dict)
+            # Prepare all trade dictionaries for this batch
+            trade_dicts = []
+            for trade_data in batch:
+                trade_dict = {
+                    "proxy_wallet": trade_data.get("proxyWallet", wallet_address),
+                    "side": (trade_data.get("side", "BUY")).upper(),
+                    "asset": str(trade_data.get("asset", "")),
+                    "condition_id": trade_data.get("conditionId", ""),
+                    "size": Decimal(str(trade_data.get("size", 0))),
+                    "price": Decimal(str(trade_data.get("price", 0))),
+                    "timestamp": int(trade_data.get("timestamp", 0)),
+                    "title": trade_data.get("title"),
+                    "slug": trade_data.get("slug"),
+                    "icon": trade_data.get("icon"),
+                    "event_slug": trade_data.get("eventSlug"),
+                    "outcome": trade_data.get("outcome"),
+                    "outcome_index": trade_data.get("outcomeIndex"),
+                    "name": trade_data.get("name"),
+                    "pseudonym": trade_data.get("pseudonym"),
+                    "bio": trade_data.get("bio"),
+                    "profile_image": trade_data.get("profileImage"),
+                    "profile_image_optimized": trade_data.get("profileImageOptimized"),
+                    "transaction_hash": trade_data.get("transactionHash", ""),
+                }
+                trade_dicts.append(trade_dict)
+            
+            # Bulk upsert using PostgreSQL's ON CONFLICT
+            stmt = pg_insert(Trade).values(trade_dicts)
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_trade_unique",
                 set_={
@@ -276,39 +284,45 @@ async def save_trades_to_db(
             )
             
             await session.execute(stmt)
-            saved_count += 1
+            saved_count += len(batch)
         
         await session.commit()
+        
     except Exception as e:
-        print(f"Error checking trade batch save: {e}")
-        # If batch commit fails, try individually (slow fallback)
+        print(f"Error in bulk trade save: {e}")
         await session.rollback()
-        for trade_data in trades:
+        
+        # Fallback: try smaller batches
+        small_batch_size = 100
+        for i in range(0, len(trades), small_batch_size):
+            batch = trades[i:i + small_batch_size]
             try:
-                # Convert trade data to database model
-                trade_dict = {
-                    "proxy_wallet": trade_data.get("proxyWallet", wallet_address),
-                    "side": trade_data.get("side", ""),
-                    "asset": str(trade_data.get("asset", "")),
-                    "condition_id": trade_data.get("conditionId", ""),
-                    "size": Decimal(str(trade_data.get("size", 0))),
-                    "price": Decimal(str(trade_data.get("price", 0))),
-                    "timestamp": trade_data.get("timestamp", 0),
-                    "title": trade_data.get("title"),
-                    "slug": trade_data.get("slug"),
-                    "icon": trade_data.get("icon"),
-                    "event_slug": trade_data.get("eventSlug"),
-                    "outcome": trade_data.get("outcome"),
-                    "outcome_index": trade_data.get("outcomeIndex"),
-                    "name": trade_data.get("name"),
-                    "pseudonym": trade_data.get("pseudonym"),
-                    "bio": trade_data.get("bio"),
-                    "profile_image": trade_data.get("profileImage"),
-                    "profile_image_optimized": trade_data.get("profileImageOptimized"),
-                    "transaction_hash": trade_data.get("transactionHash", ""),
-                }
+                trade_dicts = []
+                for trade_data in batch:
+                    trade_dict = {
+                        "proxy_wallet": trade_data.get("proxyWallet", wallet_address),
+                        "side": (trade_data.get("side", "BUY")).upper(),
+                        "asset": str(trade_data.get("asset", "")),
+                        "condition_id": trade_data.get("conditionId", ""),
+                        "size": Decimal(str(trade_data.get("size", 0))),
+                        "price": Decimal(str(trade_data.get("price", 0))),
+                        "timestamp": int(trade_data.get("timestamp", 0)),
+                        "title": trade_data.get("title"),
+                        "slug": trade_data.get("slug"),
+                        "icon": trade_data.get("icon"),
+                        "event_slug": trade_data.get("eventSlug"),
+                        "outcome": trade_data.get("outcome"),
+                        "outcome_index": trade_data.get("outcomeIndex"),
+                        "name": trade_data.get("name"),
+                        "pseudonym": trade_data.get("pseudonym"),
+                        "bio": trade_data.get("bio"),
+                        "profile_image": trade_data.get("profileImage"),
+                        "profile_image_optimized": trade_data.get("profileImageOptimized"),
+                        "transaction_hash": trade_data.get("transactionHash", ""),
+                    }
+                    trade_dicts.append(trade_dict)
                 
-                stmt = pg_insert(Trade).values(**trade_dict)
+                stmt = pg_insert(Trade).values(trade_dicts)
                 stmt = stmt.on_conflict_do_update(
                     constraint="uq_trade_unique",
                     set_={
@@ -329,20 +343,60 @@ async def save_trades_to_db(
                         "updated_at": stmt.excluded.updated_at,
                     }
                 )
-                async with session.begin_nested():
-                    await session.execute(stmt)
-                saved_count += 1
-            except Exception as inner_e:
-                print(f"Failed to save individual trade: {inner_e}")
-        await session.commit()
+                await session.execute(stmt)
+                await session.commit()
+                saved_count += len(batch)
+            except Exception as batch_e:
+                print(f"Error in fallback batch save: {batch_e}")
+                await session.rollback()
+                # Last resort: individual inserts
+                for trade_data in batch:
+                    try:
+                        trade_dict = {
+                            "proxy_wallet": trade_data.get("proxyWallet", wallet_address),
+                            "side": (trade_data.get("side", "BUY")).upper(),
+                            "asset": str(trade_data.get("asset", "")),
+                            "condition_id": trade_data.get("conditionId", ""),
+                            "size": Decimal(str(trade_data.get("size", 0))),
+                            "price": Decimal(str(trade_data.get("price", 0))),
+                            "timestamp": int(trade_data.get("timestamp", 0)),
+                            "title": trade_data.get("title"),
+                            "slug": trade_data.get("slug"),
+                            "icon": trade_data.get("icon"),
+                            "event_slug": trade_data.get("eventSlug"),
+                            "outcome": trade_data.get("outcome"),
+                            "outcome_index": trade_data.get("outcomeIndex"),
+                            "name": trade_data.get("name"),
+                            "pseudonym": trade_data.get("pseudonym"),
+                            "bio": trade_data.get("bio"),
+                            "profile_image": trade_data.get("profileImage"),
+                            "profile_image_optimized": trade_data.get("profileImageOptimized"),
+                            "transaction_hash": trade_data.get("transactionHash", ""),
+                        }
+                        
+                        stmt = pg_insert(Trade).values(**trade_dict)
+                        stmt = stmt.on_conflict_do_update(
+                            constraint="uq_trade_unique",
+                            set_={
+                                "side": stmt.excluded.side,
+                                "size": stmt.excluded.size,
+                                "price": stmt.excluded.price,
+                                "updated_at": stmt.excluded.updated_at,
+                            }
+                        )
+                        async with session.begin_nested():
+                            await session.execute(stmt)
+                        saved_count += 1
+                    except Exception as inner_e:
+                        print(f"Failed to save individual trade: {inner_e}")
     
-    # After successful save, check for resolved markets
+    # After successful save, check for resolved markets (async, non-blocking)
     try:
-         await process_resolved_markets_for_trades(session, wallet_address, trades)
+        await process_resolved_markets_for_trades(session, wallet_address, trades)
     except Exception as e:
-         print(f"Error processing resolved markets: {e}")
-         # Don't fail the whole trade save if this fails
-         pass
+        print(f"Error processing resolved markets: {e}")
+        # Don't fail the whole trade save if this fails
+        pass
          
     return saved_count
 

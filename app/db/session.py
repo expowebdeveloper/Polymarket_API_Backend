@@ -32,6 +32,11 @@ async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
+async def get_async_session():
+    """Async generator for database sessions (for scripts)."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
 async def init_db():
     """Initialize database by creating all tables."""
     async with engine.begin() as conn:
