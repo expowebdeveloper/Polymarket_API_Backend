@@ -597,7 +597,38 @@ async def _fetch_market_internal(client: httpx.AsyncClient, market_slug: str) ->
                     return market
     except Exception as e:
         print(f"Error fetching from Gamma API /events: {e}")
-    
+        
+    # Case 3: Fallback to Data API (Trades) if Gamma fails
+    # Some markets exist in Data API but not in Gamma (or under different ID)
+    try:
+        trades_url = "https://data-api.polymarket.com/trades"
+        params = {"market": market_slug, "limit": 1}
+        response = await client.get(trades_url, params=params)
+        
+        if response.status_code == 200:
+            trades = response.json()
+            if isinstance(trades, list) and len(trades) > 0:
+                trade = trades[0]
+                # Construct a partial market object from trade data
+                return {
+                    "id": trade.get("asset_id", market_slug), 
+                    "condition_id": trade.get("condition_id"),
+                    "slug": market_slug,
+                    "question": trade.get("marketTitle") or trade.get("title", market_slug),
+                    "title": trade.get("marketTitle") or trade.get("title", market_slug),
+                    "description": "Market details retrieved from trade history.",
+                    "status": "active", # Assume active if we found trades
+                    "volume": 0, # Cannot determine easily without full stats
+                    "outcomes": ["Yes", "No"], # Default/Guess
+                    "outcomePrices": {},
+                    "clobTokenIds": [],
+                    "tags": [],
+                    "image": trade.get("marketImage"), # Some trades have this
+                    "icon": trade.get("marketIcon")
+                }
+    except Exception as e:
+        print(f"Error fetching fallback from Data API: {e}")
+        
     return None
 
 
@@ -1425,32 +1456,34 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
         trades_url = "https://data-api.polymarket.com/trades"
         
         all_trades_data = []
-        current_offset = 0 # API offset
-        # We need to fetch enough to cover our (offset + limit) requirements
-        target_count = limit + offset
+        current_offset = offset  # Start directly from requested offset
+        target_count = limit
         fetched_so_far = 0
-        
-        # Helper to get sync client (reusing global if available or creating new)
-        # Note: In the viewed code, 'sync_client' usage suggested a global, but we should be safe.
-        # Use a new client to be sure, or 'httpx.get'.
         
         while fetched_so_far < target_count:
             # Batch size for API (max usually 1000)
             batch_limit = 1000
             
+            # Determine how many to fetch in this batch
+            remaining = target_count - fetched_so_far
+            fetch_limit = min(batch_limit, remaining)
+            # But usually it's better to fetch full batches to avoid tiny requests, 
+            # unless we are very close to the end. Let's strictly fetch as needed 
+            # or just default to 1000 and slice later. 
+            # Polymarket API likely ignores custom limits > 1000.
+            # Let's request 1000 to be safe and efficient.
+            fetch_size = 1000
+            
             trades_params = {
                 "market": market_slug,
-                "limit": batch_limit,
+                "limit": fetch_size,
                 "offset": current_offset
             }
             
-            # Using httpx.get directly for sync call as seen in previous code ('sync_client' might be custom)
-            # Assuming 'sync_client' is available in scope or falling back to httpx
+            # Use the shared sync_client
             try:
-                # Try using the global sync_client if it was defined in the file
                 response = sync_client.get(trades_url, params=trades_params)
             except NameError:
-                 # Fallback if sync_client isn't defined locally
                  with DNSAwareClient() as client:
                     response = client.get(trades_url, params=trades_params)
 
@@ -1461,16 +1494,21 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
             if not isinstance(batch_data, list) or not batch_data:
                 break
                 
+            # If we requested more than we needed, just take what we need? 
+            # No, keep all to ensure we don't have gaps if we loop. 
+            # Actually, standard logic:
             all_trades_data.extend(batch_data)
+            
             fetched_count = len(batch_data)
             fetched_so_far += fetched_count
             current_offset += fetched_count
             
-            if fetched_count < batch_limit:
+            if fetched_count < fetch_size:
                 # End of results
                 break
         
-        trades_data = all_trades_data
+        # We might have fetched more than 'limit' due to batching
+        trades_data = all_trades_data[:limit]
         
         if not trades_data:
              return {
@@ -1478,7 +1516,7 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
                 "pagination": {
                     "limit": limit,
                     "offset": offset,
-                    "total": 0,
+                    "total": 0, # We don't know total easily without a separate call or assuming end
                     "has_more": False
                 }
             }
@@ -1496,36 +1534,31 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
         for trade in trades_data:
             try:
                 # Get user address from multiple possible fields
-                # Activity endpoint uses "proxyWallet" or "user" field
-                # Trades endpoint may not have user info when filtered by market
                 user_address = (
-                    trade.get("proxyWallet") or  # Primary field from Activity API
-                    trade.get("proxy_wallet") or  # Snake case variant
+                    trade.get("proxyWallet") or
+                    trade.get("proxy_wallet") or
                     trade.get("user") or 
-                    trade.get("userProfileAddress") or  # Alternative field name
+                    trade.get("userProfileAddress") or
                     trade.get("maker") or 
                     trade.get("makerAddress") or
                     trade.get("userAddress") or
                     trade.get("trader") or
                     trade.get("wallet") or
                     trade.get("walletAddress") or
-                    trade.get("from") or  # Transaction from field
-                    trade.get("account") or  # Account field
-                    trade.get("owner") or  # Owner field
+                    trade.get("from") or
+                    trade.get("account") or
+                    trade.get("owner") or
                     ""
                 )
                 
-                # Get taker address similarly
                 taker_address = (
                     trade.get("taker") or
                     trade.get("takerAddress") or
                     trade.get("takerWallet") or
-                    trade.get("to") or  # Transaction to field
+                    trade.get("to") or
                     ""
                 )
                 
-                # Map fields from activity or trades endpoint
-                # Activity endpoint uses different field names than trades
                 order = {
                     "token_id": trade.get("asset", trade.get("token_id", "")),
                     "token_label": trade.get("outcome", ""),
@@ -1538,28 +1571,215 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
                     "title": market_title or trade.get("marketTitle", trade.get("title", "")),
                     "timestamp": trade.get("timestamp", trade.get("time", 0)),
                     "order_hash": trade.get("id", trade.get("order_hash", "")),
-                    "user": user_address,  # Use the extracted user address (wallet address)
+                    "user": user_address, 
                     "taker": taker_address,
                     "shares_normalized": float(trade.get("size", trade.get("shares", 0)))
                 }
                 all_orders.append(order)
-            except (ValueError, TypeError) as e:
-                # Skip trades with invalid data
+            except (ValueError, TypeError):
                 continue
         
-        # Apply pagination
-        total_orders = len(all_orders)
-        paginated_orders = all_orders[offset:offset + limit]
         
+        # Determine has_more based on if we got full limit
+        has_more = len(all_orders) >= limit
+        
+        # Calculate TOTAL count if this is the first page (offset 0)
+        total_orders = 0
+        # NOTE: fetched synchronously here caused timeouts on large markets (50k+ orders).
+        # We will now fetch this via a dedicated endpoint /count.
+        # if offset == 0:
+        #      total_orders = fetch_total_market_trades(market_slug)
+
         return {
-            "orders": paginated_orders,
+            "orders": all_orders,
             "pagination": {
                 "limit": limit,
                 "offset": offset,
-                "total": total_orders,
-                "has_more": (offset + limit) < total_orders
+                "total": total_orders, # Return the calculated total (or 0 if not first page/failed)
+                "has_more": has_more
             }
         }
+        
+    except httpx.HTTPStatusError as e:
+        if e.response and e.response.status_code == 404:
+            return {"orders": [], "pagination": {"limit": limit, "offset": offset, "total": 0, "has_more": False}}
+        raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Unexpected error fetching market orders: {str(e)}")
+
+
+def fetch_market_traders_aggregated(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+    """
+    Fetch ALL (or up to 20k) trades for a market, aggregate by user, and return best traders.
+    This runs server-side aggregation to provide an accurate leaderboard for the market.
+    """
+    try:
+        trades_url = "https://data-api.polymarket.com/trades"
+        all_trades = []
+        current_offset = 0
+        batch_size = 1000
+        max_trades = 20000 # Safety cap
+        
+        # Fetch loop
+        while len(all_trades) < max_trades:
+            try:
+                params = {"market": market_slug, "limit": batch_size, "offset": current_offset}
+                try:
+                    response = sync_client.get(trades_url, params=params)
+                except NameError:
+                    with DNSAwareClient() as client:
+                        response = client.get(trades_url, params=params)
+                
+                response.raise_for_status()
+                batch = response.json()
+                
+                if not batch or not isinstance(batch, list):
+                    break
+                    
+                all_trades.extend(batch)
+                
+                if len(batch) < batch_size:
+                    break
+                    
+                current_offset += len(batch)
+                
+            except Exception as e:
+                print(f"Error fetching batch for aggregated traders: {e}")
+                break
+        
+        # Aggregate
+        trader_map = {} # user -> stats
+        
+        for trade in all_trades:
+            try:
+                user = (
+                    trade.get("proxyWallet") or trade.get("user") or 
+                    trade.get("maker") or trade.get("userAddress") or ""
+                )
+                if not user:
+                    continue
+                    
+                if user not in trader_map:
+                    trader_map[user] = {
+                        "user": user,
+                        "total_orders": 0,
+                        "buy_orders": 0,
+                        "sell_orders": 0,
+                        "total_shares": 0.0,
+                        "total_volume": 0.0,
+                        "win_count": 0,
+                        "lose_count": 0,
+                        "rating": 0.0
+                    }
+                
+                t = trader_map[user]
+                shares = float(trade.get("size", 0))
+                price = float(trade.get("price", 0))
+                side = trade.get("side", "BUY")
+                outcome = trade.get("outcome", "")
+                
+                t["total_orders"] += 1
+                t["total_shares"] += shares
+                t["total_volume"] += shares * price
+                
+                is_win = False
+                # Simple win heuristic: 
+                # BUY Yes > 0.5 or BUY No < 0.5 = Betting on probability rising/falling correctly?
+                # Actually, "Best Traders" usually implies PnL or accuracy.
+                # The frontend logic was:
+                # BUY Yes (>0.5) -> Win, BUY No (<0.5) -> Win.
+                # This is a bit arbitrary but matches requested "exact same data" as frontend logic.
+                # Let's replicate frontend logic exactly.
+                
+                if side == "BUY":
+                    t["buy_orders"] += 1
+                    if outcome == "Yes" and price > 0.5: is_win = True
+                    elif outcome == "No" and price < 0.5: is_win = True
+                else:
+                    t["sell_orders"] += 1
+                    if outcome == "Yes" and price < 0.5: is_win = True
+                    elif outcome == "No" and price > 0.5: is_win = True
+                
+                if is_win:
+                    t["win_count"] += 1
+                else:
+                    t["lose_count"] += 1
+                    
+            except Exception:
+                continue
+        
+        # Calculate ratings & convert to list
+        traders_list = []
+        for user, t in trader_map.items():
+            total_trades = t["win_count"] + t["lose_count"]
+            t["rating"] = (t["win_count"] / total_trades * 100) if total_trades > 0 else 0
+            traders_list.append(t)
+            
+        # Sort: Rating desc, then Volume desc
+        traders_list.sort(key=lambda x: (x["rating"], x["total_volume"]), reverse=True)
+        
+        # Pagination
+        total_traders = len(traders_list)
+        paginated = traders_list[offset:offset + limit]
+        
+        return {
+            "traders": paginated,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total_traders,
+                "has_more": (offset + limit) < total_traders
+            }
+        }
+    except Exception as e:
+        raise Exception(f"Error fetching aggregated traders: {str(e)}")
+
+
+def fetch_total_market_trades(market_slug: str) -> int:
+    """
+    Efficiently fetch the TOTAL number of trades for a market by iterating all pages.
+    Used to get an exact count for UI display (e.g., "Orders (1234)").
+    """
+    try:
+        trades_url = "https://data-api.polymarket.com/trades"
+        total_count = 0
+        current_offset = 0
+        batch_size = 1000  # Max batch
+        
+        while True:
+            params = {
+                "market": market_slug,
+                "limit": batch_size,
+                "offset": current_offset
+            }
+            
+            try:
+                response = sync_client.get(trades_url, params=params)
+            except NameError:
+                with DNSAwareClient() as client:
+                    response = client.get(trades_url, params=params)
+            
+            if response.status_code != 200:
+                break
+                
+            batch = response.json()
+            if not batch or not isinstance(batch, list):
+                break
+                
+            count = len(batch)
+            total_count += count
+            current_offset += count
+            
+            if count < batch_size:
+                break
+                
+            # Safety break to prevent infinite loops on massive markets (cap at 50k for performance)
+            if total_count > 50000:
+                break
+                
+        return total_count
+    except Exception:
+        return 0
         
     except httpx.HTTPStatusError as e:
         # Handle specific HTTP errors
@@ -1791,72 +2011,104 @@ async def get_polymarket_build_id() -> str:
 
 async def fetch_live_trending_markets() -> List[Dict[str, Any]]:
     """
-    Fetch trending markets from Polymarket Next.js JSON API.
-    Standardizes output to the format requested by the user.
+    Fetch trending markets from Polymarket Gamma API.
+    Sorted by 24-hour volume (descending) for trending markets.
     """
-    build_id = await get_polymarket_build_id()
-    url = f"https://polymarket.com/_next/data/{build_id}/index.json"
+    url = "https://gamma-api.polymarket.com/events/pagination"
     
     try:
-        response = await async_client.get(url)
+        # Fetch trending markets sorted by 24hr volume
+        params = {
+            "order": "volume24hr",
+            "ascending": "false",
+            "limit": 20,
+            "offset": 0,
+            "active": "true",
+            "closed": "false"
+        }
+        
+        response = await async_client.get(url, params=params)
         response.raise_for_status()
         data = response.json()
         
         markets_list = []
+        events = data.get("data", [])
         
-        if "pageProps" in data:
-            pp = data["pageProps"]
-            if "dehydratedState" in pp:
-                ds = pp["dehydratedState"]
-                queries = ds.get("queries", [])
-                if queries:
-                    # Query 0 is typically the trending/homepage events
-                    q = queries[0]
-                    state = q.get("state", {})
-                    data_obj = state.get("data", {})
-                    
-                    if isinstance(data_obj, dict) and "pages" in data_obj:
-                        for page in data_obj["pages"]:
-                            events = page.get("events", [])
-                            for event in events:
-                                markets = event.get("markets", [])
-                                for m in markets:
-                                    # Standardize to requested format
-                                    markets_list.append({
-                                        "id": m.get("id"),
-                                        "conditionId": m.get("conditionId"),
-                                        "question": m.get("question"),
-                                        "slug": m.get("slug"),
-                                        "outcomes": m.get("outcomes", []),
-                                        "outcomePrices": m.get("outcomePrices", []),
-                                        "bestAsk": m.get("bestAsk"),
-                                        "bestBid": m.get("bestBid"),
-                                        "spread": m.get("spread"),
-                                        "active": m.get("active", True),
-                                        "closed": m.get("closed", False),
-                                        "archived": m.get("archived", False),
-                                        "volume": m.get("volume"),
-                                        "volume_num": m.get("volume_num"),
-                                        "liquidity": m.get("liquidity"),
-                                        "liquidity_num": m.get("liquidity_num"),
-                                        "groupItemTitle": m.get("groupItemTitle"),
-                                        "groupItemThreshold": m.get("groupItemThreshold"),
-                                        "clobTokenIds": m.get("clobTokenIds", []),
-                                        "rewardsMinSize": m.get("rewardsMinSize"),
-                                        "rewardsMaxSpread": m.get("rewardsMaxSpread"),
-                                        "holdingRewardsEnabled": m.get("holdingRewardsEnabled", False),
-                                        "sportsMarketType": m.get("sportsMarketType"),
-                                        "negRisk": m.get("negRisk", False),
-                                        "orderPriceMinTickSize": m.get("orderPriceMinTickSize"),
-                                        "image": m.get("image") or event.get("image"),
-                                        "icon": m.get("icon") or event.get("icon"),
-                                        "gameStartTime": m.get("gameStartTime"),
-                                        "eventStartTime": event.get("startTime"),
-                                        "startDate": event.get("startDate"),
-                                        "endDate": event.get("endDate")
-                                    })
+        for event in events:
+            markets = event.get("markets", [])
+            for m in markets:
+                # Parse outcomes and outcomePrices if they are JSON strings
+                outcomes = m.get("outcomes", [])
+                if isinstance(outcomes, str):
+                    try:
+                        import json
+                        outcomes = json.loads(outcomes)
+                    except:
+                        outcomes = []
+                
+                outcome_prices = m.get("outcomePrices")
+                
+                # Skip markets with no price data
+                if outcome_prices is None:
+                    continue
+                
+                if isinstance(outcome_prices, str):
+                    try:
+                        import json
+                        outcome_prices = json.loads(outcome_prices)
+                    except:
+                        continue  # Skip if can't parse
+                
+                # Ensure it's a list
+                if not isinstance(outcome_prices, list) or len(outcome_prices) == 0:
+                    continue
+                
+                # Convert price strings to floats
+                try:
+                    outcome_prices = [float(p) if isinstance(p, str) else p for p in outcome_prices]
+                except (ValueError, TypeError):
+                    continue  # Skip if conversion fails
+                
+                # Skip markets where all prices are 0 or invalid
+                if all(p == 0 or p is None for p in outcome_prices):
+                    continue
+                
+                # Standardize to requested format
+                markets_list.append({
+                    "id": m.get("id"),
+                    "conditionId": m.get("conditionId"),
+                    "question": m.get("question"),
+                    "slug": m.get("slug"),
+                    "outcomes": outcomes,
+                    "outcomePrices": outcome_prices,
+                    "bestAsk": m.get("bestAsk"),
+                    "bestBid": m.get("bestBid"),
+                    "spread": m.get("spread"),
+                    "active": m.get("active", True),
+                    "closed": m.get("closed", False),
+                    "archived": m.get("archived", False),
+                    "volume": m.get("volume"),
+                    "volume_num": m.get("volume_num"),
+                    "liquidity": m.get("liquidity"),
+                    "liquidity_num": m.get("liquidity_num"),
+                    "groupItemTitle": m.get("groupItemTitle"),
+                    "groupItemThreshold": m.get("groupItemThreshold"),
+                    "clobTokenIds": m.get("clobTokenIds", []),
+                    "rewardsMinSize": m.get("rewardsMinSize"),
+                    "rewardsMaxSpread": m.get("rewardsMaxSpread"),
+                    "holdingRewardsEnabled": m.get("holdingRewardsEnabled", False),
+                    "sportsMarketType": m.get("sportsMarketType"),
+                    "negRisk": m.get("negRisk", False),
+                    "orderPriceMinTickSize": m.get("orderPriceMinTickSize"),
+                    "image": m.get("image") or event.get("image"),
+                    "icon": m.get("icon") or event.get("icon"),
+                    "gameStartTime": m.get("gameStartTime"),
+                    "eventStartTime": event.get("startTime"),
+                    "startDate": event.get("startDate"),
+                    "endDate": event.get("endDate")
+                })
         
-        print(f"✓ Successfully fetched {len(markets_list)} live trending markets from Next.js API")
+        print(f"✓ Successfully fetched {len(markets_list)} live trending markets from Gamma API")
         return markets_list
     except Exception as e:
         print(f"⚠️ Error fetching live markets: {e}")

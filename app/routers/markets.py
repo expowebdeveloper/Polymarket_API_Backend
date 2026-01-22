@@ -3,7 +3,14 @@
 from fastapi import APIRouter, HTTPException, status, Query, BackgroundTasks
 from typing import Optional, Dict, Any
 from app.schemas.markets import MarketsResponse, PaginationInfo
-from app.services.data_fetcher import fetch_markets, fetch_market_orders, fetch_market_by_slug, fetch_live_trending_markets
+from app.services.data_fetcher import (
+    fetch_markets, 
+    fetch_market_orders, 
+    fetch_market_by_slug, 
+    fetch_live_trending_markets,
+    fetch_market_traders_aggregated,
+    fetch_total_market_trades
+)
 from app.services.market_service import update_all_markets
 
 router = APIRouter(prefix="/markets", tags=["Markets"])
@@ -141,6 +148,41 @@ async def get_market_orders(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching market orders: {str(e)}"
+        )
+
+@router.get("/{market_slug}/orders/count")
+async def get_market_orders_count(market_slug: str):
+    """
+    Fetch the total count of orders/trades for a market.
+    This iterates through all pages to get an exact count (can be slow for large markets).
+    """
+    try:
+        count = fetch_total_market_trades(market_slug)
+        return {"total": count}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching order count: {str(e)}"
+        )
+
+
+@router.get("/{market_slug}/traders")
+async def get_market_traders(
+    market_slug: str,
+    limit: Optional[int] = Query(100, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: Optional[int] = Query(0, ge=0, description="Offset for pagination")
+):
+    """
+    Fetch best traders for a specific market (aggregated server-side).
+    Returns traders sorted by rating (win rate) and volume.
+    """
+    try:
+        result = fetch_market_traders_aggregated(market_slug=market_slug, limit=limit, offset=offset)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching market traders: {str(e)}"
         )
 
 
