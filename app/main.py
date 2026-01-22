@@ -5,7 +5,11 @@ FastAPI application main file.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+<<<<<<< HEAD
+from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, websocket
+=======
 from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, marketing
+>>>>>>> c4a7339c72d418ec74e27f55dca1c6b036172343
 from app.db.session import init_db
 
 app = FastAPI(
@@ -27,9 +31,14 @@ allowed_origins = [
     "http://127.0.0.1:5174",
     "http://localhost:5175",
     "http://127.0.0.1:5175",
-    "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Add production origins from env
+import os
+env_origins = os.getenv("ALLOW_ORIGINS", "")
+if env_origins:
+    allowed_origins.extend([origin.strip() for origin in env_origins.split(",")])
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,6 +64,15 @@ async def startup_event():
     except Exception as e:
         print(f"⚠️  Failed to start leaderboard scheduler: {e}")
     
+    # Start activity broadcaster for real-time WebSocket updates
+    try:
+        from app.services.activity_broadcaster import broadcaster
+        import asyncio
+        asyncio.create_task(broadcaster.start())
+        print("✅ Activity broadcaster started for real-time feed")
+    except Exception as e:
+        print(f"⚠️  Failed to start activity broadcaster: {e}")
+    
 
 # Include routers
 app.include_router(auth.router)
@@ -72,5 +90,9 @@ app.include_router(closed_positions.router)
 app.include_router(scoring.router)
 app.include_router(trade_history.router)
 app.include_router(dashboard.router)
+<<<<<<< HEAD
+app.include_router(websocket.router)  # WebSocket for real-time activity feed
+=======
 app.include_router(marketing.router)
+>>>>>>> c4a7339c72d418ec74e27f55dca1c6b036172343
 

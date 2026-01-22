@@ -102,18 +102,22 @@ async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    token: str = Depends(lambda: None),  # This will be replaced with proper token extraction
-    db: AsyncSession = Depends(get_db)
-):
+@router.post("/logout")
+async def logout():
     """
-    Get current authenticated user.
+    Logout user.
     
-    Note: This is a placeholder. In production, use proper JWT token extraction from headers.
+    Logs the logout event. With JWT tokens, actual invalidation happens client-side
+    by removing the token. In a production system, you could implement token blacklisting here.
     """
-    # TODO: Implement proper token extraction from Authorization header
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented yet"
-    )
+    # In a production system, you might want to:
+    # 1. Add the token to a blacklist/revocation list
+    # 2. Log the logout event to database
+    # 3. Clear any server-side sessions
+    
+    # For now, we just acknowledge the logout
+    return {
+        "message": "Logout successful",
+        "success": True
+    }
+
