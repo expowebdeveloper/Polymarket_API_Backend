@@ -14,9 +14,10 @@ class Settings:
     """Application settings."""
     
     # API Configuration
+    # PostgreSQL connection string format: postgresql+asyncpg://user:password@host:port/database
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "sqlite+aiosqlite:///./sql_app.db"
+        "postgresql+asyncpg://digamber:user_123@localhost:5432/polymarket"
     )
 
     class Config:

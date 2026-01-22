@@ -140,9 +140,11 @@ sync_client = DNSAwareClient(
 
 # Shared async client instance for extreme performance
 # We use a single instance to reuse connection pools and SSL handshakes
+from app.services.rate_limiter import rate_limited_request, rate_limited_gather
+
 async_client = DNSAwareAsyncClient(
     timeout=httpx.Timeout(30.0, connect=10.0),
-    limits=httpx.Limits(max_connections=100, max_keepalive_connections=50),
+    limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),  # Reduced to avoid rate limits
     headers={"User-Agent": USER_AGENT}
 )
 
@@ -698,8 +700,8 @@ async def fetch_positions_for_wallet(
             return all_positions
             
         # Step 2: Parallel fetch (similar to closed positions)
-        # Use moderate batch size to avoid rate limits
-        PARALLEL_BATCH_SIZE = 10
+        # Reduced batch size to avoid rate limits
+        PARALLEL_BATCH_SIZE = 3  # Reduced from 15 to 3 to avoid rate limits
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         # Safety cap
@@ -715,9 +717,11 @@ async def fetch_positions_for_wallet(
                 current_req_offset = batch_offset + (i * fetch_limit)
                 task_params = params.copy()
                 task_params["offset"] = current_req_offset
-                tasks.append(async_client.get(url, params=task_params))
+                # Wrap with rate limiter
+                tasks.append(rate_limited_request(async_client.get, url, params=task_params))
             
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Use rate-limited gather with concurrency control
+            results = await rate_limited_gather(tasks, max_concurrent=3, delay_between_batches=2.0)
             
             batch_has_end = False
             valid_batch_items = []
@@ -800,7 +804,8 @@ async def fetch_user_pnl(
             "fidelity": fidelity
         }
         
-        response = await async_client.get(url, params=params)
+        # Use rate-limited request wrapper
+        response = await rate_limited_request(async_client.get, url, params=params)
         response.raise_for_status()
         
         pnl_data = response.json()
@@ -808,7 +813,10 @@ async def fetch_user_pnl(
             return pnl_data
         return []
     except httpx.HTTPStatusError as e:
-        print(f"Error fetching user PnL from Polymarket API: {str(e)}")
+        if e.response.status_code == 429:
+            print(f"Error fetching PnL for {user_address}: Rate limited (429)")
+        else:
+            print(f"Error fetching user PnL from Polymarket API: {str(e)}")
         return []
     except Exception as e:
         print(f"Unexpected error fetching user PnL: {str(e)}")
@@ -919,8 +927,8 @@ async def fetch_user_activity(
             return all_activities[:target_limit]
             
         # Step 2: Parallel fetch for remaining
-        MAX_BATCH_SIZE = 15
-        current_batch_size = 5
+        MAX_BATCH_SIZE = 20
+        current_batch_size = 10
         
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
@@ -1055,7 +1063,7 @@ async def fetch_user_trades(
             return all_trades[:target_limit]
 
         # Step 2: Parallel fetch for remaining
-        PARALLEL_BATCH_SIZE = 10
+        PARALLEL_BATCH_SIZE = 3  # Reduced to avoid rate limits
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         
@@ -1192,7 +1200,8 @@ async def fetch_closed_positions(
         params["limit"] = fetch_limit
         params["offset"] = initial_offset
         
-        response = await async_client.get(url, params=params)
+        # Use rate-limited request wrapper
+        response = await rate_limited_request(async_client.get, url, params=params)
         response.raise_for_status()
         first_page_data = response.json()
         
@@ -1211,9 +1220,9 @@ async def fetch_closed_positions(
             return _filter_by_time_period(all_positions, time_period)
             
         # Step 2: Parallel fetch for remaining
-        # Aggressive parallel fetching to speed up "Full History" download
-        MAX_BATCH_SIZE = 15  # Max parallel requests
-        current_batch_size = 5  # Start smaller to avoid overhead for small wallets (~150-200 items)
+        # Reduced parallel fetching to avoid rate limits
+        MAX_BATCH_SIZE = 5  # Max parallel requests (reduced from 20)
+        current_batch_size = 3  # Start smaller to avoid rate limits (reduced from 10)
 
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
@@ -1225,20 +1234,28 @@ async def fetch_closed_positions(
                 # Create a specific params dict for this request
                 task_params = params.copy()
                 task_params["offset"] = current_req_offset
-                tasks.append(async_client.get(url, params=task_params))
+                # Wrap with rate limiter
+                tasks.append(rate_limited_request(async_client.get, url, params=task_params))
             
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Use rate-limited gather with concurrency control
+            results = await rate_limited_gather(tasks, max_concurrent=3, delay_between_batches=2.0)
             
             batch_has_end = False
             valid_batch_items = []
             
             for res in results:
                 if isinstance(res, Exception):
-                    print(f"✗ Error in parallel fetch closed positions: {res}")
+                    if isinstance(res, httpx.HTTPStatusError) and res.response.status_code == 429:
+                        print(f"✗ Rate limited (429) in parallel fetch closed positions")
+                    else:
+                        print(f"✗ Error in parallel fetch closed positions: {res}")
                     continue
                 
-                if res.status_code != 200:
-                    print(f"✗ API Error in parallel fetch closed ps: {res.status_code}")
+                if hasattr(res, 'status_code') and res.status_code != 200:
+                    if res.status_code == 429:
+                        print(f"✗ Rate limited (429) in parallel fetch closed ps")
+                    else:
+                        print(f"✗ API Error in parallel fetch closed ps: {res.status_code}")
                     continue
                     
                 page_data = res.json()
@@ -1348,7 +1365,8 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         url = f"{settings.POLYMARKET_DATA_API_URL}/value"
         params = {"user": wallet_address}
         
-        response = await async_client.get(url, params=params)
+        # Use rate-limited request wrapper
+        response = await rate_limited_request(async_client.get, url, params=params)
         response.raise_for_status()
         
         data = response.json()
@@ -1357,7 +1375,10 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
             return float(data[0].get("value", 0.0))
         return 0.0
     except httpx.HTTPStatusError as e:
-        print(f"Error fetching portfolio value from Polymarket API: {str(e)}")
+        if e.response.status_code == 429:
+            print(f"Error fetching value for {wallet_address}: Rate limited (429)")
+        else:
+            print(f"Error fetching portfolio value from Polymarket API: {str(e)}")
         return 0.0
     except Exception as e:
         print(f"Unexpected error fetching portfolio value: {str(e)}")

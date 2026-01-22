@@ -124,6 +124,48 @@ async def migrate_users_table(session):
         # Don't raise - continue with other migrations
 
 
+async def migrate_aggregated_metrics_portfolio_value(session):
+    """Add portfolio_value column to aggregated_metrics if missing."""
+    try:
+        if not await check_table_exists(session, "aggregated_metrics"):
+            print("⚠️  aggregated_metrics table doesn't exist. Skipping.")
+            return
+
+        if "sqlite" in settings.DATABASE_URL:
+            result = await session.execute(text("PRAGMA table_info(aggregated_metrics)"))
+            columns = [row[1] for row in result.fetchall()]
+            exists = "portfolio_value" in columns
+        else:
+            result = await session.execute(
+                text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'aggregated_metrics'
+                    AND column_name = 'portfolio_value'
+                """)
+            )
+            exists = result.scalar_one_or_none() is not None
+
+        if not exists:
+            print("Adding portfolio_value column to aggregated_metrics...")
+            if "sqlite" in settings.DATABASE_URL:
+                await session.execute(text("""
+                    ALTER TABLE aggregated_metrics
+                    ADD COLUMN portfolio_value NUMERIC(20, 8) NOT NULL DEFAULT 0
+                """))
+            else:
+                await session.execute(text("""
+                    ALTER TABLE aggregated_metrics
+                    ADD COLUMN IF NOT EXISTS portfolio_value NUMERIC(20, 8) NOT NULL DEFAULT 0
+                """))
+            await session.commit()
+            print("✅ Added portfolio_value to aggregated_metrics")
+        else:
+            print("✅ aggregated_metrics.portfolio_value already exists")
+    except Exception as e:
+        await session.rollback()
+        print(f"⚠️  Error migrating aggregated_metrics: {e}")
+
+
 async def ensure_trader_detail_tables(engine):
     """Ensure all trader detail tables exist."""
     required_tables = [
@@ -192,6 +234,7 @@ async def main():
         print("Step 2: Running specific migrations...")
         async with AsyncSessionLocal() as session:
             await migrate_users_table(session)
+            await migrate_aggregated_metrics_portfolio_value(session)
         print()
         
         # Step 3: Ensure trader detail tables exist

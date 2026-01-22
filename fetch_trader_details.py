@@ -45,7 +45,7 @@ async def check_tables_exist(engine):
                 result = await conn.execute(
                     text("""
                         SELECT EXISTS (
-                            SELECT FROM information_schema.tables 
+                            SELECT 1 FROM information_schema.tables 
                             WHERE table_schema = 'public' 
                             AND table_name = :table_name
                         )

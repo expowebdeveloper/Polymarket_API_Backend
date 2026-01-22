@@ -754,14 +754,14 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
 
     import time
     t0 = time.time()
-    # Add overall timeout of 45 seconds for all API calls
+    # Add overall timeout of 60 seconds for all API calls
     try:
         results = await asyncio.wait_for(
             asyncio.gather(*tasks.values(), return_exceptions=True),
-            timeout=45.0
+            timeout=60.0
         )
     except asyncio.TimeoutError:
-        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 45s timeout for {wallet_address}")
+        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 60s timeout for {wallet_address}")
         # Return partial results with defaults
         results = [Exception("Timeout")] * len(tasks)
     t1 = time.time()
