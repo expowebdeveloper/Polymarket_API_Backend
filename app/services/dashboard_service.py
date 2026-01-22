@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional
+from decimal import Decimal
 from sqlalchemy.future import select
 from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession

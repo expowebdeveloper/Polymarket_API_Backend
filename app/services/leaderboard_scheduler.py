@@ -65,24 +65,17 @@ async def recalculate_leaderboard_job():
 async def start_periodic_recalculation(interval_hours: float = 6.5):
     """
     Start a background task that recalculates leaderboard every N hours.
-    Also runs immediately on startup.
+    Does NOT run on startup; first run is after the first interval.
     
     Args:
         interval_hours: Interval in hours between recalculations (default: 6.5)
     """
-    logger.info(f"📅 Starting periodic leaderboard recalculation (every {interval_hours} hours)")
+    logger.info(f"📅 Starting periodic leaderboard recalculation (every {interval_hours} hours, no run on startup)")
     
     async def periodic_task():
-        # Run immediately on startup
-        try:
-            await recalculate_leaderboard_job()
-        except Exception as e:
-            logger.error(f"Error in initial leaderboard recalculation: {e}", exc_info=True)
-        
-        # Then run periodically
         while True:
             try:
-                # Wait for the specified interval before next run
+                # Wait for the interval first, then run (no immediate run on startup)
                 await asyncio.sleep(interval_hours * 3600)  # Convert hours to seconds
                 await recalculate_leaderboard_job()
             except Exception as e:

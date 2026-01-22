@@ -139,10 +139,6 @@ class ActivityBroadcaster:
                     await asyncio.sleep(2)
                     continue
 
-                if not recent_activity:
-                    await asyncio.sleep(2)
-                    continue
-
                 # Polling Fallback (Every 2s)
                 # Since fetcher now provides correct UTC timestamps, we don't need complex offsets
                 now_ts = int(datetime.utcnow().timestamp())

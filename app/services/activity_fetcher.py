@@ -8,6 +8,12 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+# Rate limiting: avoid 429 from data-api.polymarket.com
+MAX_PER_MARKET_POLLS = 5       # Cap per-market requests per poll (was 50)
+TRADES_BATCH_DELAY = 0.5       # Seconds between each per-market request (sequential)
+TRADES_429_RETRIES = 3         # Retries on 429
+TRADES_429_BASE_DELAY = 2.0    # Base delay (seconds) for exponential backoff
+
 
 class PolymarketActivityFetcher:
     """Fetches and filters activities from Polymarket."""
@@ -90,71 +96,95 @@ class PolymarketActivityFetcher:
         
         return self.active_markets or []
     
+    async def _request_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        params: Dict,
+    ) -> Optional[Dict]:
+        """Execute GET with 429 retry and exponential backoff."""
+        last_err = None
+        for attempt in range(TRADES_429_RETRIES):
+            try:
+                r = await client.get(url, params=params)
+                if r.status_code == 429:
+                    delay = TRADES_429_BASE_DELAY * (2 ** attempt)
+                    logger.debug(f"data-api 429, retry in {delay:.1f}s (attempt {attempt + 1}/{TRADES_429_RETRIES})")
+                    await asyncio.sleep(delay)
+                    last_err = httpx.HTTPStatusError("Rate limited", request=r.request, response=r)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                last_err = e
+                if hasattr(e, "response") and getattr(e.response, "status_code", None) == 429:
+                    delay = TRADES_429_BASE_DELAY * (2 ** attempt)
+                    if attempt < TRADES_429_RETRIES - 1:
+                        await asyncio.sleep(delay)
+                    continue
+                raise
+        if last_err:
+            raise last_err
+        return None
+
     async def fetch_recent_activities(self, limit: int = 60) -> List[Dict]:
         """
         Fetch latest trades using a hybrid strategy (Global + Top Markets).
-        Ensures a constant live stream even if global endpoint is cached.
+        Rate-limited to avoid 429s: global first, then capped per-market requests
+        with concurrency limit and delays.
         """
         try:
-            # Top markets to poll directly for high-frequency activity
-            # Use the dynamic list of top 50 active markets
-            target_markets = getattr(self, "top_market_ids", [])
-            
-            # If fetch hasn't run yet, use fallback hardcoded heavily-traded IDs
+            target_markets = getattr(self, "top_market_ids", [])[:MAX_PER_MARKET_POLLS]
             if not target_markets:
-                 target_markets = [
-                    "0xd0ba39eed1bd58dfa50f2f4189dbcb3162191cc2db5f31cf7287dafaca6388d8", # BTC
-                    "0x9d499c069dad561d86257b7cba69760c73cdf1da1bd3de4224481a40d9e3e522", # XRP
-                    "0x0cfecbb95c7c25c345b6db764379e4948a31826b010667e43681559837941566"  # ETH
+                target_markets = [
+                    "0xd0ba39eed1bd58dfa50f2f4189dbcb3162191cc2db5f31cf7287dafaca6388d8",
+                    "0x9d499c069dad561d86257b7cba69760c73cdf1da1bd3de4224481a40d9e3e522",
+                    "0x0cfecbb95c7c25c345b6db764379e4948a31826b010667e43681559837941566",
                 ]
 
-            # Add a timestamp-based cache-buster to ensure we get the absolute latest data
             t = int(datetime.utcnow().timestamp() * 1000)
-            
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                # 1. Global Trades (Increased limit to catch rapid bursts)
-                global_task = client.get(
-                    f"{self.data_url}/trades", 
-                    params={"limit": limit, "_t": t}
+            trades_data: List[Dict] = []
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 1. Global trades first (single request)
+                data = await self._request_with_retry(
+                    client, f"{self.data_url}/trades", {"limit": limit, "_t": t}
                 )
-                tasks = [global_task]
-                
-                # 2. Targeted High-Volume Markets (Fast Lane)
-                for market_id in target_markets:
-                    tasks.append(client.get(
-                        f"{self.data_url}/trades", 
-                        params={"market": market_id, "limit": 10, "_t": t} # Limit 10 is plenty for single market
-                    ))
-                
-                responses = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                trades_data = []
-                for resp in responses:
-                    if isinstance(resp, httpx.Response) and resp.status_code == 200:
-                        trades_data.extend(resp.json())
-                
-                self.last_fetch = datetime.utcnow()
-                
-                # Parse and filter
-                activities = []
-                for item in trades_data:
-                    act = self._parse_trade(item)
-                    if act: 
-                        activities.append(act)
-                
-                # Sort newest first
-                activities.sort(key=lambda x: x["timestamp"], reverse=True)
-                
-                # De-duplicate
-                seen = set()
-                unique = []
-                for a in activities:
-                    if a["id"] not in seen:
-                        seen.add(a["id"])
-                        unique.append(a)
-                
-                return unique
-                
+                if data and isinstance(data, list):
+                    trades_data.extend(data)
+
+                # 2. Per-market requests: sequential with delay between each to avoid 429
+                for i, mid in enumerate(target_markets):
+                    if i > 0:
+                        await asyncio.sleep(TRADES_BATCH_DELAY)
+                    try:
+                        data = await self._request_with_retry(
+                            client,
+                            f"{self.data_url}/trades",
+                            {"market": mid, "limit": 10, "_t": t},
+                        )
+                        if data and isinstance(data, list):
+                            trades_data.extend(data)
+                    except Exception as e:
+                        logger.debug(f"Per-market fetch {mid}: {e}")
+
+            self.last_fetch = datetime.utcnow()
+
+            activities = []
+            for item in trades_data:
+                act = self._parse_trade(item)
+                if act:
+                    activities.append(act)
+            activities.sort(key=lambda x: x["timestamp"], reverse=True)
+
+            seen = set()
+            unique = []
+            for a in activities:
+                if a["id"] not in seen:
+                    seen.add(a["id"])
+                    unique.append(a)
+            return unique
+
         except Exception as e:
             logger.error(f"❌ Error in hybrid fetch: {e}")
             return []
