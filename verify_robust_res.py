@@ -1,7 +1,7 @@
 import asyncio
 import json
 from unittest.mock import patch, MagicMock
-from app.services.dashboard_service import get_live_dashboard_data
+from app.services.dashboard_service import get_profile_stat_data
 
 async def verify_robust_resolution():
     print("--- Testing fetch_market_by_slug with conditionId ---")

@@ -695,9 +695,9 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 _DASHBOARD_CACHE = {}
 CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
-async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
+async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
     """
-    Aggregate ALL necessary data for the wallet dashboard by fetching directly from Polymarket APIs.
+    Aggregate ALL necessary data for the wallet profile stats by fetching directly from Polymarket APIs.
     Bypasses the local database entirely.
     
     Args:
@@ -705,7 +705,7 @@ async def get_live_dashboard_data(wallet_address: str, force_refresh: bool = Fal
         force_refresh: Force refresh cache
         skip_trades: Skip fetching trade history (for initial load performance)
     
-    Includes a 30-second in-memory cache to prevent API rate limiting and speed up reloads.
+    Includes a 120-second in-memory cache to prevent API rate limiting and speed up reloads.
     """
     import time
     

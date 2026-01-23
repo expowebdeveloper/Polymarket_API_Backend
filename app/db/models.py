@@ -786,3 +786,30 @@ class MonthlyVolumeLeaderboard(Base):
     fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)  # When this data was fetched
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class TraderFetchCheckpoint(Base):
+    """Track fetch checkpoints for each trader's closed positions."""
+    __tablename__ = "trader_fetch_checkpoints"
+    
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    trader_id = Column(Integer, ForeignKey("trader_leaderboard.id"), nullable=False, index=True)
+    wallet_address = Column(String(42), nullable=False, index=True)
+    
+    # Checkpoint data
+    last_closed_position_timestamp = Column(Integer, nullable=True, index=True)
+    last_fetch_at = Column(DateTime, nullable=True)
+    total_closed_positions_fetched = Column(Integer, nullable=False, default=0)
+    
+    # Status tracking
+    fetch_status = Column(String(20), nullable=False, default="pending", index=True)
+    error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, nullable=False, default=0)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        UniqueConstraint('trader_id', name='uq_trader_fetch_checkpoint_trader'),
+    )
