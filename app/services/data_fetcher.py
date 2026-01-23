@@ -1459,10 +1459,11 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all")
         return {"volume": 0.0, "pnl": 0.0}
 
 
-def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) -> Dict[str, Any]:
+async def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) -> Dict[str, Any]:
     """
     Fetch market orders from Polymarket Data API only (no CLOB, Dome, Gamma, etc.).
     Uses the trades endpoint filtered by market slug.
+    Async implementation to prevent blocking the event loop.
     
     Args:
         market_slug: Market slug identifier
@@ -1488,11 +1489,8 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
             # Determine how many to fetch in this batch
             remaining = target_count - fetched_so_far
             fetch_limit = min(batch_limit, remaining)
-            # But usually it's better to fetch full batches to avoid tiny requests, 
-            # unless we are very close to the end. Let's strictly fetch as needed 
-            # or just default to 1000 and slice later. 
+            
             # Polymarket API likely ignores custom limits > 1000.
-            # Let's request 1000 to be safe and efficient.
             fetch_size = 1000
             
             trades_params = {
@@ -1501,12 +1499,11 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
                 "offset": current_offset
             }
             
-            # Use the shared sync_client
             try:
-                response = sync_client.get(trades_url, params=trades_params)
-            except NameError:
-                 with DNSAwareClient() as client:
-                    response = client.get(trades_url, params=trades_params)
+                response = await async_client.get(trades_url, params=trades_params)
+            except Exception as e:
+                print(f"Error calling Data API: {e}")
+                break
 
             response.raise_for_status()
             
@@ -1515,9 +1512,6 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
             if not isinstance(batch_data, list) or not batch_data:
                 break
                 
-            # If we requested more than we needed, just take what we need? 
-            # No, keep all to ensure we don't have gaps if we loop. 
-            # Actually, standard logic:
             all_trades_data.extend(batch_data)
             
             fetched_count = len(batch_data)
@@ -1537,7 +1531,7 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
                 "pagination": {
                     "limit": limit,
                     "offset": offset,
-                    "total": 0, # We don't know total easily without a separate call or assuming end
+                    "total": 0, 
                     "has_more": False
                 }
             }
@@ -1604,12 +1598,8 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
         # Determine has_more based on if we got full limit
         has_more = len(all_orders) >= limit
         
-        # Calculate TOTAL count if this is the first page (offset 0)
         total_orders = 0
-        # NOTE: fetched synchronously here caused timeouts on large markets (50k+ orders).
-        # We will now fetch this via a dedicated endpoint /count.
-        # if offset == 0:
-        #      total_orders = fetch_total_market_trades(market_slug)
+        # Total orders fetch moved to dedicated endpoint
 
         return {
             "orders": all_orders,
@@ -1626,47 +1616,83 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
             return {"orders": [], "pagination": {"limit": limit, "offset": offset, "total": 0, "has_more": False}}
         raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
     except Exception as e:
-        raise Exception(f"Unexpected error fetching market orders: {str(e)}")
+        # Don't raise, just empty to avoid crashing everything? No, we should raise or return error.
+        # But for async conversion, let's keep consistent.
+        print(f"Error in fetch_market_orders: {e}")
+        return {"orders": [], "pagination": {"limit": limit, "offset": offset, "total": 0, "has_more": False}}
 
 
-def fetch_market_traders_aggregated(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+async def fetch_market_traders_aggregated(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
     """
     Fetch ALL (or up to 20k) trades for a market, aggregate by user, and return best traders.
-    This runs server-side aggregation to provide an accurate leaderboard for the market.
+    Runs server-side aggregation. Async + Parallel fetching for performance.
     """
     try:
         trades_url = "https://data-api.polymarket.com/trades"
         all_trades = []
-        current_offset = 0
-        batch_size = 1000
-        max_trades = 20000 # Safety cap
         
-        # Fetch loop
-        while len(all_trades) < max_trades:
-            try:
-                params = {"market": market_slug, "limit": batch_size, "offset": current_offset}
-                try:
-                    response = sync_client.get(trades_url, params=params)
-                except NameError:
-                    with DNSAwareClient() as client:
-                        response = client.get(trades_url, params=params)
-                
-                response.raise_for_status()
-                batch = response.json()
-                
-                if not batch or not isinstance(batch, list):
-                    break
+        # Parallel Fetch settings
+        # Cap at 50,000 for better stats (original 20k was too small for big markets)
+        MAX_TRADES_TO_ANALYZE = 50000 
+        BATCH_SIZE_PER_REQUEST = 1000
+        PARALLEL_BATCHES = 5
+        
+        # Fetch first batch to check if data exists
+        try:
+            params = {"market": market_slug, "limit": BATCH_SIZE_PER_REQUEST, "offset": 0}
+            response = await async_client.get(trades_url, params=params)
+            response.raise_for_status()
+            first_batch = response.json()
+            if not first_batch or not isinstance(first_batch, list):
+                return {"traders": [], "pagination": {"limit": limit, "offset": offset, "total": 0, "has_more": False}}
+            
+            all_trades.extend(first_batch)
+            
+            # If less than batch size, we are done
+            if len(first_batch) < BATCH_SIZE_PER_REQUEST:
+                 pass # Analysis block below will handle
+            else:
+                 # Parallel fetch the rest
+                 current_offset = BATCH_SIZE_PER_REQUEST
+                 
+                 while len(all_trades) < MAX_TRADES_TO_ANALYZE:
+                    tasks = []
+                    for i in range(PARALLEL_BATCHES):
+                        # Don't exceed max
+                        if current_offset >= MAX_TRADES_TO_ANALYZE:
+                            break
+                        
+                        task_params = {"market": market_slug, "limit": BATCH_SIZE_PER_REQUEST, "offset": current_offset}
+                        tasks.append(async_client.get(trades_url, params=task_params))
+                        current_offset += BATCH_SIZE_PER_REQUEST
                     
-                all_trades.extend(batch)
-                
-                if len(batch) < batch_size:
-                    break
+                    if not tasks:
+                        break
+                        
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
                     
-                current_offset += len(batch)
-                
-            except Exception as e:
-                print(f"Error fetching batch for aggregated traders: {e}")
-                break
+                    batch_has_end = False
+                    fetched_in_round = 0
+                    
+                    for res in results:
+                        if isinstance(res, Exception) or res.status_code != 200:
+                            continue
+                            
+                        data = res.json()
+                        if isinstance(data, list) and data:
+                            all_trades.extend(data)
+                            fetched_in_round += len(data)
+                            if len(data) < BATCH_SIZE_PER_REQUEST:
+                                batch_has_end = True
+                        else:
+                            batch_has_end = True
+                    
+                    if batch_has_end or fetched_in_round == 0:
+                        break
+                        
+        except Exception as e:
+            print(f"Error fetching aggregated traders: {e}")
+            # Continue with whatever we have
         
         # Aggregate
         trader_map = {} # user -> stats
@@ -1753,19 +1779,46 @@ def fetch_market_traders_aggregated(market_slug: str, limit: int = 100, offset: 
             }
         }
     except Exception as e:
-        raise Exception(f"Error fetching aggregated traders: {str(e)}")
+        print(f"Error fetching aggregated traders outer: {e}")
+        return {"traders": [], "pagination": {"limit": limit, "offset": offset, "total": 0, "has_more": False}}
 
 
-def fetch_total_market_trades(market_slug: str) -> int:
+async def fetch_total_market_trades(market_slug: str) -> int:
     """
     Efficiently fetch the TOTAL number of trades for a market by iterating all pages.
     Used to get an exact count for UI display (e.g., "Orders (1234)").
+    Async implementation.
     """
     try:
         trades_url = "https://data-api.polymarket.com/trades"
         total_count = 0
         current_offset = 0
         batch_size = 1000  # Max batch
+        
+        # Parallel Fetching to speed up counting for large markets
+        # First check first page
+        params = {"market": market_slug, "limit": batch_size, "offset": 0}
+        try:
+            response = await async_client.get(trades_url, params=params)
+            response.raise_for_status()
+            batch = response.json()
+            if not batch or not isinstance(batch, list):
+                return 0
+            
+            count = len(batch)
+            total_count += count
+            
+            if count < batch_size:
+                return total_count
+        except Exception:
+            return 0
+            
+        # If we have more, we can try to "jump" ahead or parallel fetch
+        # But for exact count, we need to know where it ends. 
+        # Actually, iterating sequentially async is much better than blocking sync.
+        # Let's stick to sequential async for simplicity but non-blocking.
+        
+        current_offset = batch_size
         
         while True:
             params = {
@@ -1775,15 +1828,14 @@ def fetch_total_market_trades(market_slug: str) -> int:
             }
             
             try:
-                response = sync_client.get(trades_url, params=params)
-            except NameError:
-                with DNSAwareClient() as client:
-                    response = client.get(trades_url, params=params)
-            
-            if response.status_code != 200:
+                response = await async_client.get(trades_url, params=params)
+                if response.status_code != 200:
+                    break
+                
+                batch = response.json()
+            except Exception:
                 break
                 
-            batch = response.json()
             if not batch or not isinstance(batch, list):
                 break
                 

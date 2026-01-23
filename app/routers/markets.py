@@ -142,7 +142,7 @@ async def get_market_orders(
 ):
     """Fetch orders for a specific market from Polymarket Data API only."""
     try:
-        result = fetch_market_orders(market_slug=market_slug, limit=limit, offset=offset)
+        result = await fetch_market_orders(market_slug=market_slug, limit=limit, offset=offset)
         return result
     except Exception as e:
         raise HTTPException(
@@ -157,7 +157,7 @@ async def get_market_orders_count(market_slug: str):
     This iterates through all pages to get an exact count (can be slow for large markets).
     """
     try:
-        count = fetch_total_market_trades(market_slug)
+        count = await fetch_total_market_trades(market_slug)
         return {"total": count}
     except Exception as e:
         raise HTTPException(
@@ -177,7 +177,7 @@ async def get_market_traders(
     Returns traders sorted by rating (win rate) and volume.
     """
     try:
-        result = fetch_market_traders_aggregated(market_slug=market_slug, limit=limit, offset=offset)
+        result = await fetch_market_traders_aggregated(market_slug=market_slug, limit=limit, offset=offset)
         return result
     except Exception as e:
         raise HTTPException(
