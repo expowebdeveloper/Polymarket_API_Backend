@@ -3,6 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy import desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
+from decimal import Decimal
 from collections import Counter
 
 from app.db.models import (

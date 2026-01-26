@@ -22,7 +22,11 @@ HIJACKED_DOMAINS = {
 }
 
 # Cache for resolved IPs to avoid repeated DNS queries
-DNS_CACHE: Dict[str, str] = {}
+DNS_CACHE: Dict[str, str] = {
+    "data-api.polymarket.com": "104.18.34.205", 
+    "gamma-api.polymarket.com": "104.18.34.205",
+    "polymarket.com": "104.18.34.205"
+}
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 

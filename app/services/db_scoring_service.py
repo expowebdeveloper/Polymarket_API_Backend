@@ -5,6 +5,7 @@ Uses the same formulas as the live leaderboards (shrunk values, percentiles).
 
 from typing import List, Dict, Optional, Any
 import asyncio
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.leaderboard_service import (
     calculate_trader_metrics_with_time_filter,
