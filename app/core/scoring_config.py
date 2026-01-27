@@ -15,7 +15,7 @@ class ScoringConfig:
     """
     
     # === Final Rating Formula Weights ===
-    # Rating = 100 × Conf(N) × [ 0.225·W_score + 0.225·ROI_score + 0.45·PnL_score + 0.10·R_score ]
+    # Rating = 100 × Conf(N) × [ 0.225·W_score + 0.225·ROI_score + 0.45·PnL_score + 0.10·(1 - Risk_Score) ]
     weight_win_rate: float = 0.225      # wW - Win Rate weight
     weight_roi: float = 0.225            # wR - ROI weight  
     weight_pnl: float = 0.45            # wP - PnL weight

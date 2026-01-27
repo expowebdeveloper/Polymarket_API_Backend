@@ -17,13 +17,17 @@ HIJACKED_DOMAINS = {
     "api.polymarket.com",
     "gamma-api.polymarket.com",
     "user-pnl-api.polymarket.com",
-    "clob.polymarket.com"
+    "clob.polymarket.com",
+    "polymarket.com",
+    "www.polymarket.com"
 }
 
 # Cache for resolved IPs to avoid repeated DNS queries
 DNS_CACHE: Dict[str, str] = {
     "data-api.polymarket.com": "104.18.34.205", 
-    "gamma-api.polymarket.com": "104.18.34.205"
+    "gamma-api.polymarket.com": "104.18.34.205",
+    "polymarket.com": "104.18.34.205",
+    "www.polymarket.com": "104.18.34.205"
 }
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -1380,13 +1384,14 @@ async def fetch_portfolio_value(wallet_address: str) -> float:
         return 0.0
 
 
-async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all") -> Dict[str, float]:
+async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all", order_by: str = "VOL") -> Dict[str, float]:
     """
     Fetch stats (volume, pnl) for a user from the Leaderboard API for a specific time period.
     
     Args:
         wallet_address: Ethereum wallet address (0x...)
         time_period: Time period ("day", "week", "month", "all")
+        order_by: Order by metric ("VOL" or "PNL")
     
     Returns:
         Dictionary with "volume" and "pnl" keys
@@ -1395,7 +1400,7 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all")
         url = "https://data-api.polymarket.com/v1/leaderboard"
         params = {
             "timePeriod": time_period,
-            "orderBy": "VOL",
+            "orderBy": order_by,
             "limit": 1,
             "offset": 0,
             "category": "overall",

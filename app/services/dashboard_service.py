@@ -373,30 +373,26 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
     
     try:
         # Sort closed positions by timestamp (oldest first)
-        sorted_closed = sorted(closed_positions, key=lambda cp: cp.timestamp)
+        # Handle cases where timestamp might be missing or None
+        sorted_closed = sorted(closed_positions, key=lambda cp: cp.timestamp or 0)
         
-        # We calculate streaks and counts from closed positions
-        # This will be consistent with the streaks themselves
-        longest_streak_temp = 0
-        current_streak_temp = 0
+        # Reset counters
+        longest_streak = 0
+        current_streak = 0
+        total_wins = 0
+        total_losses = 0
         
         for cp in sorted_closed:
             pnl = float(cp.realized_pnl or 0)
             if pnl > 0:
                 # Winning trade
                 total_wins += 1
-                current_streak_temp += 1
-                longest_streak_temp = max(longest_streak_temp, current_streak_temp)
-            elif pnl < 0:
-                # Losing trade
+                current_streak += 1
+                longest_streak = max(longest_streak, current_streak)
+            else:
+                # Losing trade (pnl <= 0 counts as loss/streak breaker)
                 total_losses += 1
-                longest_streak = max(longest_streak, longest_streak_temp)
-                current_streak_temp = 0
-                longest_streak_temp = 0
-        
-        # Final check for longest streak
-        longest_streak = max(longest_streak, longest_streak_temp)
-        current_streak = current_streak_temp
+                current_streak = 0
 
         # Override with scoring_metrics if available and different (should be rare)
         if scoring_metrics and "winning_trades" in scoring_metrics:
@@ -744,7 +740,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "user_pnl": fetch_user_pnl(wallet_address),
         "profile": fetch_profile_stats(wallet_address),
         "portfolio_value": fetch_portfolio_value(wallet_address),
-        "leaderboard": fetch_leaderboard_stats(wallet_address),
+        "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
+        "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
         "traded_count": fetch_user_traded_count(wallet_address),
         "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
@@ -787,7 +784,7 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
                 f[key] = []
             elif key == "user_pnl":
                 f[key] = []
-            elif key in ["profile", "leaderboard", "profile_v2"]:
+            elif key in ["profile", "leaderboard", "leaderboard_pnl", "profile_v2"]:
                 f[key] = {}
             elif key in ["portfolio_value", "traded_count"]:
                 f[key] = 0
@@ -833,6 +830,7 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
     profile_stats = safe_get("profile", {})
     portfolio_value = safe_get("portfolio_value", 0.0)
     leaderboard_stats = safe_get("leaderboard", {})
+    leaderboard_pnl_stats = safe_get("leaderboard_pnl", {})
     traded_count = safe_get("traded_count", 0)
     profile_v2 = safe_get("profile_v2", {})
 
@@ -996,6 +994,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "unrealized_pnl": unrealized_pnl,
         "realized_pnl": realized_pnl,
         "max_stake": max_stake,
+        "volume_rank": leaderboard_stats.get("rank"),
+        "pnl_rank": leaderboard_pnl_stats.get("rank"),
         "winning_stakes": winning_stakes,
         "losing_stakes": losing_stakes,
         "w_trade": w_trade,
@@ -1007,13 +1007,27 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
 
     # CRITICAL: Override metrics with official values from Polymarket Data API
     # These values are the Source of Truth for the dashboard display.
-    official_pnl = leaderboard_stats.get("pnl", scoring_metrics["total_pnl"])
-    official_vol = leaderboard_stats.get("volume", scoring_metrics["total_volume"])
+    # ONLY override if we have a valid official rank (meaning the user exists in leaderboard)
+    # or if we have non-zero official values (rare case where rank might be missing but data exists)
     official_rank = leaderboard_stats.get("rank", 0)
+    official_pnl = leaderboard_stats.get("pnl", 0.0)
+    official_vol = leaderboard_stats.get("volume", 0.0)
     
-    scoring_metrics["total_pnl"] = official_pnl
-    scoring_metrics["total_volume"] = official_vol
-    scoring_metrics["buy_volume"] = official_vol # In v1/leaderboard, 'vol' is the primary volume metric
+    # Check if we should use official stats
+    # Cases:
+    # 1. User has a rank > 0
+    # 2. User has significant volume/pnl recorded in API even without rank
+    use_official_stats = (official_rank and official_rank > 0) or (abs(official_vol) > 0)
+    
+    if use_official_stats:
+        scoring_metrics["total_pnl"] = official_pnl
+        scoring_metrics["total_volume"] = official_vol
+        scoring_metrics["buy_volume"] = official_vol # In v1/leaderboard, 'vol' is the primary volume metric
+    else:
+        # Keep local calculations if official stats are missing/empty
+        pass
+
+    scoring_metrics["total_trades"] = traded_count or scoring_metrics["total_trades"]
     scoring_metrics["total_trades"] = traded_count or scoring_metrics["total_trades"]
     
     # Update username and profile image from official userData API

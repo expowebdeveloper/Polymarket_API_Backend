@@ -286,216 +286,149 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict) -> Tup
 
 async def fetch_all_leaderboard_data(session: AsyncSession):
     """
-    Fetch all leaderboard data from the API with pagination.
+    Fetch all leaderboard data from the API using multiple strategies to maximize coverage.
     
     Args:
         session: Database session
     """
-    offset = 0
-    total_fetched = 0
-    total_inserted = 0
-    total_updated = 0
-    failed_offsets = []
-    consecutive_no_new = 0  # Track consecutive batches with no new records
-    MAX_CONSECUTIVE_NO_NEW = 10  # Stop after 10 consecutive batches with no new records
-    seen_wallets_this_run = set()  # Track wallets seen in this run to detect API cycling
+    # Strategies to maximize unique trader discovery
+    strategies = [
+        {"time_period": "all", "order_by": "PNL", "category": "overall"},
+        {"time_period": "month", "order_by": "PNL", "category": "overall"},
+        {"time_period": "week", "order_by": "PNL", "category": "overall"},
+        {"time_period": "day", "order_by": "PNL", "category": "overall"},
+        {"time_period": "all", "order_by": "VOL", "category": "overall"},
+        {"time_period": "month", "order_by": "VOL", "category": "overall"},
+        {"time_period": "week", "order_by": "VOL", "category": "overall"},
+    ]
     
-    print(f"\n🚀 Starting to fetch leaderboard data...")
-    print(f"📋 Configuration: limit={LIMIT}, timePeriod=all, orderBy=PNL, category=overall\n")
+    total_globally_fetched = 0
+    total_globally_inserted = 0
+    total_globally_updated = 0
+    global_failed_offsets = 0
+    seen_wallets_global = set()
     
-    while True:
-        print(f"📥 Fetching offset {offset}...", end=" ")
+    print(f"\n🚀 Starting multi-strategy leaderboard ingestion...")
+    print(f"📋 Strategies: {len(strategies)}")
+    
+    for i, strategy in enumerate(strategies):
+        time_period = strategy["time_period"]
+        order_by = strategy["order_by"]
+        category = strategy["category"]
         
-        # Fetch page
-        result = await fetch_leaderboard_page(
-            time_period="all",
-            order_by="PNL",
-            category="overall",
-            limit=LIMIT,
-            offset=offset
-        )
+        print(f"\n{'-'*60}")
+        print(f"👉 Strategy {i+1}/{len(strategies)}: {time_period.upper()} / {order_by} ({category})")
+        print(f"{'-'*60}")
         
-        if result is None:
-            # Failed after retries
-            failed_offsets.append(offset)
-            print(f"❌ Failed")
-            offset += LIMIT
-            continue
+        offset = 0
+        total_fetched_strategy = 0
+        failed_offsets_strategy = []
+        consecutive_no_new_wallets = 0  # Track consecutive batches with no NEW unique wallets
+        MAX_CONSECUTIVE_NO_NEW_WALLETS = 5  # Stop strategy if we don't find any NEW wallets for 5 batches
         
-        traders, pagination = result
-        
-        if len(traders) == 0:
-            print(f"✅ No more data (empty response)")
-            break
-        
-        print(f"✅ Fetched {len(traders)} traders", end="")
-        if pagination.get("total"):
-            print(f" (Total available: {pagination['total']})", end="")
-        print()
-        
-        # Debug: Show sample wallet addresses from this batch (first 3)
-        if traders:
-            sample_wallets = []
-            for t in traders[:3]:
-                wallet = (
-                    t.get("user") or
-                    t.get("proxyWallet") or 
-                    t.get("proxy_wallet") or
-                    t.get("wallet_address") or 
-                    t.get("wallet")
-                )
-                if wallet:
-                    sample_wallets.append(wallet[:10] + "..." if len(wallet) > 10 else wallet)
-            if sample_wallets:
-                print(f"   📋 Sample wallets: {', '.join(sample_wallets)}")
-        
-        total_fetched += len(traders)
-        
-        # Process each trader
-        batch_inserted = 0
-        batch_updated = 0
-        batch_skipped = 0
-        batch_duplicates_in_response = 0  # Track duplicates within the same API response
-        
-        # Extract wallet addresses from this batch to check for duplicates
-        batch_wallets = []
-        invalid_wallets = 0
-        for trader in traders:
-            wallet = (
-                trader.get("user") or
-                trader.get("proxyWallet") or 
-                trader.get("proxy_wallet") or
-                trader.get("wallet_address") or 
-                trader.get("wallet")
+        while True:
+            print(f"   📥 Fetching offset {offset}...", end=" ")
+            
+            # Fetch page
+            result = await fetch_leaderboard_page(
+                time_period=time_period,
+                order_by=order_by,
+                category=category,
+                limit=LIMIT,
+                offset=offset
             )
-            if wallet and wallet.startswith("0x") and len(wallet) == 42:
-                wallet_lower = wallet.lower()
-                batch_wallets.append(wallet_lower)
-                if wallet_lower in seen_wallets_this_run:
-                    batch_duplicates_in_response += 1
-                seen_wallets_this_run.add(wallet_lower)
-            else:
-                invalid_wallets += 1
-        
-        # Check for duplicates within this batch
-        if len(batch_wallets) != len(set(batch_wallets)):
-            duplicates_in_batch = len(batch_wallets) - len(set(batch_wallets))
-            print(f"   ⚠️  Warning: {duplicates_in_batch} duplicate wallet(s) within this API response!")
-        
-        if invalid_wallets > 0:
-            print(f"   ⚠️  Warning: {invalid_wallets} trader(s) with invalid/missing wallet address")
-        
-        # Every 100 batches, show statistics
-        if (offset // LIMIT) % 100 == 0 and offset > 0:
-            print(f"   📊 Progress: {len(seen_wallets_this_run)} unique wallets seen so far at offset {offset}")
-        
-        # Process each trader
-        for trader in traders:
-            inserted, updated = await process_trader_record(session, trader)
-            if inserted:
-                batch_inserted += 1
-                total_inserted += 1
-            elif updated:
-                batch_updated += 1
-                total_updated += 1
-            else:
-                batch_skipped += 1  # Invalid wallet address or other issue
-        
-        # Commit batch
-        try:
-            await session.commit()
-            status_msg = f"   💾 Committed: {batch_inserted} inserted, {batch_updated} updated"
-            if batch_skipped > 0:
-                status_msg += f", {batch_skipped} skipped"
-            if batch_duplicates_in_response > 0:
-                status_msg += f" (⚠️ {batch_duplicates_in_response} duplicates from API)"
-            print(status_msg)
-        except Exception as e:
-            print(f"   ❌ Error committing batch: {e}")
-            await session.rollback()
-        
-        # Check if we're seeing wallets we've already processed (API cycling)
-        if batch_duplicates_in_response > 0:
-            print(f"   ⚠️  API appears to be cycling - {batch_duplicates_in_response} wallet(s) already seen in this run")
-            # Show which wallets are duplicates
-            if batch_duplicates_in_response <= 5:
-                duplicate_list = []
-                for trader in traders:
-                    wallet = (
-                        trader.get("user") or
-                        trader.get("proxyWallet") or 
-                        trader.get("proxy_wallet") or
-                        trader.get("wallet_address") or 
-                        trader.get("wallet")
-                    )
-                    if wallet and wallet.startswith("0x") and len(wallet) == 42:
-                        wallet_lower = wallet.lower()
-                        if wallet_lower in seen_wallets_this_run and wallet_lower not in duplicate_list:
-                            duplicate_list.append(wallet_lower)
-                            if len(duplicate_list) >= 3:
-                                break
-                if duplicate_list:
-                    print(f"      Example duplicates: {', '.join([w[:10] + '...' for w in duplicate_list[:3]])}")
-        
-        # Check if we got any new records
-        if batch_inserted == 0:
-            consecutive_no_new += 1
-            if consecutive_no_new >= MAX_CONSECUTIVE_NO_NEW:
-                print(f"\n⚠️  Stopping: {MAX_CONSECUTIVE_NO_NEW} consecutive batches with no new records")
-                print(f"   Total unique wallets seen in this run: {len(seen_wallets_this_run)}")
-                print(f"   This suggests we've fetched all unique traders from the API")
-                print(f"   The API may only have ~{len(seen_wallets_this_run)} unique traders")
+            
+            if result is None:
+                # Failed after retries
+                failed_offsets_strategy.append(offset)
+                print(f"❌ Failed")
+                offset += LIMIT
+                continue
+            
+            traders, pagination = result
+            
+            if len(traders) == 0:
+                print(f"✅ No more data (empty response)")
                 break
-        else:
-            consecutive_no_new = 0  # Reset counter if we got new records
-        
-        # Check if we should continue using pagination metadata
-        has_more = pagination.get("has_more", False)
-        
-        # Stop if we got fewer records than requested (definitely no more data)
-        if len(traders) < LIMIT:
-            print(f"✅ Reached end of data (returned {len(traders)} < {LIMIT})")
-            break
-        
-        # Stop if API explicitly says no more data
-        if not has_more and len(traders) == LIMIT:
-            # Got full page but API says no more - this shouldn't happen, but handle it
-            print(f"⚠️  Got full page but has_more=false, continuing to verify...")
-            # Continue one more time to verify
-        
-        # If has_more is False and we got less than limit, definitely stop
-        if not has_more:
-            print(f"✅ Reached end of data (has_more=false)")
-            break
-        
-        # Move to next page
-        offset += LIMIT
-        
-        # Small delay to avoid rate limiting
-        await asyncio.sleep(0.5)
-    
-    # Print final statistics
+            
+            # Count NEW unique wallets in this batch
+            new_unique_wallets_in_batch = 0
+            for t in traders:
+                wallet = (t.get("user") or t.get("proxyWallet") or t.get("wallet_address"))
+                if wallet and wallet.startswith("0x") and len(wallet) == 42:
+                    w_lower = wallet.lower()
+                    if w_lower not in seen_wallets_global:
+                        new_unique_wallets_in_batch += 1
+                        seen_wallets_global.add(w_lower)
+            
+            print(f"✅ Fetched {len(traders)} items. Found {new_unique_wallets_in_batch} NEW unique wallets.", end="")
+            if pagination.get("total"):
+                print(f" (Total avail: {pagination['total']})", end="")
+            print()
+            
+            total_fetched_strategy += len(traders)
+            total_globally_fetched += len(traders)
+            
+            # Process each trader
+            batch_inserted = 0
+            batch_updated = 0
+            batch_skipped = 0
+            
+            for trader in traders:
+                inserted, updated = await process_trader_record(session, trader)
+                if inserted:
+                    batch_inserted += 1
+                    total_globally_inserted += 1
+                elif updated:
+                    batch_updated += 1
+                    total_globally_updated += 1
+                else:
+                    batch_skipped += 1
+            
+            # Commit batch
+            try:
+                await session.commit()
+                # Simplified status for strategy run
+                # print(f"      Saved: +{batch_inserted} new, {batch_updated} updated")
+            except Exception as e:
+                print(f"   ❌ Error committing batch: {e}")
+                await session.rollback()
+            
+            # Stop condition: If we found NO new unique wallets for several batches, this strategy is likely tapped out
+            # (i.e. we are just re-fetching traders we already saw in previous strategies or earlier in this strategy)
+            if new_unique_wallets_in_batch == 0:
+                consecutive_no_new_wallets += 1
+            else:
+                consecutive_no_new_wallets = 0
+                
+            if consecutive_no_new_wallets >= MAX_CONSECUTIVE_NO_NEW_WALLETS:
+                print(f"   ⚠️  Stopping strategy: {MAX_CONSECUTIVE_NO_NEW_WALLETS} batches with 0 new unique wallets.")
+                break
+            
+            # Pagination check
+            has_more = pagination.get("has_more", False)
+            if len(traders) < LIMIT or not has_more:
+                print(f"   ✅ Reached end of data for this strategy.")
+                break
+            
+            offset += LIMIT
+            await asyncio.sleep(0.5)
+
+    # Final stats
     print(f"\n{'='*60}")
-    print(f"📊 FINAL STATISTICS")
+    print(f"📊 GLOBAL FETCH STATISTICS")
     print(f"{'='*60}")
-    print(f"Total traders fetched:     {total_fetched}")
-    print(f"Total records inserted:     {total_inserted}")
-    print(f"Total records updated:       {total_updated}")
-    print(f"Unique wallets in this run: {len(seen_wallets_this_run)}")
-    print(f"Final offset reached:       {offset}")
-    print(f"Failed offsets:             {len(failed_offsets)}")
-    if failed_offsets:
-        print(f"Failed offset list:         {failed_offsets[:10]}{'...' if len(failed_offsets) > 10 else ''}")
-    if consecutive_no_new >= MAX_CONSECUTIVE_NO_NEW:
-        print(f"\n⚠️  Note: Stopped early due to {MAX_CONSECUTIVE_NO_NEW} consecutive batches with no new records")
-        print(f"   This likely means all unique traders have been fetched")
+    print(f"Total entries processed:   {total_globally_fetched}")
+    print(f"Total new Inserted:        {total_globally_inserted}")
+    print(f"Total Updated:             {total_globally_updated}")
+    print(f"Total Unique Wallets:      {len(seen_wallets_global)}")
     print(f"{'='*60}\n")
     
     return {
-        "total_fetched": total_fetched,
-        "total_inserted": total_inserted,
-        "total_updated": total_updated,
-        "failed_offsets": failed_offsets
+        "total_fetched": total_globally_fetched,
+        "total_inserted": total_globally_inserted,
+        "total_updated": total_globally_updated,
+        "unique_wallets": len(seen_wallets_global)
     }
 
 

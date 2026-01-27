@@ -709,7 +709,7 @@ def calculate_scores_and_rank(
         risk_factor = 1.0 - risk_score
         
         # Final Rating Formula (Deterministic matching Specifications)
-        # Formula: Rating = 100 * Conf(N) * [ 0.225 * W_score + 0.225 * ROI_score + 0.45 * PnL_score + 0.10 * Risk_factor ]
+        # Formula: Rating = 100 * Conf(N) * [ 0.225 * W_score + 0.225 * ROI_score + 0.45 * PnL_score + 0.10 * (1 - Risk_Score) ]
         
         # Calculate Confidence Score based on number of trades
         num_predictions = t.get('total_trades_with_pnl', 0)
@@ -938,7 +938,7 @@ def calculate_scores_and_rank_with_percentiles(
         risk_factor = 1.0 - risk_score
         
         # Final Rating Formula (Deterministic matching Specifications)
-        # Formula: Rating = 100 * Conf(N) * [ 0.225 * W_score + 0.225 * ROI_score + 0.45 * PnL_score + 0.10 * Risk_factor ]
+        # Formula: Rating = 100 * Conf(N) * [ 0.225 * W_score + 0.225 * ROI_score + 0.45 * PnL_score + 0.10 * (1 - Risk_Score) ]
         
         # Calculate Confidence Score based on number of trades
         num_predictions = t.get('total_trades_with_pnl', 0)
