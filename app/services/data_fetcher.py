@@ -28,7 +28,28 @@ DNS_CACHE: Dict[str, str] = {
     "polymarket.com": "104.18.34.205"
 }
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+def get_standard_headers(host: Optional[str] = None) -> Dict[str, str]:
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache"
+    }
+    if host:
+        headers["Host"] = host
+        headers["Origin"] = f"https://{host}"
+        headers["Referer"] = f"https://{host}/"
+    return headers
 
 def resolve_domain_securely(domain: str) -> str:
     """Resolve a domain using Google DNS (8.8.8.8) to bypass local hijacking."""
@@ -139,7 +160,7 @@ class DNSAwareClient(httpx.Client):
 # Shared sync client instance
 sync_client = DNSAwareClient(
     timeout=30.0,
-    headers={"User-Agent": USER_AGENT}
+    headers=get_standard_headers("polymarket.com")
 )
 
 # Shared async client instance for extreme performance
@@ -147,7 +168,7 @@ sync_client = DNSAwareClient(
 async_client = DNSAwareAsyncClient(
     timeout=httpx.Timeout(30.0, connect=10.0),
     limits=httpx.Limits(max_connections=100, max_keepalive_connections=50),
-    headers={"User-Agent": USER_AGENT}
+    headers=get_standard_headers("polymarket.com")
 )
 
 def get_polymarket_headers() -> Dict[str, str]:

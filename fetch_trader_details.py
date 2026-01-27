@@ -146,7 +146,8 @@ async def main():
                 limit=None,  # Process all
                 offset=0,
                 force_refresh=force_refresh,
-                session_factory=create_trader_session
+                session_factory=create_trader_session,
+                skip_activity=True  # User requested to skip activity for now
             )
             
             # Print results

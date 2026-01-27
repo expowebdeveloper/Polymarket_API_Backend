@@ -273,56 +273,100 @@ def process_trader_data_points(
 async def calculate_trader_metrics_with_time_filter(
     session: AsyncSession,
     wallet_address: str,
-    period: str = 'all'
+    period: str = 'all',
+    use_scraped_data: bool = False
 ) -> Optional[Dict]:
     """
     Calculate PnL metrics for a trader with time filtering.
     """
-    from app.services.trade_service import get_trades_from_db
-    from app.services.position_service import get_positions_from_db
-    from app.services.activity_service import get_activities_from_db
-    
-    trades = await get_trades_from_db(session, wallet_address)
-    positions = await get_positions_from_db(session, wallet_address)
-    activities = await get_activities_from_db(session, wallet_address)
-    
-    stmt = select(ClosedPosition).where(ClosedPosition.proxy_wallet == wallet_address)
-    result = await session.execute(stmt)
-    closed_positions = result.scalars().all()
-    
-    # Filter by time
-    if period != 'all':
-        cutoff = int((datetime.utcnow() - timedelta(days=7 if period == '7d' else 30)).timestamp())
-        trades = [t for t in trades if t.timestamp >= cutoff]
-        closed_positions = [cp for cp in closed_positions if cp.timestamp >= cutoff]
-        activities = [a for a in activities if a.timestamp >= cutoff]
+    if use_scraped_data:
+        from app.services.trader_detail_service import (
+            get_scraped_trades_for_calc,
+            get_scraped_positions_for_calc,
+            get_scraped_activities_for_calc,
+            get_scraped_closed_positions_for_calc
+        )
+        trades = await get_scraped_trades_for_calc(session, wallet_address)
+        positions = await get_scraped_positions_for_calc(session, wallet_address)
+        activities = await get_scraped_activities_for_calc(session, wallet_address)
+        closed_positions = await get_scraped_closed_positions_for_calc(session, wallet_address)
         
-        # Position filtering (simplified: include all active for now as they are ongoing)
-        # In process_trader_data_points we use initialValue/cashPnl
-    
-    if not trades and not positions and not activities:
-        return None
+        # Helper to convert object to dict if needed (scraped accessors return dicts already, but lets be safe)
+        # They return dicts, so no need for row_to_dict
         
-    # Prepare info
-    trader_info = {}
-    if trades:
-        trader_info = {
-            "name": trades[0].name,
-            "pseudonym": trades[0].pseudonym,
-            "profile_image": trades[0].profile_image_optimized or trades[0].profile_image
-        }
+        # Scraped data already has timestamps, but lets ensure object attribute access vs dict access is handled
+        # process_trader_data_points handles dicts.
+        
+        # Filter by time - scraped data is dicts, so use ['timestamp'] or .get('timestamp')
+        if period != 'all':
+            cutoff = int((datetime.utcnow() - timedelta(days=7 if period == '7d' else 30)).timestamp())
+            trades = [t for t in trades if t.get('timestamp', 0) >= cutoff]
+            closed_positions = [cp for cp in closed_positions if cp.get('timestamp', 0) >= cutoff]
+            activities = [a for a in activities if a.get('timestamp', 0) >= cutoff]
+            
+        if not trades and not positions and not activities:
+            return None
+            
+        # Prepare info from scraped profile/trades
+        trader_info = {}
+        if trades:
+            trader_info = {
+                "name": trades[0].get("name"),
+                "pseudonym": trades[0].get("pseudonym"),
+                "profile_image": trades[0].get("profile_image_optimized") or trades[0].get("profile_image")
+            }
+            
+        return process_trader_data_points(
+            wallet_address,
+            trades,
+            positions,
+            activities,
+            closed_positions,
+            trader_info
+        )
 
-    # Convert SQLAlchemy objects to dicts for process_trader_data_points
-    from app.services.dashboard_service import row_to_dict
-    
-    return process_trader_data_points(
-        wallet_address,
-        [row_to_dict(t) for t in trades],
-        [row_to_dict(p) for p in positions],
-        [row_to_dict(a) for a in activities],
-        [row_to_dict(cp) for cp in closed_positions],
-        trader_info
-    )
+    else:
+        # ORIGINAL LOGIC using Portfolio tables
+        from app.services.trade_service import get_trades_from_db
+        from app.services.position_service import get_positions_from_db
+        from app.services.activity_service import get_activities_from_db
+        from app.services.dashboard_service import row_to_dict
+        
+        trades = await get_trades_from_db(session, wallet_address)
+        positions = await get_positions_from_db(session, wallet_address)
+        activities = await get_activities_from_db(session, wallet_address)
+        
+        stmt = select(ClosedPosition).where(ClosedPosition.proxy_wallet == wallet_address)
+        result = await session.execute(stmt)
+        closed_positions = result.scalars().all()
+        
+        # Filter by time (trades are Objects here)
+        if period != 'all':
+            cutoff = int((datetime.utcnow() - timedelta(days=7 if period == '7d' else 30)).timestamp())
+            trades = [t for t in trades if t.timestamp >= cutoff]
+            closed_positions = [cp for cp in closed_positions if cp.timestamp >= cutoff]
+            activities = [a for a in activities if a.timestamp >= cutoff]
+        
+        if not trades and not positions and not activities:
+            return None
+            
+        # Prepare info
+        trader_info = {}
+        if trades:
+            trader_info = {
+                "name": trades[0].name,
+                "pseudonym": trades[0].pseudonym,
+                "profile_image": trades[0].profile_image_optimized or trades[0].profile_image
+            }
+
+        return process_trader_data_points(
+            wallet_address,
+            [row_to_dict(t) for t in trades],
+            [row_to_dict(p) for p in positions],
+            [row_to_dict(a) for a in activities],
+            [row_to_dict(cp) for cp in closed_positions],
+            trader_info
+        )
 
 
 async def get_leaderboard_by_pnl(

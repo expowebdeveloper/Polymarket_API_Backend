@@ -24,7 +24,7 @@ from app.services.data_fetcher import async_client
 
 # Configuration
 API_BASE_URL = "https://data-api.polymarket.com/v1/leaderboard"
-LIMIT = 50  # Records per page (API maximum is 50)
+LIMIT = 100  # Records per page (API maximum is usually 100, set high for efficiency)
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 

@@ -619,7 +619,8 @@ async def fetch_and_save_trader_details(
     session: AsyncSession,
     trader_id: Optional[int] = None,
     wallet_address: Optional[str] = None,
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    skip_activity: bool = False
 ) -> Dict[str, any]:
     """
     Fetch and save all detailed trader data from Polymarket APIs.
@@ -720,7 +721,9 @@ async def fetch_and_save_trader_details(
     fetch_tasks.append(("positions", fetch_trader_positions(wallet_address)))
     
     # For time-based data, always fetch but we'll filter later
-    if latest_activity_ts is None:
+    if skip_activity:
+        results["skipped"]["activities"] = True
+    elif latest_activity_ts is None:
         # No existing data, fetch all
         fetch_tasks.append(("activities", fetch_trader_activity(wallet_address)))
     else:
@@ -808,7 +811,8 @@ async def fetch_and_save_all_traders_details(
     limit: Optional[int] = None,
     offset: int = 0,
     force_refresh: bool = False,
-    session_factory = None
+    session_factory = None,
+    skip_activity: bool = False
 ) -> Dict[str, any]:
     """
     Fetch and save detailed data for all traders in trader_leaderboard.
@@ -869,7 +873,7 @@ async def fetch_and_save_all_traders_details(
                 async with session_factory() as trader_session:
                     try:
                         result = await fetch_and_save_trader_details(
-                            trader_session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh
+                            trader_session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh, skip_activity=skip_activity
                         )
                         
                         # Check for errors in result
@@ -888,7 +892,7 @@ async def fetch_and_save_all_traders_details(
                 # Fallback: use shared session but process sequentially
                 try:
                     result = await fetch_and_save_trader_details(
-                        session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh
+                        session, trader_id=trader_id, wallet_address=wallet, force_refresh=force_refresh, skip_activity=skip_activity
                     )
                     
                     if "error" in result:
@@ -932,7 +936,7 @@ async def fetch_and_save_all_traders_details(
             return True
     
     # Process in batches (reduced for better stability)
-    batch_size = 20  # Reduced from 50 to 20
+    batch_size=10  # Reduced from 50 to 20
     for i in range(0, len(traders), batch_size):
         batch = traders[i:i + batch_size]
         tasks = [process_trader(trader_id, wallet) for trader_id, wallet in batch]
@@ -949,3 +953,68 @@ async def fetch_and_save_all_traders_details(
         "processed": total_processed,
         "summary": summary
     }
+
+async def get_scraped_trades_for_calc(session: AsyncSession, wallet_address: str) -> List[Dict]:
+    """
+    Get scraped trades for calculation logic.
+    Returns list of dicts consistent with what trade_service.get_trades_from_db would return as dicts.
+    """
+    stmt = text("SELECT * FROM trader_trades WHERE trader_id = (SELECT id FROM trader_leaderboard WHERE wallet_address = :wallet)")
+    result = await session.execute(stmt, {"wallet": wallet_address})
+    cols = result.keys()
+    rows = result.fetchall()
+    
+    trades = []
+    for row in rows:
+        t = dict(zip(cols, row))
+        # Map fields to match what calculation expects vs what is stored
+        # Stored: size, price, side, etc.
+        # Calculation expects: size, price, side, timestamp, etc.
+        # Ensure types are correct (Decimal to float if needed, or keep Decimal)
+        # transform keys if needed
+        t["proxy_wallet"] = wallet_address
+        trades.append(t)
+    return trades
+
+async def get_scraped_positions_for_calc(session: AsyncSession, wallet_address: str) -> List[Dict]:
+    """Get scraped positions for calculation."""
+    stmt = text("SELECT * FROM trader_positions WHERE trader_id = (SELECT id FROM trader_leaderboard WHERE wallet_address = :wallet)")
+    result = await session.execute(stmt, {"wallet": wallet_address})
+    cols = result.keys()
+    
+    positions = []
+    for row in result.fetchall():
+        p = dict(zip(cols, row))
+        # Ensure mapping
+        # Stored: initial_value, current_value, etc.
+        p["proxy_wallet"] = wallet_address
+        positions.append(p)
+    return positions
+
+async def get_scraped_activities_for_calc(session: AsyncSession, wallet_address: str) -> List[Dict]:
+    """Get scraped activities for calculation."""
+    stmt = text("SELECT * FROM trader_activity WHERE trader_id = (SELECT id FROM trader_leaderboard WHERE wallet_address = :wallet)")
+    result = await session.execute(stmt, {"wallet": wallet_address})
+    cols = result.keys()
+    
+    activities = []
+    for row in result.fetchall():
+        a = dict(zip(cols, row))
+        a["proxy_wallet"] = wallet_address
+        # Map keys if needed (usdc_size -> usdcSize handled in calc logic usually? calc logic expects snake_case from DB or camel from API)
+        # process_trader_data_points expects: usdcSize or usdc_size, side (BUY/SELL)
+        activities.append(a)
+    return activities
+
+async def get_scraped_closed_positions_for_calc(session: AsyncSession, wallet_address: str) -> List[Dict]:
+    """Get scraped closed positions for calculation."""
+    stmt = text("SELECT * FROM trader_closed_positions WHERE trader_id = (SELECT id FROM trader_leaderboard WHERE wallet_address = :wallet)")
+    result = await session.execute(stmt, {"wallet": wallet_address})
+    cols = result.keys()
+    
+    closed_pos = []
+    for row in result.fetchall():
+        cp = dict(zip(cols, row))
+        cp["proxy_wallet"] = wallet_address
+        closed_pos.append(cp)
+    return closed_pos
