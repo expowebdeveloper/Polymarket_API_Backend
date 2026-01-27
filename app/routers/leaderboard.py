@@ -17,7 +17,8 @@ from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
     fetch_polymarket_leaderboard_api,
     fetch_polymarket_biggest_winners,
-    transform_polymarket_api_entry
+    transform_polymarket_api_entry,
+    load_wallet_addresses_from_json
 )
 from app.services.trade_service import fetch_and_save_trades
 from app.services.position_service import fetch_and_save_positions
