@@ -32,25 +32,19 @@ from app.db.models import (
 async def fetch_trader_profile_stats(wallet_address: str, username: Optional[str] = None) -> Optional[Dict]:
     """
     Fetch trader profile stats from Polymarket API.
-    
-    Args:
-        wallet_address: Wallet address
-        username: Optional username
-    
-    Returns:
-        Profile stats dict or None
+    Uses generic info endpoint since /api/profile/stats is deprecated/404.
     """
     try:
-        url = "https://polymarket.com/api/profile/stats"
-        params = {"proxyAddress": wallet_address}
-        if username:
-            params["username"] = username
+        # Use userData endpoint which returns: {id, username, profileImage, bio, etc.}
+        # It does NOT return trade count or volume stats usually (those come from leaderboard).
+        url = "https://polymarket.com/api/profile/userData"
+        params = {"address": wallet_address}
         
         response = await async_client.get(url, params=params)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error fetching profile stats for {wallet_address}: {e}")
+        print(f"Error fetching profile data for {wallet_address}: {e}")
         return None
 
 

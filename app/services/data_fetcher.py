@@ -17,15 +17,13 @@ HIJACKED_DOMAINS = {
     "api.polymarket.com",
     "gamma-api.polymarket.com",
     "user-pnl-api.polymarket.com",
-    "clob.polymarket.com",
-    "polymarket.com"
+    "clob.polymarket.com"
 }
 
 # Cache for resolved IPs to avoid repeated DNS queries
 DNS_CACHE: Dict[str, str] = {
     "data-api.polymarket.com": "104.18.34.205", 
-    "gamma-api.polymarket.com": "104.18.34.205",
-    "polymarket.com": "104.18.34.205"
+    "gamma-api.polymarket.com": "104.18.34.205"
 }
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -33,15 +31,8 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 def get_standard_headers(host: Optional[str] = None) -> Dict[str, str]:
     headers = {
         "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept": "application/json, */*",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
         "Pragma": "no-cache",
         "Cache-Control": "no-cache"
     }
