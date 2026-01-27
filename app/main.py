@@ -21,6 +21,8 @@ app = FastAPI(
 allowed_origins = [
     "https://polymarket-ui-one.vercel.app",  # Current frontend domain
     "https://polymarket-uimain.vercel.app",   # Alternative frontend domain
+    "https://polyrating.com",
+    "https://www.polyrating.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
