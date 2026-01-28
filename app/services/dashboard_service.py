@@ -895,6 +895,16 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         {"name": username}
     )
 
+    # CRITICAL: Override trade counts with official Source of Truth (API)
+    # This prevents artificially low Confidence Scores when skip_trades=True or when fetching is limited.
+    # The Confidence Score formula depends on 'total_trades_with_pnl', so we assume the full count 
+    # consists of valid trades (stats approximation).
+    official_trade_count = traded_count or (profile_stats.get("trades", 0) if profile_stats else 0)
+    if official_trade_count > 0:
+        # Update metrics to reflect full history size
+        trader_metrics["total_trades_with_pnl"] = official_trade_count
+        trader_metrics["total_trades"] = official_trade_count
+
     # Calculate Scores using Population Medians for consistency
     pnl_median = await get_pnl_median_from_population()
     scoring_result = calculate_scores_and_rank_with_percentiles(
