@@ -206,10 +206,11 @@ def calculate_new_roi_score(roi: float) -> float:
         ln_term = math.log1p(abs(roi))
         # sign(ROI)
         sign_roi = 1.0 if roi >= 0 else -1.0
-        # s_ROI = 0.6
-        s_roi = 0.6
+        # s_ROI = 0.1 (temperature parameter to make it binary)
+        s_roi = 0.1
         # tanh(...)
-        tanh_term = math.tanh(s_roi * sign_roi * ln_term)
+        # Formula: tanh( (sign * ln(1+|ROI|)) / s_ROI )
+        tanh_term = math.tanh((sign_roi * ln_term) / s_roi)
         
         # Final result
         return (1.0 + tanh_term) / 2.0
