@@ -684,6 +684,28 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
     normalized["exitPrice"] = float(exit_price)
     normalized["exit_price"] = float(exit_price)
     
+    # 5. Timestamp / Date
+    timestamp = pos.get("timestamp") or pos.get("closedAt") or pos.get("updatedAt") or pos.get("time")
+    if timestamp:
+        # If it's a string (ISO format), try to convert to unix timestamp
+        if isinstance(timestamp, str):
+             try:
+                 # minimalistic approach, assuming simple ISO or similar
+                 from dateutil import parser
+                 dt = parser.parse(timestamp)
+                 timestamp = dt.timestamp()
+             except:
+                 # If parsing fails, leave as is or set to 0?
+                 # Frontend handles string dates in new Date(), so maybe leave as string if not parseable?
+                 # But our frontend logic prefers number for * 1000.
+                 # Let's try to keep it as number if possible.
+                 pass
+    
+    normalized["timestamp"] = timestamp
+    # Also ensure created_at is present as fallback
+    if "created_at" not in normalized and timestamp:
+        normalized["created_at"] = timestamp
+
     return normalized
 
 
@@ -841,8 +863,18 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
     # Execute checks using heuristic (No external API calls)
     # User heuristic: if curPrice is 0 or currentValue is 0, the market is resolved/closed.
     for pos in active_positions:
-        cur_price = float(pos.get("curPrice") or pos.get("cur_price") or 0)
-        current_value = float(pos.get("currentValue") or pos.get("current_value") or 0)
+        # Normalize keys (fill snake_case from camelCase)
+        pos["avg_price"] = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
+        pos["cur_price"] = float(pos.get("curPrice") or pos.get("cur_price") or 0)
+        pos["initial_value"] = float(pos.get("initialValue") or pos.get("initial_value") or 0)
+        pos["current_value"] = float(pos.get("currentValue") or pos.get("current_value") or 0)
+        pos["cash_pnl"] = float(pos.get("cashPnl") or pos.get("cash_pnl") or 0)
+        pos["percent_pnl"] = float(pos.get("percentPnl") or pos.get("percent_pnl") or 0)
+        pos["realized_pnl"] = float(pos.get("realizedPnl") or pos.get("realized_pnl") or 0)
+        pos["total_bought"] = float(pos.get("totalBought") or pos.get("total_bought") or 0)
+        
+        cur_price = pos["cur_price"]
+        current_value = pos["current_value"]
         
         # Check if market is resolved based on heuristic
         # If curPrice is 0 (or currentValue is 0), then market is closed
@@ -850,8 +882,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
             # Position is resolved! Move to closed
             
             # Use current metrics for final PnL
-            avg_price = float(pos.get("avgPrice") or pos.get("avg_price") or 0)
-            size = float(pos.get("size") or pos.get("totalBought") or pos.get("total_bought") or 0)
+            avg_price = pos["avg_price"]
+            size = float(pos.get("size") or pos["total_bought"] or 0)
             
             # If curPrice is 0, we assume the final price/payout is 0 (Loss)
             final_price = 0.0 
@@ -869,7 +901,7 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
             newly_closed_positions.append(cp)
         else:
             actual_active_positions.append(pos)
-
+            
     active_positions = actual_active_positions
     closed_positions = newly_closed_positions + closed_positions
 

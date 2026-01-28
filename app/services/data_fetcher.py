@@ -1945,3 +1945,141 @@ async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]
         print(f"Error scraping profile page: {e}")
         
     return None
+
+
+async def fetch_users_metrics_batch(user_addresses: List[str]) -> Dict[str, Dict]:
+    """
+    Fetch 'Safety Score' and 'Win Score' metrics for a list of users using Polymarket Data API (REST).
+    Uses asyncio.gather to fetch data for all users in parallel for maximum speed.
+
+    Metrics fetched:
+    - Worst Loss: Lowest (most negative) realizedPnL from closed positions.
+    - Win Stats: Count and Volume of trades with realizedPnL > 0.
+    - Safety Score: 1 - (|worst_loss| / total_volume)
+    - Win Score: 0.5 * (WinCount/TotalTrades) + 0.5 * (WinVolume/TotalVolume)
+
+    Returns:
+        Dict mapped by user address containing computed metrics.
+    """
+    if not user_addresses:
+        return {}
+
+    # Normalize addresses
+    user_addresses = [addr.lower() for addr in user_addresses]
+
+    async def fetch_single_user(addr: str) -> Optional[Dict]:
+        try:
+            # Parallel fetch of Leaderboard Stats (Volume) and Closed Positions (PnL history)
+            # We fetch ALL closed positions (limit=None) to ensure we find the absolute worst loss
+            # and accurate win rates. fetch_closed_positions handles parallel pagination internally.
+            stats_task = fetch_leaderboard_stats(addr, time_period="all")
+            positions_task = fetch_closed_positions(addr, limit=None) 
+            
+            stats, positions = await asyncio.gather(stats_task, positions_task)
+            
+            # --- Process Data ---
+            
+            # 1. Total Volume
+            # Use leaderboard volume if available, else sum up positions (which is less accurate for open positions)
+            total_volume = stats.get("volume", 0.0)
+            
+            # 2. Worst Loss and Win Stats
+            worst_loss = 0.0
+            win_count = 0
+            win_volume = 0.0
+            closed_positions_volume = 0.0
+            total_trades = len(positions)
+            
+            for pos in positions:
+                # PnL
+                pnl = float(pos.get("realizedPnl") or pos.get("realizedPnL") or 0.0)
+                
+                # Volume (Invested Amount)
+                # 'totalBought' is typically the amount spent.
+                # 'size' * 'avgPrice' is another way.
+                # Let's use 'totalBought' if available, else size * avgPrice.
+                bought = float(pos.get("totalBought", 0.0))
+                if bought == 0:
+                     bought = float(pos.get("size", 0.0)) * float(pos.get("avgPrice", 0.0))
+                
+                closed_positions_volume += bought
+                
+                # Check Worst Loss
+                if pnl < worst_loss:
+                    worst_loss = pnl
+                
+                # Check Wins
+                if pnl > 0:
+                    win_count += 1
+                    win_volume += bought
+
+            # Fallback for Total Volume if leaderboard returned 0 (e.g. user not in top list)
+            # We use the sum of closed positions volume as a floor.
+            if total_volume == 0 and closed_positions_volume > 0:
+                total_volume = closed_positions_volume
+
+            # 3. Calculate Scores
+            
+            # Safety Score = 1 - (|worst_loss| / total_vol)
+            safety_score = 1.0
+            if total_volume > 0:
+                risk_ratio = abs(worst_loss) / total_volume
+                safety_score = max(0.0, 1.0 - risk_ratio)
+            elif total_volume == 0 and worst_loss < 0:
+                 # Loss with no volume? Should be impossible, but strictly:
+                 safety_score = 0.0 
+            
+            # Win Score
+            # Formula: 0.5 * (WinCount / TotalTrades) + 0.5 * (WinVolume / TotalVolume)
+            w_trade = 0.0
+            w_stake = 0.0
+            
+            if total_trades > 0:
+                w_trade = win_count / total_trades
+            
+            if total_volume > 0:
+                 # WinVolume / TotalVolume
+                 # Note: WinVolume is from closed positions. TotalVolume is from Leaderboard (includes Open).
+                 # This ratio is "Volume of Winning Trades / Global Volume".
+                 w_stake = win_volume / total_volume
+            elif closed_positions_volume > 0:
+                 w_stake = win_volume / closed_positions_volume
+
+            win_score = (0.5 * w_trade) + (0.5 * w_stake)
+            
+            return {
+                "worst_loss": worst_loss,
+                "win_count": win_count,
+                "win_volume": win_volume,
+                "total_volume": total_volume,
+                "num_trades": total_trades,
+                "safety_score": safety_score,
+                "win_score": win_score
+            }
+
+        except Exception as e:
+            print(f"Error processing metrics for {addr}: {e}")
+            return None
+
+    # Run all users in parallel
+    tasks = [fetch_single_user(addr) for addr in user_addresses]
+    results_list = await asyncio.gather(*tasks)
+    
+    # Map results
+    final_results = {}
+    for addr, res in zip(user_addresses, results_list):
+        if res:
+            final_results[addr] = res
+        else:
+             # Default empty metrics on error
+             final_results[addr] = {
+                "worst_loss": 0.0,
+                "win_count": 0,
+                "win_volume": 0.0,
+                "total_volume": 0.0,
+                "num_trades": 0,
+                "safety_score": 0.0,
+                "win_score": 0.0
+            }
+            
+    return final_results
