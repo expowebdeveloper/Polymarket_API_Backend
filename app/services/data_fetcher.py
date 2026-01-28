@@ -1417,7 +1417,11 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all",
             item = data[0]
             stats["volume"] = float(item.get("vol", 0.0))
             stats["pnl"] = float(item.get("pnl", 0.0))
-            stats["rank"] = item.get("rank")
+
+            try:
+                stats["rank"] = int(item.get("rank", 0))
+            except (ValueError, TypeError):
+                stats["rank"] = 0
             return stats
         return stats
     except httpx.HTTPStatusError as e:
