@@ -2083,3 +2083,89 @@ async def fetch_users_metrics_batch(user_addresses: List[str]) -> Dict[str, Dict
             }
             
     return final_results
+
+def fetch_total_market_trades(market_slug: str) -> int:
+    """
+    Fetch the total count of trades for a market.
+    """
+    try:
+        # We use a larger limit to get a good count. 
+        # Note: This is an expensive operation if the market has huge volume.
+        data = fetch_market_orders(market_slug, limit=5000)
+        return len(data.get("orders", []))
+    except Exception as e:
+        print(f"Error figuring total trades: {e}")
+        return 0
+
+def fetch_market_traders_aggregated(market_slug: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+    """
+    Fetch best traders for a specific market (aggregated server-side).
+    Aggregation is done in-memory based on recent trades.
+    """
+    try:
+        # Fetch a substantial number of orders to aggregate
+        data = fetch_market_orders(market_slug, limit=5000)
+        orders = data.get("orders", [])
+        
+        traders = {}
+        
+        for order in orders:
+            # User address field logic
+            user = order.get("user") or order.get("proxyWallet") or order.get("maker") or order.get("account")
+            if not user or not isinstance(user, str):
+                continue
+                
+            if user not in traders:
+                traders[user] = {
+                    "user": user, 
+                    "address": user,
+                    "volume": 0.0, 
+                    "count": 0,
+                    "buy_volume": 0.0, 
+                    "sell_volume": 0.0
+                }
+                
+            try:
+                size = float(order.get("size", 0))
+                price = float(order.get("price", 0))
+                vol = size * price
+                
+                traders[user]["volume"] += vol
+                traders[user]["count"] += 1
+                
+                side = str(order.get("side", "")).upper()
+                if side == "BUY":
+                    traders[user]["buy_volume"] += vol
+                elif side == "SELL":
+                    traders[user]["sell_volume"] += vol
+            except:
+                pass
+                
+        # List and sort
+        trader_list = list(traders.values())
+        trader_list.sort(key=lambda x: x["volume"], reverse=True)
+        
+        # Pagination
+        total = len(trader_list)
+        result = trader_list[offset:offset+limit]
+        
+        return {
+            "traders": result,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+                "has_more": (offset + limit) < total
+            }
+        }
+    except Exception as e:
+        print(f"Error aggregating market traders: {e}")
+        return {
+            "traders": [],
+            "pagination": {
+                "limit": limit, 
+                "offset": offset, 
+                "total": 0, 
+                "has_more": False
+            }
+        }

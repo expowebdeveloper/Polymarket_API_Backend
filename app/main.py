@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, websocket, marketing
 from app.db.session import init_db
+from app.services.activity_broadcaster import broadcaster
 
 app = FastAPI(
     title=settings.API_TITLE,
@@ -52,13 +53,19 @@ app.add_middleware(
 async def startup_event():
     """Initialize database on application startup."""
     await init_db()
-    # Leaderboard scheduler and activity broadcaster are NOT started on startup.
-    # Start them manually via API or scripts when needed.
+    # Start activity broadcaster in background
+    import asyncio
+    asyncio.create_task(broadcaster.start())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on application shutdown."""
+    await broadcaster.stop()
     
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(dashboard.router)
 app.include_router(general.router)
 app.include_router(markets.router)
 app.include_router(traders.router)
@@ -72,7 +79,7 @@ app.include_router(leaderboard.router)
 app.include_router(closed_positions.router)
 app.include_router(scoring.router)
 app.include_router(trade_history.router)
-app.include_router(dashboard.router)
+
 app.include_router(websocket.router)  # WebSocket for real-time activity feed
 app.include_router(marketing.router)
 

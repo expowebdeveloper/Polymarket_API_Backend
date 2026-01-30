@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
 from app.db.session import get_db
-from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name
+from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name, dashboard_service
 from app.services.dashboard_service_trades import get_filtered_trades
 from app.services.sync_service import sync_trader_full_data
 
@@ -11,6 +11,13 @@ router = APIRouter(
     prefix="/dashboard",
     tags=["Dashboard"]
 )
+
+@router.get("/stats")
+async def get_dashboard_stats():
+    """
+    Returns real-time scraped stats from Polydata.
+    """
+    return await dashboard_service.get_stats()
 
 @router.post("/sync/{wallet_address}", response_model=Dict[str, Any])
 async def sync_dashboard_data(
