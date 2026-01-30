@@ -5,6 +5,7 @@ Uses the same formulas as the live leaderboards (shrunk values, percentiles).
 
 from typing import List, Dict, Optional, Any
 import asyncio
+from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.leaderboard_service import (
     calculate_trader_metrics_with_time_filter,
@@ -18,7 +19,8 @@ async def get_advanced_db_analytics(
     wallet_addresses: Optional[List[str]] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    max_traders: Optional[int] = None
+    max_traders: Optional[int] = None,
+    use_scraped_data: bool = False
 ) -> Dict[str, Any]:
     """
     Calculate advanced metrics for wallets in DB using the full scoring logic.
@@ -28,10 +30,19 @@ async def get_advanced_db_analytics(
     Args:
         max_traders: Optional limit on number of traders to process for faster response.
                     If None, processes all traders.
+        use_scraped_data: If True, uses scraped data (Trader tables) instead of Portfolio tables.
     """
     # 1. Get wallet addresses
     if not wallet_addresses:
-        wallet_addresses = await get_unique_wallet_addresses(session)
+        if use_scraped_data:
+            # Fetch from trader_leaderboard if using scraped data
+            from sqlalchemy import select
+            from app.db.models import TraderLeaderboard
+            stmt = select(TraderLeaderboard.wallet_address)
+            result = await session.execute(stmt)
+            wallet_addresses = result.scalars().all()
+        else:
+            wallet_addresses = await get_unique_wallet_addresses(session)
     
     if not wallet_addresses:
         return {
@@ -56,7 +67,7 @@ async def get_advanced_db_analytics(
         async with semaphore:
             try:
                 metrics = await calculate_trader_metrics_with_time_filter(
-                    session, wallet, period='all'
+                    session, wallet, period='all', use_scraped_data=use_scraped_data
                 )
                 if metrics is None:
                     failed_wallets.append(wallet)

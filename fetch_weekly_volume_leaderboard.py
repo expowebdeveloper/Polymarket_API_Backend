@@ -160,55 +160,97 @@ async def process_trader_record(session: AsyncSession, trader_data: Dict, fetche
         # Store full API response as JSON
         raw_data = json.dumps(trader_data)
         
-        # Insert record
-        await session.execute(
-            text("""
-                INSERT INTO weekly_volume_leaderboard 
-                (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
-                 roi, win_rate, total_trades, total_trades_with_pnl, winning_trades, total_stakes,
-                 score_win_rate, score_roi, score_pnl, score_risk, final_score,
-                 w_shrunk, roi_shrunk, pnl_shrunk,
-                 verified_badge, raw_data, fetched_at, created_at, updated_at)
-                VALUES 
-                (:wallet, :rank, :name, :pseudonym, :profile_image, :pnl, :volume,
-                 :roi, :win_rate, :total_trades, :total_trades_with_pnl, :winning_trades, :total_stakes,
-                 :score_win_rate, :score_roi, :score_pnl, :score_risk, :final_score,
-                 :w_shrunk, :roi_shrunk, :pnl_shrunk,
-                 :verified_badge, :raw_data, :fetched_at, :created_at, :updated_at)
-            """),
-            {
-                "wallet": wallet_address,
-                "rank": rank,
-                "name": name,
-                "pseudonym": pseudonym,
-                "profile_image": profile_image,
-                "pnl": pnl,
-                "volume": volume,
-                # New metrics
-                "roi": trader_data.get("roi", 0.0),
-                "win_rate": trader_data.get("win_rate", 0.0),
-                "total_trades": trader_data.get("total_trades", 0),
-                "total_trades_with_pnl": trader_data.get("total_trades_with_pnl", 0),
-                "winning_trades": trader_data.get("winning_trades", 0),
-                "total_stakes": trader_data.get("total_stakes", 0.0),
-                # New scores
-                "score_win_rate": trader_data.get("score_win_rate", 0.0),
-                "score_roi": trader_data.get("score_roi", 0.0),
-                "score_pnl": trader_data.get("score_pnl", 0.0),
-                "score_risk": trader_data.get("score_risk", 0.0),
-                "final_score": trader_data.get("final_score", 0.0),
-                # New shrunk values
-                "w_shrunk": trader_data.get("W_shrunk"),
-                "roi_shrunk": trader_data.get("roi_shrunk"),
-                "pnl_shrunk": trader_data.get("pnl_shrunk"),
-                "verified_badge": verified_badge if verified_badge is not None else False,
-                "raw_data": raw_data,
-                "fetched_at": fetched_at,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
+        # Prepare data dict
+        data = {
+            "wallet": wallet_address,
+            "rank": rank,
+            "name": name,
+            "pseudonym": pseudonym,
+            "profile_image": profile_image,
+            "pnl": pnl,
+            "volume": volume,
+            "roi": trader_data.get("roi", 0.0),
+            "win_rate": trader_data.get("win_rate", 0.0),
+            "total_trades": trader_data.get("total_trades", 0),
+            "total_trades_with_pnl": trader_data.get("total_trades_with_pnl", 0),
+            "winning_trades": trader_data.get("winning_trades", 0),
+            "total_stakes": trader_data.get("total_stakes", 0.0),
+            "score_win_rate": trader_data.get("score_win_rate", 0.0),
+            "score_roi": trader_data.get("score_roi", 0.0),
+            "score_pnl": trader_data.get("score_pnl", 0.0),
+            "score_risk": trader_data.get("score_risk", 0.0),
+            "final_score": trader_data.get("final_score", 0.0),
+            "w_shrunk": trader_data.get("W_shrunk"),
+            "roi_shrunk": trader_data.get("roi_shrunk"),
+            "pnl_shrunk": trader_data.get("pnl_shrunk"),
+            "verified_badge": verified_badge if verified_badge is not None else False,
+            "raw_data": raw_data,
+            "fetched_at": fetched_at,
+            "updated_at": datetime.utcnow()
+        }
+
+        # Check if record exists
+        result = await session.execute(
+            text("SELECT id FROM weekly_volume_leaderboard WHERE wallet_address = :wallet"),
+            {"wallet": wallet_address}
         )
-        return True
+        existing = result.fetchone()
+
+        if existing:
+            # Update existing record
+            await session.execute(
+                text("""
+                    UPDATE weekly_volume_leaderboard 
+                    SET rank = :rank,
+                        name = :name,
+                        pseudonym = :pseudonym,
+                        profile_image = :profile_image,
+                        pnl = :pnl,
+                        volume = :volume,
+                        roi = :roi,
+                        win_rate = :win_rate,
+                        total_trades = :total_trades,
+                        total_trades_with_pnl = :total_trades_with_pnl,
+                        winning_trades = :winning_trades,
+                        total_stakes = :total_stakes,
+                        score_win_rate = :score_win_rate,
+                        score_roi = :score_roi,
+                        score_pnl = :score_pnl,
+                        score_risk = :score_risk,
+                        final_score = :final_score,
+                        w_shrunk = :w_shrunk,
+                        roi_shrunk = :roi_shrunk,
+                        pnl_shrunk = :pnl_shrunk,
+                        verified_badge = :verified_badge,
+                        raw_data = :raw_data,
+                        fetched_at = :fetched_at,
+                        updated_at = :updated_at
+                    WHERE wallet_address = :wallet
+                """),
+                data
+            )
+            return False
+        else:
+            # Insert new record
+            data["created_at"] = datetime.utcnow()
+            await session.execute(
+                text("""
+                    INSERT INTO weekly_volume_leaderboard 
+                    (wallet_address, rank, name, pseudonym, profile_image, pnl, volume, 
+                     roi, win_rate, total_trades, total_trades_with_pnl, winning_trades, total_stakes,
+                     score_win_rate, score_roi, score_pnl, score_risk, final_score,
+                     w_shrunk, roi_shrunk, pnl_shrunk,
+                     verified_badge, raw_data, fetched_at, created_at, updated_at)
+                    VALUES 
+                    (:wallet, :rank, :name, :pseudonym, :profile_image, :pnl, :volume,
+                     :roi, :win_rate, :total_trades, :total_trades_with_pnl, :winning_trades, :total_stakes,
+                     :score_win_rate, :score_roi, :score_pnl, :score_risk, :final_score,
+                     :w_shrunk, :roi_shrunk, :pnl_shrunk,
+                     :verified_badge, :raw_data, :fetched_at, :created_at, :updated_at)
+                """),
+                data
+            )
+            return True
             
     except Exception as e:
         print(f"⚠️  Error processing trader record: {e}")

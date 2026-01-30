@@ -12,12 +12,14 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
+from app.core.config import settings
 from app.core.scoring_config import default_scoring_config
 from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
     fetch_polymarket_leaderboard_api,
     fetch_polymarket_biggest_winners,
-    transform_polymarket_api_entry
+    transform_polymarket_api_entry,
+    load_wallet_addresses_from_json
 )
 from app.services.leaderboard_storage_service import (
     get_leaderboard_from_db,
@@ -28,6 +30,8 @@ from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
 # Removed db_scoring_service - now using Polymarket API directly
 from app.db.session import get_db
+from app.services.goldsky_service import GoldskyService
+from app.services.leaderboard_service import calculate_scores_and_rank
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboards"])
 
@@ -1408,19 +1412,68 @@ async def fetch_trader_details(
 async def get_daily_volume_leaderboard(
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL|ROI|WIN_RATE|SCORE)$", description="Order by 'VOL', 'PNL', 'ROI', 'WIN_RATE', or 'SCORE'"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get daily volume leaderboard from database.
     
-    Returns traders ranked by volume (descending) with pagination.
+    Returns traders ranked by metric (descending) with pagination.
     Data is fetched from daily_volume_leaderboard table.
     """
     try:
-        sort_column = "volume" if order_by == "VOL" else "pnl"
-        
-        # Query database for daily volume leaderboard, sorted by volume descending
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("day", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="", # Goldsky doesn't have profile info
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"], # Using volume
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="day",
+                        metric="vol",
+                        count=len(entries), # Approximation
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+                # Fallback to DB
+
+        sort_column = "volume"
+        if order_by == "PNL":
+            sort_column = "pnl"
+        elif order_by == "ROI":
+            sort_column = "roi"
+        elif order_by == "WIN_RATE":
+            sort_column = "win_rate"
+        elif order_by == "SCORE":
+            sort_column = "final_score"
+
+        # Query database for daily volume leaderboard, sorted by chosen metric descending
         result = await db.execute(
             text(f"""
                 SELECT 
@@ -1466,7 +1519,7 @@ async def get_daily_volume_leaderboard(
         # Transform to LeaderboardEntry format
         entries = []
         for idx, row in enumerate(rows):
-            # Calculate rank based on offset (since we're sorting by volume DESC)
+            # Calculate rank based on offset
             actual_rank = offset + idx + 1
             
             entry = LeaderboardEntry(
@@ -1495,8 +1548,8 @@ async def get_daily_volume_leaderboard(
         
         return LeaderboardResponse(
             period="day",
-            metric="volume",
-            count=len(entries),
+            metric=order_by.lower(),
+            count=total_count,
             entries=entries
         )
     except Exception as e:
@@ -1521,18 +1574,66 @@ async def get_daily_volume_leaderboard(
 async def get_weekly_volume_leaderboard(
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL|ROI|WIN_RATE|SCORE)$", description="Order by 'VOL', 'PNL', 'ROI', 'WIN_RATE', or 'SCORE'"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get weekly volume leaderboard from database.
     
-    Returns traders ranked by volume (descending) with pagination.
+    Returns traders ranked by metric (descending) with pagination.
     Data is fetched from weekly_volume_leaderboard table.
     """
     try:
-        sort_column = "volume" if order_by == "VOL" else "pnl"
-        
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("week", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="",
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"],
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="week",
+                        metric="vol",
+                        count=len(entries),
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+
+        sort_column = "volume"
+        if order_by == "PNL":
+            sort_column = "pnl"
+        elif order_by == "ROI":
+            sort_column = "roi"
+        elif order_by == "WIN_RATE":
+            sort_column = "win_rate"
+        elif order_by == "SCORE":
+            sort_column = "final_score"
+
         # Query database for weekly volume leaderboard, sorted by chosen metric descending
         result = await db.execute(
             text(f"""
@@ -1608,8 +1709,8 @@ async def get_weekly_volume_leaderboard(
         
         return LeaderboardResponse(
             period="week",
-            metric="volume",
-            count=len(entries),
+            metric=order_by.lower(),
+            count=total_count,
             entries=entries
         )
     except Exception as e:
@@ -1634,7 +1735,7 @@ async def get_weekly_volume_leaderboard(
 async def get_monthly_volume_leaderboard(
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    order_by: str = Query("VOL", regex="^(VOL|PNL)$", description="Order by 'VOL' or 'PNL'"),
+    order_by: str = Query("VOL", regex="^(VOL|PNL|ROI|WIN_RATE|SCORE)$", description="Order by 'VOL', 'PNL', 'ROI', 'WIN_RATE', or 'SCORE'"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -1644,7 +1745,55 @@ async def get_monthly_volume_leaderboard(
     Data is fetched from monthly_volume_leaderboard table.
     """
     try:
-        sort_column = "volume" if order_by == "VOL" else "pnl"
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("month", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="",
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"],
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="month",
+                        metric="vol",
+                        count=len(entries),
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+
+        sort_column = "volume"
+        if order_by == "PNL":
+            sort_column = "pnl"
+        elif order_by == "ROI":
+            sort_column = "roi"
+        elif order_by == "WIN_RATE":
+            sort_column = "win_rate"
+        elif order_by == "SCORE":
+            sort_column = "final_score"
         
         # Query database for monthly volume leaderboard, sorted by chosen metric descending
         result = await db.execute(
@@ -1721,8 +1870,8 @@ async def get_monthly_volume_leaderboard(
         
         return LeaderboardResponse(
             period="month",
-            metric="volume",
-            count=len(entries),
+            metric=order_by.lower(),
+            count=total_count,
             entries=entries
         )
     except Exception as e:
@@ -1733,6 +1882,95 @@ async def get_monthly_volume_leaderboard(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching monthly volume leaderboard: {str(e)}"
         )
+
+
+@router.get(
+    "/entries",
+    response_model=LeaderboardResponse,
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"}
+    },
+    summary="Get Leaderboard Entries from Database",
+    description="Get calculated leaderboard entries directly from leaderboard_entries table"
+)
+async def get_leaderboard_entries(
+    limit: int = Query(50, ge=1, le=1000, description="Maximum number of traders to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    order_by: str = Query("SCORE", regex="^(VOL|PNL|ROI|WIN_RATE|SCORE)$", description="Order by 'VOL', 'PNL', 'ROI', 'WIN_RATE', or 'SCORE'"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get leaderboard entries from database.
+    
+    Returns traders ranked by calculated score/metric from leaderboard_entries table.
+    """
+    try:
+        from app.services.leaderboard_storage_service import get_leaderboard_from_db, get_total_leaderboard_count
+        
+        # Map API sort param to database column
+        sort_field = "final_score"
+        if order_by == "PNL":
+            sort_field = "total_pnl" # Note: total_pnl in entries vs pnl in volume tables
+        elif order_by == "ROI":
+            sort_field = "roi"
+        elif order_by == "WIN_RATE":
+            sort_field = "win_rate"
+        elif order_by == "VOL":
+            sort_field = "total_stakes"
+        
+        # Fetch entries
+        entries_data = await get_leaderboard_from_db(
+            session=db,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_field,
+            sort_desc=True
+        )
+        
+        # Get total count
+        total_count = await get_total_leaderboard_count(db)
+        
+        # strict typing map
+        entries = []
+        for entry in entries_data:
+            entries.append(LeaderboardEntry(
+                rank=entry["rank"],
+                wallet_address=entry["wallet_address"],
+                name=entry["name"],
+                pseudonym=entry["pseudonym"],
+                profile_image=entry["profile_image"],
+                total_pnl=entry["total_pnl"],
+                roi=entry["roi"],
+                win_rate=entry["win_rate"],
+                total_trades=entry["total_trades"],
+                total_trades_with_pnl=entry["total_trades_with_pnl"],
+                winning_trades=entry["winning_trades"],
+                total_stakes=entry["total_stakes"],
+                score_win_rate=entry["score_win_rate"],
+                score_roi=entry["score_roi"],
+                score_pnl=entry["score_pnl"],
+                score_risk=entry["score_risk"],
+                final_score=entry["final_score"],
+                W_shrunk=entry["W_shrunk"],
+                roi_shrunk=entry["roi_shrunk"],
+                pnl_shrunk=entry["pnl_shrunk"]
+            ))
+            
+        return LeaderboardResponse(
+            period="all_time",
+            metric=order_by.lower(),
+            count=total_count,
+            entries=entries
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error fetching leaderboard entries: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching leaderboard entries: {str(e)}"
+        )
+
 
 
 # Force reload trigger

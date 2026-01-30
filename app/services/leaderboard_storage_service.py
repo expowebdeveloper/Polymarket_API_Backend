@@ -16,7 +16,73 @@ from app.services.leaderboard_service import (
 )
 from app.services.db_scoring_service import get_advanced_db_analytics
 from app.services.pnl_median_service import calculate_pnl_median_from_traders
+from app.db.models import DailyVolumeLeaderboard, WeeklyVolumeLeaderboard, MonthlyVolumeLeaderboard
 import asyncio
+
+async def sync_leaderboard_scores_to_volume_tables(session: AsyncSession):
+    """
+    Sync calculated scores from leaderboard_entries to daily/weekly/monthly volume leaderboards.
+    This ensures that the volume leaderboards (used by "View All") display the correct calculated scores.
+    """
+    try:
+        # 1. Fetch all calculated scores
+        stmt = select(LeaderboardEntry)
+        result = await session.execute(stmt)
+        entries = result.scalars().all()
+        
+        count_daily = 0
+        count_weekly = 0
+        count_monthly = 0
+        
+        for entry in entries:
+            # Common values to update
+            update_values = {
+                "final_score": entry.final_score,
+                "score_roi": entry.score_roi,
+                "score_pnl": entry.score_pnl,
+                "score_win_rate": entry.score_win_rate,
+                "score_risk": entry.score_risk,
+                "w_shrunk": entry.w_shrunk,
+                "roi_shrunk": entry.roi_shrunk,
+                "pnl_shrunk": entry.pnl_shrunk,
+                "updated_at": datetime.utcnow() # Use current time for update
+            }
+            
+            # Update Daily
+            stmt_daily = update(DailyVolumeLeaderboard).where(
+                DailyVolumeLeaderboard.wallet_address == entry.wallet_address
+            ).values(**update_values)
+            result = await session.execute(stmt_daily)
+            count_daily += result.rowcount
+            
+            # Update Weekly
+            stmt_weekly = update(WeeklyVolumeLeaderboard).where(
+                WeeklyVolumeLeaderboard.wallet_address == entry.wallet_address
+            ).values(**update_values)
+            result = await session.execute(stmt_weekly)
+            count_weekly += result.rowcount
+            
+            # Update Monthly
+            stmt_monthly = update(MonthlyVolumeLeaderboard).where(
+                MonthlyVolumeLeaderboard.wallet_address == entry.wallet_address
+            ).values(**update_values)
+            result = await session.execute(stmt_monthly)
+            count_monthly += result.rowcount
+        
+        await session.commit()
+        return {
+            "daily_updated": count_daily,
+            "weekly_updated": count_weekly,
+            "monthly_updated": count_monthly
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            await session.rollback()
+        except:
+            pass
+        return {"error": str(e)}
 
 async def calculate_and_store_leaderboard_entries(
     session: AsyncSession,
@@ -122,7 +188,7 @@ async def calculate_and_store_leaderboard_entries(
                 "final_score": Decimal(str(trader_data.get("final_score", 0))),
                 "total_stakes": Decimal(str(trader_data.get("total_stakes", 0))),
                 "winning_stakes": Decimal(str(trader_data.get("winning_stakes", 0))),
-                "sum_sq_stakes": Decimal(str(trader_data.get("sum_sq_stakes", 0))),
+                "sum_sq_stakes": min(Decimal(str(trader_data.get("sum_sq_stakes", 0))), Decimal("999999999999.99999999")),
                 "max_stake": Decimal(str(trader_data.get("max_stake", 0))),
                 "worst_loss": Decimal(str(trader_data.get("worst_loss", 0))),
                 "population_size": result.get("population_size", 0),  # From analytics result
@@ -229,6 +295,9 @@ async def calculate_and_store_leaderboard_entries(
         # Final commit for metadata
         await session.commit()
     except Exception as metadata_commit_error:
+        print(f"METADATA COMMIT ERROR: {metadata_commit_error}")
+        import traceback
+        traceback.print_exc()
         # If commit fails, rollback
         try:
             await session.rollback()

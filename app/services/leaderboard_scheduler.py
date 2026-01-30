@@ -42,6 +42,11 @@ async def recalculate_leaderboard_job():
                 max_traders=None  # No limit
             )
             
+            # Sync scores to volume leaderboards
+            from app.services.leaderboard_storage_service import sync_leaderboard_scores_to_volume_tables
+            sync_stats = await sync_leaderboard_scores_to_volume_tables(session)
+            stats["sync_stats"] = sync_stats
+            
             _last_run_time = datetime.now()
             duration = (_last_run_time - start_time).total_seconds()
             
@@ -50,6 +55,7 @@ async def recalculate_leaderboard_job():
             logger.info(f"   Created: {stats['created']}")
             logger.info(f"   Updated: {stats['updated']}")
             logger.info(f"   Errors: {stats['errors']}")
+            logger.info(f"   Sync Stats: {sync_stats}")
             logger.info(f"   Duration: {duration:.2f} seconds")
             
             return stats

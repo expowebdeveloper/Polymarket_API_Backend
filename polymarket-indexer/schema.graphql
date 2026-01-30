@@ -1,0 +1,8 @@
+type OrderFilled @entity(immutable: true) {
+  id: Bytes!
+  maker: Bytes!        # The User (Trader)
+  taker: Bytes!
+  makerAmount: BigInt! # Volume of the trade
+  takerAmount: BigInt!
+  timestamp: BigInt!
+}
