@@ -12,6 +12,7 @@ from app.schemas.general import ErrorResponse
 from app.services.leaderboard_service import (
     calculate_scores_and_rank_with_percentiles
 )
+from app.core.config import settings
 from app.core.scoring_config import default_scoring_config
 from app.services.live_leaderboard_service import (
     fetch_live_leaderboard_from_file,
@@ -25,6 +26,8 @@ from app.services.position_service import fetch_and_save_positions
 from app.services.activity_service import fetch_and_save_activities
 # Removed db_scoring_service - now using Polymarket API directly
 from app.db.session import get_db
+from app.services.goldsky_service import GoldskyService
+from app.services.leaderboard_service import calculate_scores_and_rank
 
 router = APIRouter(prefix="/leaderboard", tags=["Leaderboards"])
 
@@ -1357,6 +1360,47 @@ async def get_daily_volume_leaderboard(
     Data is fetched from daily_volume_leaderboard table.
     """
     try:
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("day", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="", # Goldsky doesn't have profile info
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"], # Using volume
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="day",
+                        metric="vol",
+                        count=len(entries), # Approximation
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+                # Fallback to DB
+
         sort_column = "volume"
         if order_by == "PNL":
             sort_column = "pnl"
@@ -1478,6 +1522,46 @@ async def get_weekly_volume_leaderboard(
     Data is fetched from weekly_volume_leaderboard table.
     """
     try:
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("week", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="",
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"],
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="week",
+                        metric="vol",
+                        count=len(entries),
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+
         sort_column = "volume"
         if order_by == "PNL":
             sort_column = "pnl"
@@ -1599,6 +1683,46 @@ async def get_monthly_volume_leaderboard(
     Data is fetched from monthly_volume_leaderboard table.
     """
     try:
+        # Check if we should use Goldsky (only for Volume sorting)
+        if order_by == "VOL" and settings.GOLDSKY_SUBGRAPH_URL:
+            try:
+                goldsky_data = await GoldskyService.fetch_volume_leaderboard("month", limit=limit)
+                if goldsky_data:
+                    entries = []
+                    for idx, row in enumerate(goldsky_data):
+                        entry = LeaderboardEntry(
+                            rank=offset + idx + 1,
+                            wallet_address=row["wallet_address"],
+                            name="",
+                            pseudonym="",
+                            profile_image="",
+                            total_pnl=0.0,
+                            roi=0.0,
+                            win_rate=0.0,
+                            total_trades=row["total_trades"],
+                            total_trades_with_pnl=0,
+                            winning_trades=0,
+                            total_stakes=row["volume"],
+                            score_win_rate=0.0,
+                            score_roi=0.0,
+                            score_pnl=0.0,
+                            score_risk=0.0,
+                            final_score=0.0,
+                            W_shrunk=None,
+                            roi_shrunk=None,
+                            pnl_shrunk=None
+                        )
+                        entries.append(entry)
+                    
+                    return LeaderboardResponse(
+                        period="month",
+                        metric="vol",
+                        count=len(entries),
+                        entries=entries
+                    )
+            except Exception as e:
+                print(f"Goldsky fetch failed, falling back to DB: {e}")
+
         sort_column = "volume"
         if order_by == "PNL":
             sort_column = "pnl"

@@ -191,18 +191,40 @@ async def get_trader_detail(wallet_address: str) -> Dict:
     # Fetch resolved markets (these have resolution data)
     markets = await fetch_resolved_markets(limit=200)  # Fetch more markets for better matching
     
-    # For markets in trades that aren't in resolved markets, try to fetch from Dome
+    # For markets in trades that aren't in resolved markets, try to fetch from Polymarket API
     # This helps get resolution data for markets that might be resolved but not in our list
-    from app.services.data_fetcher import fetch_market_by_slug_from_dome
-    markets_found = {m.get("slug") or m.get("market_id") or m.get("id"): m for m in markets}
+    from app.services.data_fetcher import fetch_market_by_slug
+    import asyncio
     
-    # Try to fetch missing markets from Dome (limit to avoid too many API calls)
-    for slug in list(market_slugs_from_trades)[:10]:  # Limit to 10 to avoid rate limits
+    markets_found = {m.get("slug") or m.get("market_id") or m.get("id"): m for m in markets}
+    missing_slugs = []
+    
+    # Identify missing markets
+    for slug in market_slugs_from_trades:
         if slug not in markets_found:
-            dome_market = fetch_market_by_slug_from_dome(slug)
-            if dome_market:
-                markets.append(dome_market)
-                markets_found[slug] = dome_market
+            missing_slugs.append(slug)
+            
+    if missing_slugs:
+        # Fetch missing markets concurrently with a semaphore
+        semaphore = asyncio.Semaphore(20)  # Limit concurrent requests
+        
+        async def fetch_missing(slug):
+            async with semaphore:
+                try:
+                    return await fetch_market_by_slug(slug)
+                except Exception:
+                    return None
+        
+        # Run all fetch tasks
+        results = await asyncio.gather(*[fetch_missing(slug) for slug in missing_slugs])
+        
+        # Add found markets to the list
+        for market in results:
+            if market:
+                markets.append(market)
+                market_slug = market.get("slug") or market.get("market_id") or market.get("id")
+                if market_slug:
+                    markets_found[market_slug] = market
     
     metrics = await calculate_metrics(wallet_address, trades, markets)
 

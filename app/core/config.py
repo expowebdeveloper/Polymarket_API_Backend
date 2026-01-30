@@ -59,6 +59,13 @@ class Settings:
     # Dome API base URL (used for market research / wallet analytics)
     DOME_API_URL: str = os.getenv("DOME_API_URL", "https://api.domeapi.io/v1")
     
+    # Goldsky Configuration
+    # Placeholder - User must provide valid URL
+    GOLDSKY_SUBGRAPH_URL: str = os.getenv(
+        "GOLDSKY_SUBGRAPH_URL", 
+        "https://api.goldsky.com/api/public/project_xyz/subgraphs/polymarket-indexer/v1.0.0/gn"
+    )
+    
     # Validation
     TARGET_WALLET: str = os.getenv(
         "TARGET_WALLET",

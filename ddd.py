@@ -1,82 +1,81 @@
-import os
-from dune_client.client import DuneClient
-from dune_client.query import QueryBase
-from dune_client.types import QueryParameter
+import requests
+import pandas as pd
 
-# 1. SETUP: Initialize the client with your API Key
-# Replace "YOUR_DUNE_API_KEY" with your actual key
-dune = DuneClient("YOUR_DUNE_API_KEY")
+# 1. CONFIGURATION
+# 🔴 DOUBLE CHECK THIS URL 🔴
+# It should look like: https://api.goldsky.com/api/public/project_xyz/subgraphs/polymarket-indexer/v1.0.0/gn
+GOLDSKY_URL = "https://api.goldsky.com/api/public/project_xyz/subgraphs/polymarket-indexer/v1.0.0/gn"
 
-def fetch_leaderboard_metrics_dune(user_addresses):
-    """
-    Fetches pre-calculated Worst Loss and Win Stats for multiple users
-    using a single SQL query on Dune Analytics.
+def fetch_top_traders():
+    # 2. THE QUERY
+    # We use 'orderFilleds' (plural of the entity name in schema.graphql)
+    query = """
+    query {
+      orderFilleds(first: 1000, orderBy: timestamp, orderDirection: desc) {
+        maker
+        makerAmount
+        timestamp
+      }
+    }
     """
     
-    # Format the list of addresses for the SQL IN clause
-    # Example: '0x123...', '0xabc...'
-    formatted_addresses = ",".join([f"'{addr.lower()}'" for addr in user_addresses])
+    print(f"🚀 Connecting to: {GOLDSKY_URL} ...")
     
-    # 2. THE SQL QUERY
-    # This runs on Dune's servers. It scans millions of rows instantly.
-    # Note: We use the 'polymarket.trades' table (or equivalent decoded event table).
-    sql_query = f"""
-    WITH user_stats AS (
-        SELECT
-            trader AS user_address,
-            -- Calculate Worst Loss (Min PnL)
-            MIN(amount_usd * (CASE WHEN type = 'Sell' THEN 1 ELSE -1 END)) as worst_loss_estimate,
-            
-            -- Calculate Win Counts (This logic depends on how you define a 'Win' in raw trades)
-            -- For accuracy, linking to outcome resolution tables is best, but here is a proxy:
-            COUNT(CASE WHEN type = 'Redemption' AND amount_usd > 0 THEN 1 END) as win_count,
-            SUM(CASE WHEN type = 'Redemption' THEN amount_usd ELSE 0 END) as win_volume
-        FROM polymarket.trades
-        WHERE trader IN ({formatted_addresses})
-        GROUP BY 1
-    )
-    SELECT * FROM user_stats
-    """
-
-    # 3. EXECUTE
     try:
-        # We use a known Query ID or create a new execution. 
-        # For ad-hoc SQL, we can submit the query string directly.
-        results = dune.run_sql(
-            query_sql=sql_query,
-            performance="medium" # Use 'large' for huge lists
-        )
+        response = requests.post(GOLDSKY_URL, json={'query': query})
         
-        # 4. PARSE RESULTS
-        metrics_map = {}
-        for row in results.get_rows():
-            addr = row['user_address']
-            metrics_map[addr] = {
-                "worst_loss": row['worst_loss_estimate'],
-                "win_count": row['win_count'],
-                "win_volume": row['win_volume']
-            }
+        # DEBUG: Print status code if it fails
+        if response.status_code != 200:
+            print(f"❌ Server Error ({response.status_code}): {response.text}")
+            return
+
+        raw_json = response.json()
+
+        # 3. ERROR HANDLING (The Fix)
+        # Check if Goldsky sent us an error message instead of data
+        if "errors" in raw_json:
+            print("\n⚠️  GOLDSKY QUERY ERROR:")
+            print(raw_json['errors'])
+            return
+
+        if "data" not in raw_json or raw_json['data'] is None:
+            print("\n⚠️  NO DATA RECEIVED.")
+            print(f"Response: {raw_json}")
+            return
+
+        trades = raw_json['data'].get('orderFilleds', [])
+        
+        if not trades:
+            print("✅ Connection successful, but found 0 trades.")
+            print("   (The indexer might still be syncing. Wait 2 minutes.)")
+            return
+
+        print(f"✅ Downloaded {len(trades)} trades.\n")
+        
+        # 4. PROCESS DATA
+        leaderboard = {}
+        for t in trades:
+            user = t['maker']
+            # Convert BigInt string to float (assuming 6 decimals for USDC, but raw is fine for rank)
+            vol = float(t['makerAmount']) 
             
-        return metrics_map
+            if user not in leaderboard:
+                leaderboard[user] = {'volume': 0.0, 'count': 0}
+            
+            leaderboard[user]['volume'] += vol
+            leaderboard[user]['count'] += 1
+
+        # 5. DISPLAY
+        df = pd.DataFrame.from_dict(leaderboard, orient='index')
+        df.reset_index(inplace=True)
+        df.columns = ['User', 'Volume', 'Count']
+        df = df.sort_values(by='Volume', ascending=False).head(10)
+        
+        print("🏆 LEADERBOARD 🏆")
+        print(df.to_string(index=False))
 
     except Exception as e:
-        print(f"Dune API Error: {e}")
-        return {}
+        print(f"\n❌ Python Exception: {e}")
 
-# ==========================================
-# TEST RUN
-# ==========================================
-users = [
-    "0x6a72f61820b26b1fe4d956e17b6dc2a1ea3033ee", 
-    "0x17db3fcd93ba12d38382a0cade24b200185c5f6d"
-]
-
-print("🚀 Asking Dune to calculate scores...")
-data = fetch_leaderboard_metrics_dune(users)
-
-for user in users:
-    m = data.get(user.lower(), {})
-    print(f"User: {user[:10]}...")
-    print(f" - Worst Loss: ${m.get('worst_loss', 0)}")
-    print(f" - Win Count:  {m.get('win_count', 0)}")
-    print("-" * 30)
+if __name__ == "__main__":
+    fetch_top_traders()
