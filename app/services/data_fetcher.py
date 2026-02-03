@@ -1075,7 +1075,7 @@ async def fetch_user_trades(
             return all_trades[:target_limit]
 
         # Step 2: Parallel fetch for remaining
-        PARALLEL_BATCH_SIZE = 10
+        PARALLEL_BATCH_SIZE = 20 # Increased from 10 to 20 for faster full history fetch
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
         
@@ -1232,8 +1232,8 @@ async def fetch_closed_positions(
             
         # Step 2: Parallel fetch for remaining
         # Aggressive parallel fetching to speed up "Full History" download
-        MAX_BATCH_SIZE = 15  # Max parallel requests
-        current_batch_size = 5  # Start smaller to avoid overhead for small wallets (~150-200 items)
+        MAX_BATCH_SIZE = 20  # Max parallel requests (Increased from 15)
+        current_batch_size = 10  # Start higher (Increased from 5)
 
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
@@ -1478,132 +1478,184 @@ def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) ->
                  # Fallback if sync_client isn't defined locally
                  with DNSAwareClient() as client:
                     response = client.get(trades_url, params=trades_params)
-
-            response.raise_for_status()
             
+            response.raise_for_status()
             batch_data = response.json()
             
-            if not isinstance(batch_data, list) or not batch_data:
+            if not batch_data or not isinstance(batch_data, list):
                 break
                 
             all_trades_data.extend(batch_data)
-            fetched_count = len(batch_data)
-            fetched_so_far += fetched_count
-            current_offset += fetched_count
+            fetched_so_far += len(batch_data)
+            current_offset += len(batch_data)
             
-            if fetched_count < batch_limit:
-                # End of results
+            if len(batch_data) < batch_limit:
                 break
-        
-        trades_data = all_trades_data
-        
-        if not trades_data:
-             return {
-                "orders": [],
-                "pagination": {
-                    "limit": limit,
-                    "offset": offset,
-                    "total": 0,
-                    "has_more": False
-                }
-            }
-            
-        # Get market title if available (from first trade)
-        market_title = ""
-        condition_id = ""
-        if trades_data:
-            first_trade = trades_data[0]
-            market_title = first_trade.get("marketTitle", first_trade.get("title", ""))
-            condition_id = first_trade.get("conditionId", first_trade.get("condition_id", ""))
-        
-        # Convert trades to order format
-        all_orders = []
-        for trade in trades_data:
-            try:
-                # Get user address from multiple possible fields
-                # Activity endpoint uses "proxyWallet" or "user" field
-                # Trades endpoint may not have user info when filtered by market
-                user_address = (
-                    trade.get("proxyWallet") or  # Primary field from Activity API
-                    trade.get("proxy_wallet") or  # Snake case variant
-                    trade.get("user") or 
-                    trade.get("userProfileAddress") or  # Alternative field name
-                    trade.get("maker") or 
-                    trade.get("makerAddress") or
-                    trade.get("userAddress") or
-                    trade.get("trader") or
-                    trade.get("wallet") or
-                    trade.get("walletAddress") or
-                    trade.get("from") or  # Transaction from field
-                    trade.get("account") or  # Account field
-                    trade.get("owner") or  # Owner field
-                    ""
-                )
                 
-                # Get taker address similarly
-                taker_address = (
-                    trade.get("taker") or
-                    trade.get("takerAddress") or
-                    trade.get("takerWallet") or
-                    trade.get("to") or  # Transaction to field
-                    ""
-                )
-                
-                # Map fields from activity or trades endpoint
-                # Activity endpoint uses different field names than trades
-                order = {
-                    "token_id": trade.get("asset", trade.get("token_id", "")),
-                    "token_label": trade.get("outcome", ""),
-                    "side": trade.get("side", "BUY"),
-                    "market_slug": market_slug,
-                    "condition_id": trade.get("conditionId", trade.get("condition_id", condition_id)),
-                    "shares": float(trade.get("size", trade.get("shares", 0))),
-                    "price": float(trade.get("price", 0)),
-                    "tx_hash": trade.get("transactionHash", trade.get("transaction_hash", trade.get("tx_hash", ""))),
-                    "title": market_title or trade.get("marketTitle", trade.get("title", "")),
-                    "timestamp": trade.get("timestamp", trade.get("time", 0)),
-                    "order_hash": trade.get("id", trade.get("order_hash", "")),
-                    "user": user_address,  # Use the extracted user address (wallet address)
-                    "taker": taker_address,
-                    "shares_normalized": float(trade.get("size", trade.get("shares", 0)))
-                }
-                all_orders.append(order)
-            except (ValueError, TypeError) as e:
-                # Skip trades with invalid data
-                continue
-        
-        # Apply pagination
-        total_orders = len(all_orders)
-        paginated_orders = all_orders[offset:offset + limit]
+        # Slice to requested limit
+        result_data = all_trades_data[:limit]
         
         return {
-            "orders": paginated_orders,
-            "pagination": {
-                "limit": limit,
-                "offset": offset,
-                "total": total_orders,
-                "has_more": (offset + limit) < total_orders
+            "limit": limit,
+            "offset": offset,
+            "count": len(result_data),
+            "orders": result_data
+        }
+
+    except Exception as e:
+        print(f"Error fetching market orders: {e}")
+        return {"limit": limit, "offset": offset, "count": 0, "orders": []}
+
+
+def fetch_total_market_trades(market_slug: str) -> int:
+    """
+    Fetch the total count of trades for a market.
+    Iterates through all pages to get an exact count.
+    """
+    try:
+        trades_url = "https://data-api.polymarket.com/trades"
+        total_count = 0
+        current_offset = 0
+        batch_limit = 1000
+        
+        while True:
+            params = {
+                "market": market_slug,
+                "limit": batch_limit,
+                "offset": current_offset
             }
+            
+            try:
+                response = sync_client.get(trades_url, params=params)
+            except NameError:
+                with DNSAwareClient() as client:
+                    response = client.get(trades_url, params=params)
+            
+            if response.status_code != 200:
+                print(f"Error checking trade count (status {response.status_code})")
+                break
+                
+            data = response.json()
+            if not data or not isinstance(data, list):
+                break
+                
+            count = len(data)
+            total_count += count
+            current_offset += count
+            
+            if count < batch_limit:
+                break
+                
+        return total_count
+        
+    except Exception as e:
+        print(f"Error fetching total market trades: {e}")
+        return 0
+
+
+def fetch_market_traders_aggregated(
+    market_slug: str, 
+    limit: int = 100, 
+    offset: int = 0
+) -> Dict[str, Any]:
+    """
+    Fetch all trades for a market and aggregate by trader address.
+    Returns traders sorted by volume (descending).
+    """
+    try:
+        # Fetch ALL trades for the market to ensure accurate aggregation
+        # Warning: This can be slow for very liquid markets
+        trades_url = "https://data-api.polymarket.com/trades"
+        all_trades = []
+        current_offset = 0
+        batch_limit = 1000
+        
+        # Safety cap to prevent timeout on massive markets
+        MAX_TRADES_TO_PROCESS = 10000 
+        
+        while len(all_trades) < MAX_TRADES_TO_PROCESS:
+            params = {
+                "market": market_slug,
+                "limit": batch_limit,
+                "offset": current_offset
+            }
+            
+            try:
+                response = sync_client.get(trades_url, params=params)
+            except NameError:
+                with DNSAwareClient() as client:
+                    response = client.get(trades_url, params=params)
+                    
+            if response.status_code != 200:
+                break
+                
+            data = response.json()
+            if not data or not isinstance(data, list):
+                break
+                
+            all_trades.extend(data)
+            current_offset += len(data)
+            
+            if len(data) < batch_limit:
+                break
+        
+        # Aggregate by trader
+        traders_map = {}
+        
+        for trade in all_trades:
+            # Polymarket data API trades usually have 'taker' and 'maker'
+            # But the detailed public trade endpoint usually returns a list of individual fills which include 'match_id', 'price', 'size', 'side', 'timestamp'
+            # AND importantly 'maker_address' and 'taker_address' OR just an address if it's from the perspective of a user.
+            # However, /trades?market=slug returns a global trade list. 
+            # It normally contains 'maker_address' and 'taker_address'.
+            
+            maker = trade.get("maker_address")
+            taker = trade.get("taker_address")
+            size = float(trade.get("size", 0) or 0)
+            price = float(trade.get("price", 0) or 0)
+            volume = size * price
+            
+            # Update Maker
+            if maker:
+                if maker not in traders_map:
+                    traders_map[maker] = {"address": maker, "volume": 0.0, "count": 0, "role": "maker"}
+                traders_map[maker]["volume"] += volume
+                traders_map[maker]["count"] += 1
+                
+            # Update Taker
+            if taker:
+                if taker not in traders_map:
+                    traders_map[taker] = {"address": taker, "volume": 0.0, "count": 0, "role": "taker"}
+                traders_map[taker]["volume"] += volume
+                traders_map[taker]["count"] += 1
+
+        # Convert to list
+        traders_list = list(traders_map.values())
+        
+        # Sort by volume desc
+        traders_list.sort(key=lambda x: x["volume"], reverse=True)
+        
+        # Pagination on aggregated result
+        total_traders = len(traders_list)
+        paginated_traders = traders_list[offset : offset + limit]
+        
+        return {
+            "limit": limit,
+            "offset": offset,
+            "total": total_traders,
+            "traders": paginated_traders
         }
         
-    except httpx.HTTPStatusError as e:
-        # Handle specific HTTP errors
-        if e.response and e.response.status_code == 404:
-            # Market not found - return empty result
-            return {
-                "orders": [],
-                "pagination": {
-                    "limit": limit,
-                    "offset": offset,
-                    "total": 0,
-                    "has_more": False
-                }
-            }
-        raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
-    except httpx.RequestError as e:
-        raise Exception(f"Error fetching market orders from Polymarket API: {str(e)}")
     except Exception as e:
-        raise Exception(f"Unexpected error fetching market orders: {str(e)}")
+        print(f"Error aggregating market traders: {e}")
+        return {
+            "limit": limit, 
+            "offset": offset, 
+            "total": 0, 
+            "traders": []
+        }
+
+
 
 
 async def fetch_traders_from_leaderboard(

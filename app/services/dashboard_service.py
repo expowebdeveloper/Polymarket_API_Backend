@@ -94,6 +94,150 @@ def categorize_market(title: str, slug: str) -> str:
     
     return "Other"
 
+def calculate_market_distribution(active_positions: List[Any], closed_positions: List[Any]) -> tuple[List[Dict[str, Any]], str]:
+    """
+    Calculate market distribution statistics from active and closed positions.
+    Handles both SQLAlchemy objects and Dictionary objects.
+    """
+    market_distribution = []
+    primary_edge = "No trading data available."
+    market_category_stats = {}
+    
+    try:
+        # Helper to safely get values from Dict or Object
+        def get_val(item, keys, default=None):
+            if isinstance(item, dict):
+                for k in keys:
+                    if k in item: return item[k]
+            else:
+                for k in keys:
+                    if hasattr(item, k): return getattr(item, k)
+            return default
+
+        # Process closed positions
+        for cp in closed_positions:
+            market_title = get_val(cp, ["title"], "Unknown") or "Unknown"
+            market_slug = get_val(cp, ["slug", "market_slug"], "Unknown") or "Unknown"
+            category = categorize_market(market_title, market_slug)
+
+            # Stake
+            total_bought = float(get_val(cp, ["total_bought", "totalBought", "size"], 0) or 0)
+            avg_price = float(get_val(cp, ["avg_price", "avgPrice"], 0) or 0)
+            stake = total_bought * avg_price
+            
+            pnl = float(get_val(cp, ["realized_pnl", "realizedPnl"], 0) or 0)
+
+            if category not in market_category_stats:
+                market_category_stats[category] = {
+                    "capital": 0.0,
+                    "total_pnl": 0.0,
+                    "wins": 0,
+                    "losses": 0,
+                    "trades": 0,
+                    "markets": set(),
+                    "worst_loss": 0.0
+                }
+
+            market_category_stats[category]["capital"] += stake
+            market_category_stats[category]["total_pnl"] += pnl
+            market_category_stats[category]["trades"] += 1
+            market_category_stats[category]["markets"].add(market_slug)
+
+            if pnl > 0:
+                market_category_stats[category]["wins"] += 1
+            elif pnl < 0:
+                market_category_stats[category]["losses"] += 1
+                if pnl < market_category_stats[category]["worst_loss"]:
+                    market_category_stats[category]["worst_loss"] = pnl
+
+        # Process active positions
+        for pos in active_positions:
+            market_title = get_val(pos, ["title"], "Unknown") or "Unknown"
+            market_slug = get_val(pos, ["slug", "market_slug"], "Unknown") or "Unknown"
+            category = categorize_market(market_title, market_slug)
+
+            capital = float(get_val(pos, ["initial_value", "initialValue"], 0) or 0)
+
+            if category not in market_category_stats:
+                market_category_stats[category] = {
+                    "capital": 0.0,
+                    "total_pnl": 0.0,
+                    "wins": 0,
+                    "losses": 0,
+                    "trades": 0,
+                    "markets": set(),
+                    "worst_loss": 0.0
+                }
+            
+            market_category_stats[category]["capital"] += capital
+            market_category_stats[category]["markets"].add(market_slug)
+
+        # Calculate ROI and Win Rate for each category
+        total_capital = sum(stats["capital"] for stats in market_category_stats.values())
+        
+        for category, stats in market_category_stats.items():
+            capital = stats["capital"]
+            total_pnl = stats["total_pnl"]
+            wins = stats["wins"]
+            losses = stats["losses"]
+            total_trades = stats["trades"]
+            
+            # Calculate ROI %
+            roi_percent = (total_pnl / capital * 100) if capital > 0 else 0.0
+            
+            # Calculate Win Rate %
+            win_rate_percent = (wins / total_trades * 100) if total_trades > 0 else 0.0
+            
+            # Calculate capital percentage
+            capital_percent = (capital / total_capital * 100) if total_capital > 0 else 0.0
+            
+            # Calculate risk (worst loss / capital)
+            risk_score = abs(stats.get("worst_loss", 0)) / capital if capital > 0 else 0.0
+            
+            market_distribution.append({
+                "category": category,
+                "market": category,  # For display
+                "capital": round(capital, 2),
+                "capital_percent": round(capital_percent, 2),
+                "roi_percent": round(roi_percent, 2),
+                "win_rate_percent": round(win_rate_percent, 2),
+                "trades_count": total_trades,
+                "wins": wins,
+                "losses": losses,
+                "total_pnl": round(total_pnl, 2),
+                "risk_score": round(risk_score, 4),
+                "unique_markets": len(stats["markets"])
+            })
+        
+        # Sort by capital (descending)
+        market_distribution.sort(key=lambda x: x["capital"], reverse=True)
+        
+        # Determine primary edge
+        if market_distribution:
+            primary_category = market_distribution[0]
+            primary_edge = f"Primary edge in {primary_category['category']} markets with "
+            if primary_category['roi_percent'] > 0:
+                primary_edge += f"{'high' if primary_category['roi_percent'] > 50 else 'consistent'} ROI "
+            else:
+                primary_edge += "moderate ROI "
+            
+            if primary_category['risk_score'] < 0.1:
+                primary_edge += "and low risk."
+            elif primary_category['risk_score'] < 0.3:
+                primary_edge += "and moderate risk."
+            else:
+                primary_edge += "and high risk."
+        else:
+            primary_edge = "No trading data available."
+
+    except Exception as e:
+        import traceback
+        print(f"Error calculating market distribution: {e}")
+        print(traceback.format_exc())
+        return [], "Unable to calculate market distribution."
+
+    return market_distribution, primary_edge
+
 async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> Dict[str, Any]:
     """
     Aggregate all necessary data for the wallet dashboard from the local database.
@@ -438,127 +582,7 @@ async def get_db_dashboard_data(session: AsyncSession, wallet_address: str) -> D
 
     
     # --- Calculate Detailed Market Distribution with ROI and Win Rate ---
-    market_distribution = []
-    primary_edge = "No trading data available."
-    market_category_stats = {}  # category -> {capital, roi, win_rate, trades, wins, losses}
-    
-    try:
-        # Process closed positions for market distribution
-        for cp in closed_positions:
-            market_title = cp.title or "Unknown"
-            market_slug = cp.slug or "Unknown"
-            category = categorize_market(market_title, market_slug)
-            
-            # Calculate stake (capital allocation)
-            stake = float(cp.total_bought or 0) * float(cp.avg_price or 0)
-            pnl = float(cp.realized_pnl or 0)
-            
-            if category not in market_category_stats:
-                market_category_stats[category] = {
-                    "capital": 0.0,
-                    "total_pnl": 0.0,
-                    "wins": 0,
-                    "losses": 0,
-                    "trades": 0,
-                    "markets": set()  # Track unique markets
-                }
-            
-            market_category_stats[category]["capital"] += stake
-            market_category_stats[category]["total_pnl"] += pnl
-            market_category_stats[category]["trades"] += 1
-            market_category_stats[category]["markets"].add(market_slug)
-            
-            if pnl > 0:
-                market_category_stats[category]["wins"] += 1
-            elif pnl < 0:
-                market_category_stats[category]["losses"] += 1
-        
-        # Process active positions for capital allocation
-        for pos in active_positions:
-            market_title = pos.title or "Unknown"
-            market_slug = pos.slug or "Unknown"
-            category = categorize_market(market_title, market_slug)
-            
-            capital = float(pos.initial_value or 0)
-            
-            if category not in market_category_stats:
-                market_category_stats[category] = {
-                    "capital": 0.0,
-                    "total_pnl": 0.0,
-                    "wins": 0,
-                    "losses": 0,
-                    "trades": 0,
-                    "markets": set()
-                }
-            
-            market_category_stats[category]["capital"] += capital
-            market_category_stats[category]["markets"].add(market_slug)
-        
-        # Calculate ROI and Win Rate for each category
-        total_capital = sum(stats["capital"] for stats in market_category_stats.values())
-        
-        for category, stats in market_category_stats.items():
-            capital = stats["capital"]
-            total_pnl = stats["total_pnl"]
-            wins = stats["wins"]
-            losses = stats["losses"]
-            total_trades = stats["trades"]
-            
-            # Calculate ROI %
-            roi_percent = (total_pnl / capital * 100) if capital > 0 else 0.0
-            
-            # Calculate Win Rate %
-            win_rate_percent = (wins / total_trades * 100) if total_trades > 0 else 0.0
-            
-            # Calculate capital percentage
-            capital_percent = (capital / total_capital * 100) if total_capital > 0 else 0.0
-            
-            # Calculate risk (worst loss / capital)
-            # We'll use a simple risk metric based on losses
-            risk_score = abs(stats.get("worst_loss", 0)) / capital if capital > 0 else 0.0
-            
-            market_distribution.append({
-                "category": category,
-                "market": category,  # For display
-                "capital": round(capital, 2),
-                "capital_percent": round(capital_percent, 2),
-                "roi_percent": round(roi_percent, 2),
-                "win_rate_percent": round(win_rate_percent, 2),
-                "trades_count": total_trades,
-                "wins": wins,
-                "losses": losses,
-                "total_pnl": round(total_pnl, 2),
-                "risk_score": round(risk_score, 4),
-                "unique_markets": len(stats["markets"])
-            })
-        
-        # Sort by capital (descending)
-        market_distribution.sort(key=lambda x: x["capital"], reverse=True)
-        
-        # Determine primary edge
-        if market_distribution:
-            primary_category = market_distribution[0]
-            primary_edge = f"Primary edge in {primary_category['category']} markets with "
-            if primary_category['roi_percent'] > 0:
-                primary_edge += f"{'high' if primary_category['roi_percent'] > 50 else 'consistent'} ROI "
-            else:
-                primary_edge += "moderate ROI "
-            
-            if primary_category['risk_score'] < 0.1:
-                primary_edge += "and low risk."
-            elif primary_category['risk_score'] < 0.3:
-                primary_edge += "and moderate risk."
-            else:
-                primary_edge += "and high risk."
-        else:
-            primary_edge = "No trading data available."
-        
-    except Exception as e:
-        import traceback
-        print(f"Error calculating market distribution: {e}")
-        print(traceback.format_exc())
-        market_distribution = []
-        primary_edge = "Unable to calculate market distribution."
+    market_distribution, primary_edge = calculate_market_distribution(active_positions, closed_positions)
 
     # --- Calculate Profit Trend (Last 7 Days) ---
     profit_trend = []
@@ -770,7 +794,7 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
     
     # Only fetch trades if not skipped
     if not skip_trades:
-        tasks["trades"] = fetch_user_trades(wallet_address, limit=1000) # Limit to 1000 for speed. Volume uses Leaderboard.
+        tasks["trades"] = fetch_user_trades(wallet_address, limit=None) # Fetch ALL trades to ensure accuracy. Parallel fetch handles speed.
 
     import time
     t0 = time.time()
@@ -1088,6 +1112,9 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         slug = pos.get("slug") or pos.get("market_slug") or ""
         pos["category"] = categorize_market(title, slug)
 
+    # Calculate market distribution for Live Dashboard logic
+    market_distribution, primary_edge = calculate_market_distribution(active_positions, closed_positions)
+
     return {
         "profile": {
             "username": username,
@@ -1122,7 +1149,9 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "streaks": scoring_metrics["streaks"],
         "rewards_earned": trader_metrics.get("rewards_earned", 0.0),
         "total_volume": scoring_metrics["total_volume"],
-        "portfolio_value": portfolio_value
+        "portfolio_value": portfolio_value,
+        "market_distribution": market_distribution,
+        "primary_edge": primary_edge
     }
 
 async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dict[str, Any]]:
