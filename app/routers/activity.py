@@ -7,7 +7,9 @@ from app.schemas.general import ErrorResponse
 from app.services.activity_service import fetch_and_save_activities, get_activities_from_db
 from app.db.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from decimal import Decimal
+from app.routers.websocket import manager
+from app.services.activity_broadcaster import broadcaster
+from typing import List, Dict, Any
 
 router = APIRouter(prefix="/activity", tags=["Activity"])
 
@@ -229,3 +231,11 @@ async def get_activity_from_db_endpoint(
         )
 
 
+
+@router.get("/global", response_model=List[Dict[str, Any]])
+async def get_global_activity_endpoint():
+    """
+    Fetch recent global activity from the broadcaster cache.
+    Useful for initial load before WebSocket connection is established.
+    """
+    return broadcaster.get_recent_activities()
