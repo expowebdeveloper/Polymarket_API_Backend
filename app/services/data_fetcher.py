@@ -2135,3 +2135,65 @@ async def fetch_users_metrics_batch(user_addresses: List[str]) -> Dict[str, Dict
             }
             
     return final_results
+
+async def fetch_category_stats(wallet_address: str, categories: List[str]) -> Dict[str, Dict[str, float]]:
+    """
+    Fetch leaderboard stats for multiple categories in parallel.
+    used for the Market Distribution panel.
+    
+    Args:
+        wallet_address: Wallet address
+        categories: List of category slugs (e.g. ['politics', 'sports'])
+        
+    Returns:
+        Dictionary mapping category -> {volume, pnl, rank}
+    """
+    url = "https://data-api.polymarket.com/v1/leaderboard"
+    results = {}
+    
+    # Define a helper for a single fetch
+    async def fetch_single_category(category: str):
+        try:
+            params = {
+                "timePeriod": "all",  # Market distribution usually implies all-time
+                "orderBy": "PNL",     # Order doesn't matter for single user lookup
+                "limit": 1,
+                "offset": 0,
+                "category": category,
+                "user": wallet_address
+            }
+            
+            response = await async_client.get(url, params=params)
+            
+            # If 400 error (invalid category), just return empty stats safely
+            if response.status_code == 400:
+                print(f"Warning: Invalid category '{category}' for leaderboard API")
+                return category, {"volume": 0.0, "pnl": 0.0, "rank": 0}
+                
+            response.raise_for_status()
+            data = response.json()
+            
+            stats = {"volume": 0.0, "pnl": 0.0, "rank": 0}
+            if isinstance(data, list) and len(data) > 0:
+                item = data[0]
+                stats["volume"] = float(item.get("vol", 0.0))
+                stats["pnl"] = float(item.get("pnl", 0.0))
+                try:
+                    stats["rank"] = int(item.get("rank", 0))
+                except (ValueError, TypeError):
+                    stats["rank"] = 0
+            
+            return category, stats
+            
+        except Exception as e:
+            print(f"Error fetching stats for category '{category}': {e}")
+            return category, {"volume": 0.0, "pnl": 0.0, "rank": 0}
+
+    # Execute all fetches in parallel
+    tasks = [fetch_single_category(cat) for cat in categories]
+    fetched_data = await asyncio.gather(*tasks)
+    
+    for category, stats in fetched_data:
+        results[category] = stats
+        
+    return results

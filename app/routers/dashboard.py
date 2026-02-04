@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any
 
 from app.db.session import get_db
-from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name
+from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name, get_market_distribution_api
 from app.services.dashboard_service_trades import get_filtered_trades
 from app.services.sync_service import sync_trader_full_data
 
@@ -147,3 +147,22 @@ async def search_wallet_or_user(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/market-distribution/{wallet_address}", response_model=Dict[str, Any])
+async def get_market_distribution(
+    wallet_address: str
+):
+    """
+    Get market distribution stats from Leaderboard API (Parallel Fetch).
+    Separate endpoint to avoid blocking main dashboard load.
+    """
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        raise HTTPException(status_code=400, detail="Invalid wallet address")
+        
+    try:
+        data = await get_market_distribution_api(wallet_address)
+        return data
+    except Exception as e:
+        # Return empty distribution on error to avoid crashing UI
+        print(f"Error fetching market distribution: {e}")
+        return {"market_distribution": []}

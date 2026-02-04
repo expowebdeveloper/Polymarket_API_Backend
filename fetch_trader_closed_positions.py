@@ -340,7 +340,7 @@ async def process_trader(
             return 0, "error"
 
 
-async def main(limit: Optional[int] = None, force: bool = False, dry_run: bool = False):
+async def main(limit: Optional[int] = None, force: bool = False, dry_run: bool = False, user_identifier: Optional[str] = None):
     """Main function to fetch closed positions for all traders."""
     print("=" * 70)
     print("Polymarket Trader Closed Positions Fetcher (with Checkpoints)")
@@ -365,11 +365,42 @@ async def main(limit: Optional[int] = None, force: bool = False, dry_run: bool =
         )
         
         async with AsyncSessionLocal() as session:
-            # Fetch all traders
-            result = await session.execute(
-                text("SELECT id, wallet_address FROM trader_leaderboard ORDER BY id")
-            )
-            traders = result.fetchall()
+            # Fetch traders
+            if user_identifier:
+                print(f"🔍 Looking for user: {user_identifier}")
+                # Try to find by wallet, name, or pseudonym
+                result = await session.execute(
+                    text("""
+                        SELECT id, wallet_address FROM trader_leaderboard 
+                        WHERE wallet_address = :id 
+                           OR name = :id 
+                           OR pseudonym = :id
+                    """),
+                    {"id": user_identifier}
+                )
+                traders = result.fetchall()
+                
+                if not traders:
+                    # Try partial match if no exact match
+                    result = await session.execute(
+                        text("""
+                            SELECT id, wallet_address FROM trader_leaderboard 
+                            WHERE name ILIKE :id 
+                               OR pseudonym ILIKE :id
+                        """),
+                        {"id": f"%{user_identifier}%"}
+                    )
+                    traders = result.fetchall()
+                
+                if not traders:
+                    print(f"❌ User '{user_identifier}' not found in leaderboard")
+                    return
+            else:
+                # Fetch all traders
+                result = await session.execute(
+                    text("SELECT id, wallet_address FROM trader_leaderboard ORDER BY id")
+                )
+                traders = result.fetchall()
             
             if limit:
                 traders = traders[:limit]
@@ -486,7 +517,8 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, help="Limit number of traders to process")
     parser.add_argument("--force", action="store_true", help="Force re-fetch even if recently fetched")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without making changes")
+    parser.add_argument("--user", type=str, help="Specific user (wallet, name, or pseudonym) to process")
     
     args = parser.parse_args()
     
-    asyncio.run(main(limit=args.limit, force=args.force, dry_run=args.dry_run))
+    asyncio.run(main(limit=args.limit, force=args.force, dry_run=args.dry_run, user_identifier=args.user))
