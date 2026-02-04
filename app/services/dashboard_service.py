@@ -157,7 +157,16 @@ def calculate_market_distribution(active_positions: List[Any], closed_positions:
             market_slug = get_val(pos, ["slug", "market_slug"], "Unknown") or "Unknown"
             category = categorize_market(market_title, market_slug)
 
-            capital = float(get_val(pos, ["initial_value", "initialValue"], 0) or 0)
+            # Calculate capital from Size * Price to be safe (avoid global market volume in initial_value)
+            size = float(get_val(pos, ["size", "totalBought", "total_bought"], 0) or 0)
+            avg_price = float(get_val(pos, ["avgBuyPrice", "avg_buy_price", "avgPrice", "avg_price"], 0) or 0)
+            capital = size * avg_price
+            
+            # Fallback to initial_value ONLY if calculation yields 0 and initial_value is reasonable (< 1M)
+            if capital == 0:
+                iv = float(get_val(pos, ["initial_value", "initialValue"], 0) or 0)
+                if iv < 1_000_000: # Sanity check: User likely didn't bet $1M+ on a single position
+                    capital = iv
 
             if category not in market_category_stats:
                 market_category_stats[category] = {
@@ -171,6 +180,7 @@ def calculate_market_distribution(active_positions: List[Any], closed_positions:
                 }
             
             market_category_stats[category]["capital"] += capital
+            market_category_stats[category]["trades"] += 1  # Count active positions as trades too
             market_category_stats[category]["markets"].add(market_slug)
 
         # Calculate ROI and Win Rate for each category
