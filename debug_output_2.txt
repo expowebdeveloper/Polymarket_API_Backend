@@ -1,0 +1,14 @@
+Verifying global dashboard stats...
+Stats retrieved successfully:
+- total_volume: $0.00
+- tvl: $0.00
+- open_interest: $0.00
+- markets_volume: $0.00
+- total_markets: 0
+- total_traders: 10055
+- lp_rewards: $0.00
+- total_trades: 11520
+- total_buys: 11258
+- total_sells: 262
+
+Verification Passed!

@@ -795,9 +795,85 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
     
-    # Only fetch trades if not skipped
-    if not skip_trades:
-        tasks["trades"] = fetch_user_trades(wallet_address, limit=None) # Fetch ALL trades to ensure accuracy. Parallel fetch handles speed.
+async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
+    """
+    Get global dashboard statistics.
+    Attempts to fetch real-time market data from API for Volume/TVL/OI.
+    Falls back to DB for counts (Traders/Trades) as those are expensive to compute via API.
+    """
+    try:
+        from app.services.data_fetcher import fetch_markets
+        from app.db.models import TraderLeaderboard, TraderTrade
+        from sqlalchemy import func, select, case
+
+        # 1. Fetch Active Markets from API (Limit 1000 to get a good chunk of liquidity)
+        # We use a large limit to approximate "Global" stats
+        api_markets, pagination = await fetch_markets(status="active", limit=1000)
+        
+        total_volume = 0.0
+        tvl = 0.0
+        open_interest = 0.0
+        total_markets = pagination.get("total", 0)
+        
+        for m in api_markets:
+            total_volume += float(m.get("volume", 0) or 0)
+            tvl += float(m.get("liquidity", 0) or 0)
+            open_interest += float(m.get("openInterest", 0) or 0)
+            
+        # 2. DB Stats for Counts (Traders, Trades)
+        # These are historical/scraped and safer to get from DB than trying to count all users via API
+        
+        # Total Traders
+        stmt = select(func.count(TraderLeaderboard.id))
+        result = await session.execute(stmt)
+        total_traders = result.scalar() or 0
+        
+        # Total Trades
+        stmt = select(
+            func.count(TraderTrade.id),
+            func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+            func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+        )
+        result = await session.execute(stmt)
+        trade_stats = result.first()
+        
+        total_trades = trade_stats[0] or 0
+        total_buys = trade_stats[1] or 0
+        total_sells = trade_stats[2] or 0
+        
+        # LP Rewards - Mock or 0
+        lp_rewards = 0
+        
+        return {
+            "total_volume": f"${total_volume:,.2f}",
+            "tvl": f"${tvl:,.2f}",
+            "open_interest": f"${open_interest:,.2f}",
+            "markets_volume": f"${total_volume:,.2f}", 
+            "total_markets": str(total_markets),
+            "total_traders": str(total_traders),
+            "lp_rewards": f"${lp_rewards:,.2f}",
+            "total_trades": str(total_trades),
+            "total_buys": str(total_buys),
+            "total_sells": str(total_sells)
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"Error fetching global dashboard stats: {e}")
+        traceback.print_exc()
+        return {
+            "total_volume": "Error",
+            "tvl": "Error",
+            "open_interest": "Error",
+            "markets_volume": "Error",
+            "total_markets": "0",
+            "total_traders": "0",
+            "lp_rewards": "0",
+            "total_trades": "0",
+            "total_buys": "0",
+            "total_sells": "0"
+        }
+
 
     import time
     t0 = time.time()

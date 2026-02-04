@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "/home/dell/Desktop/Projects/Polymarket/backend/app/services/dashboard_service.py", line 842, in get_global_dashboard_stats
+    func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+             ^^^^
+UnboundLocalError: cannot access local variable 'case' where it is not associated with a value
+Verifying global dashboard stats...
+Error fetching global dashboard stats: cannot access local variable 'case' where it is not associated with a value
+Stats retrieved successfully:
+- total_volume: Error
+- tvl: Error
+- open_interest: Error
+- markets_volume: Error
+- total_markets: 0
+- total_traders: 0
+- lp_rewards: 0
+- total_trades: 0
+- total_buys: 0
+- total_sells: 0
+Traceback (most recent call last):
+  File "/home/dell/Desktop/Projects/Polymarket/backend/verify_dashboard_fix.py", line 21, in <module>
+    asyncio.run(verify())
+  File "/home/dell/.pyenv/versions/3.11.0/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/home/dell/.pyenv/versions/3.11.0/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dell/.pyenv/versions/3.11.0/lib/python3.11/asyncio/base_events.py", line 650, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/dell/Desktop/Projects/Polymarket/backend/verify_dashboard_fix.py", line 17, in verify
+    assert stats["total_volume"] != "Error"
+AssertionError

@@ -12,6 +12,19 @@ router = APIRouter(
     tags=["Dashboard"]
 )
 
+
+@router.get("/stats", response_model=Dict[str, Any])
+async def get_dashboard_stats(session: AsyncSession = Depends(get_db)):
+    """
+    Get global dashboard statistics.
+    Used by the main dashboard page.
+    """
+    try:
+        from app.services.dashboard_service import get_global_dashboard_stats
+        return await get_global_dashboard_stats(session)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching dashboard stats: {str(e)}")
+
 @router.post("/sync/{wallet_address}", response_model=Dict[str, Any])
 async def sync_dashboard_data(
     wallet_address: str,

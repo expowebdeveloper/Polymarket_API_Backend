@@ -1,0 +1,15 @@
+Verifying global dashboard stats...
+✓ Successfully fetched 1000 markets from Gamma API (Parallel)
+Stats retrieved successfully:
+- total_volume: $4,353,999,311.21
+- tvl: $330,370,144.03
+- open_interest: $0.00
+- markets_volume: $4,353,999,311.21
+- total_markets: 6230
+- total_traders: 10055
+- lp_rewards: $0.00
+- total_trades: 11520
+- total_buys: 11258
+- total_sells: 262
+
+Verification Passed!
