@@ -741,60 +741,6 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 _DASHBOARD_CACHE = {}
 CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
-async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
-    """
-    Aggregate ALL necessary data for the wallet profile stats by fetching directly from Polymarket APIs.
-    Bypasses the local database entirely.
-    
-    Args:
-        wallet_address: Wallet address to fetch data for
-        force_refresh: Force refresh cache
-        skip_trades: Skip fetching trade history (for initial load performance)
-    
-    Includes a 120-second in-memory cache to prevent API rate limiting and speed up reloads.
-    """
-    import time
-    
-    # Check Cache
-    if not force_refresh:
-        now = time.time()
-        if wallet_address in _DASHBOARD_CACHE:
-            ts, cached_data = _DASHBOARD_CACHE[wallet_address]
-            if now - ts < CACHE_TTL:
-                print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
-                return cached_data
-            else:
-                print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
-    
-    import asyncio
-    from app.services.data_fetcher import (
-        fetch_positions_for_wallet,
-        fetch_closed_positions,
-        fetch_user_activity,
-        fetch_user_trades,
-        fetch_user_pnl,
-        fetch_profile_stats,
-        fetch_portfolio_value,
-        fetch_leaderboard_stats,
-        fetch_user_traded_count,
-        fetch_user_profile_data_v2,
-        fetch_traders_from_leaderboard, # Added this based on the provided snippet context
-        fetch_wallet_address_from_profile_page # Added import
-    )
-
-    # 1. Fetch everything concurrently with timeout
-    tasks = {
-        "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
-        "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
-        "user_pnl": fetch_user_pnl(wallet_address),
-        "profile": fetch_profile_stats(wallet_address),
-        "portfolio_value": fetch_portfolio_value(wallet_address),
-        "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
-        "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
-        "traded_count": fetch_user_traded_count(wallet_address),
-        "profile_v2": fetch_user_profile_data_v2(wallet_address)
-    }
-    
 async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
     """
     Get global dashboard statistics.
@@ -873,6 +819,63 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             "total_buys": "0",
             "total_sells": "0"
         }
+
+
+async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
+    """
+    Aggregate ALL necessary data for the wallet profile stats by fetching directly from Polymarket APIs.
+    Bypasses the local database entirely.
+    
+    Args:
+        wallet_address: Wallet address to fetch data for
+        force_refresh: Force refresh cache
+        skip_trades: Skip fetching trade history (for initial load performance)
+    
+    Includes a 120-second in-memory cache to prevent API rate limiting and speed up reloads.
+    """
+    import time
+    
+    # Check Cache
+    if not force_refresh:
+        now = time.time()
+        if wallet_address in _DASHBOARD_CACHE:
+            ts, cached_data = _DASHBOARD_CACHE[wallet_address]
+            if now - ts < CACHE_TTL:
+                print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
+                return cached_data
+            else:
+                print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
+    
+    import asyncio
+    from app.services.data_fetcher import (
+        fetch_positions_for_wallet,
+        fetch_closed_positions,
+        fetch_user_activity,
+        fetch_user_trades,
+        fetch_user_pnl,
+        fetch_profile_stats,
+        fetch_portfolio_value,
+        fetch_leaderboard_stats,
+        fetch_user_traded_count,
+        fetch_user_profile_data_v2,
+        fetch_traders_from_leaderboard, # Added this based on the provided snippet context
+        fetch_wallet_address_from_profile_page # Added import
+    )
+
+    # 1. Fetch everything concurrently with timeout
+    tasks = {
+        "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
+        "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
+        "user_pnl": fetch_user_pnl(wallet_address),
+        "profile": fetch_profile_stats(wallet_address),
+        "portfolio_value": fetch_portfolio_value(wallet_address),
+        "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
+        "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
+        "traded_count": fetch_user_traded_count(wallet_address),
+        "profile_v2": fetch_user_profile_data_v2(wallet_address)
+    }
+    
+
 
 
     import time
