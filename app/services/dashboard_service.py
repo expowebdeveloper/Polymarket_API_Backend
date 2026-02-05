@@ -1467,11 +1467,46 @@ def row_to_dict(row) -> Dict[str, Any]:
 
 async def get_market_distribution_api(wallet_address: str) -> Dict[str, Any]:
     """
-    Fetch market distribution stats directly from Polymarket Leaderboard API (Parallel).
+    Fetch market distribution stats from Polymarket API and calculate win rates from closed positions.
+    Combines volume/PnL from Leaderboard API with win/loss statistics from closed positions.
     """
+    from app.services.data_fetcher import fetch_closed_positions
+    
+    # Fetch category stats from Leaderboard API for volume/PnL
     target_categories = ["politics", "sports", "crypto", "finance", "culture", "mentions", "weather", "economics", "tech"]
     api_stats_map = await fetch_category_stats(wallet_address, target_categories)
     
+    # Fetch closed positions to calculate win rates
+    closed_positions = await fetch_closed_positions(wallet_address, limit=None)
+    
+    # Calculate win/loss stats by category from closed positions
+    category_trade_stats = {}
+    
+    for cp in closed_positions:
+        market_title = cp.get("title", "Unknown") or "Unknown"
+        market_slug = cp.get("slug", "Unknown") or "Unknown"
+        category = categorize_market(market_title, market_slug).lower()
+        
+        # Get PnL to determine win/loss
+        pnl = float(cp.get("realizedPnl") or cp.get("realized_pnl") or cp.get("pnl") or 0)
+        
+        if category not in category_trade_stats:
+            category_trade_stats[category] = {
+                "wins": 0,
+                "losses": 0,
+                "trades": 0,
+                "markets": set()
+            }
+        
+        category_trade_stats[category]["trades"] += 1
+        category_trade_stats[category]["markets"].add(market_slug)
+        
+        if pnl > 0:
+            category_trade_stats[category]["wins"] += 1
+        elif pnl < 0:
+            category_trade_stats[category]["losses"] += 1
+    
+    # Combine API stats with trade stats
     market_distribution = []
     total_capital_api = sum(s["volume"] for s in api_stats_map.values())
     
@@ -1479,9 +1514,13 @@ async def get_market_distribution_api(wallet_address: str) -> Dict[str, Any]:
         vol = stats["volume"]
         pnl = stats["pnl"]
         
-        # Approximate metrics
+        # Get trade stats for this category
+        trade_stats = category_trade_stats.get(cat, {"wins": 0, "losses": 0, "trades": 0, "markets": set()})
+        
+        # Calculate metrics
         roi = (pnl / vol * 100) if vol > 0 else 0.0
         capital_percent = (vol / total_capital_api * 100) if total_capital_api > 0 else 0.0
+        win_rate = (trade_stats["wins"] / trade_stats["trades"] * 100) if trade_stats["trades"] > 0 else 0.0
         
         market_distribution.append({
             "category": cat.title(),
@@ -1489,13 +1528,13 @@ async def get_market_distribution_api(wallet_address: str) -> Dict[str, Any]:
             "capital": round(vol, 2),
             "capital_percent": round(capital_percent, 2),
             "roi_percent": round(roi, 2),
-            "win_rate_percent": 0.0,
-            "trades_count": 0,
-            "wins": 0,
-            "losses": 0,
+            "win_rate_percent": round(win_rate, 2),
+            "trades_count": trade_stats["trades"],
+            "wins": trade_stats["wins"],
+            "losses": trade_stats["losses"],
             "total_pnl": round(pnl, 2),
             "risk_score": 0.0,
-            "unique_markets": 0
+            "unique_markets": len(trade_stats["markets"])
         })
         
     market_distribution.sort(key=lambda x: x["capital"], reverse=True)

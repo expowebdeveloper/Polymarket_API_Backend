@@ -467,14 +467,14 @@ def calculate_overall_metrics_enhanced(
     confidence_score = calculate_confidence_score(total_trades_count)
     
     # Final Score (Blended)
-    # Using the same weights as leaderboard_service
-    # Rating = 100 × [ 0.30 * win_score + 0.30 * roi_score + 0.30 * pnl_score + 0.10 * (1 - risk) ] * confidence
+    # Using the same weights as leaderboard_service (50% PnL, 5% risk, 22.5% win rate, 22.5% ROI)
+    # Rating = 100 × [ 0.225 * win_score + 0.225 * roi_score + 0.50 * pnl_score + 0.05 * (1 - risk) ] * confidence
     risk_val = max(0.0, min(1.0, risk_score))
     final_score = (
-        0.30 * win_score +
-        0.30 * roi_score +
-        0.30 * pnl_score_val +
-        0.10 * (1.0 - risk_val)
+        0.225 * win_score +
+        0.225 * roi_score +
+        0.50 * pnl_score_val +
+        0.05 * (1.0 - risk_val)
     ) * 100.0 * confidence_score
 
     # Stake Volatility
