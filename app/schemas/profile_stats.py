@@ -59,6 +59,7 @@ class EnhancedProfileStatsResponse(BaseModel):
     total_pnl: float = Field(..., description="Total PnL", alias="totalPnl")
     roi: float = Field(..., description="ROI percentage", alias="roi")
     win_rate: float = Field(..., description="Win rate percentage", alias="winRate")
+    is_badge_holder: bool = Field(False, description="Polymarket badge holder status", alias="isBadgeHolder")
     
     class Config:
         populate_by_name = True
@@ -81,7 +82,8 @@ class EnhancedProfileStatsResponse(BaseModel):
                 "totalTrades": 150,
                 "totalPnl": 25000.0,
                 "roi": 25.0,
-                "winRate": 65.5
+                "winRate": 65.5,
+                "isBadgeHolder": False
             }
         }
 

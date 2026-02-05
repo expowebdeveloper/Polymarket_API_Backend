@@ -10,6 +10,7 @@ from app.db.models import Trade, Position, Activity, ClosedPosition
 from app.core.scoring_config import ScoringConfig, default_scoring_config
 from app.services.confidence_scoring import calculate_confidence_score
 from app.services.scoring_engine import calculate_pnl_score, calculate_new_roi_score
+from app.services.user_tags import calculate_user_tag
 
 def calculate_median(values: List[float]) -> float:
     """Calculate median of a list of numbers."""
@@ -235,6 +236,9 @@ def process_trader_data_points(
     # Total trades (Predictions)
     # Polymarket "Predictions" count usually matches total number of trades/activities
     total_trades_count = len(trades) if trades else unique_markets
+    
+    # Calculate user tag based on PnL and prediction count
+    user_tag = calculate_user_tag(float(total_pnl), total_trades_count)
 
     return {
         "wallet_address": wallet_address,
@@ -261,6 +265,7 @@ def process_trader_data_points(
         "buy_volume": float(buy_volume),
         "sell_volume": float(sell_volume),
         "largest_win": float(largest_win),
+        "user_tag": user_tag,
         "streaks": {
             "longest_streak": longest_streak,
             "current_streak": current_streak,

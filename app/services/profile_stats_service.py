@@ -5,12 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.models import ProfileStats, Trade
-from app.services.data_fetcher import fetch_profile_stats
+from app.services.data_fetcher import fetch_profile_stats, fetch_user_leaderboard_data
 from app.services.leaderboard_service import (
     calculate_trader_metrics_with_time_filter,
     calculate_scores_and_rank,
     get_unique_wallet_addresses
 )
+from app.utils.badge_holders import is_badge_holder
 from decimal import Decimal
 
 
@@ -328,6 +329,16 @@ async def get_enhanced_profile_stats(
         if trade.pnl is not None and trade.pnl > biggest_win:
             biggest_win = float(trade.pnl)
     
+    # Check if user is a badge holder by fetching X username from leaderboard
+    badge_holder = False
+    try:
+        user_leaderboard_data = fetch_user_leaderboard_data(wallet_address, category='overall')
+        if user_leaderboard_data:
+            x_username = user_leaderboard_data.get('xUsername')
+            badge_holder = is_badge_holder(x_username)
+    except Exception as e:
+        print(f"Error checking badge holder status: {e}")
+    
     # Build response
     return {
         "proxy_address": wallet_address,
@@ -350,6 +361,7 @@ async def get_enhanced_profile_stats(
         "total_pnl": metrics.get('total_pnl', 0.0),
         "roi": metrics.get('roi', 0.0),
         "win_rate": metrics.get('win_rate', 0.0),
+        "is_badge_holder": badge_holder,
     }
 
 

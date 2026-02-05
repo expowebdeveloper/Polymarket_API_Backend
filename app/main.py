@@ -7,6 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import general, markets, traders, positions, orders, pnl, profile_stats, activity, trades, leaderboard, closed_positions, scoring, trade_history, dashboard, auth, websocket, marketing
 from app.db.session import init_db
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.API_TITLE,
@@ -53,10 +57,16 @@ async def startup_event():
     """Initialize database on application startup."""
     await init_db()
     
-    # Start Activity Broadcaster
-    from app.services.activity_broadcaster import broadcaster
-    import asyncio
-    asyncio.create_task(broadcaster.start())
+    # Conditionally start Activity Broadcaster based on environment variable
+    enable_broadcaster = os.getenv("ENABLE_ACTIVITY_BROADCASTER", "false").lower() == "true"
+    
+    if enable_broadcaster:
+        from app.services.activity_broadcaster import broadcaster
+        import asyncio
+        asyncio.create_task(broadcaster.start())
+        logger.info("🚀 Activity broadcaster auto-start enabled")
+    else:
+        logger.info("⏸️  Activity broadcaster auto-start disabled (will start on WebSocket connection)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
