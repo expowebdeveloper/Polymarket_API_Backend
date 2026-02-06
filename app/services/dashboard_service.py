@@ -19,6 +19,7 @@ from app.services.leaderboard_service import (
 from app.services.pnl_median_service import get_pnl_median_from_population
 from app.services.confidence_scoring import calculate_confidence_score, calculate_confidence_with_details
 from app.services.data_fetcher import fetch_category_stats
+from app.services.user_tags import calculate_user_tag
 
 # --- Helper function to categorize market (shared across functions) ---
 def categorize_market(title: str, slug: str) -> str:
@@ -754,37 +755,43 @@ CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
     """
     Get global dashboard statistics.
-    Attempts to fetch real-time market data from API for Volume/TVL/OI.
-    Falls back to DB for counts (Traders/Trades) as those are expensive to compute via API.
+    Prefer Polymarket API for: volume, TVL, open interest, total markets.
+    Total traders and total trades have no platform-wide API; we use DB (scraped) and label source.
     """
     try:
-        from app.services.data_fetcher import fetch_markets
+        from app.services.data_fetcher import fetch_markets, fetch_leaderboard_total_count
         from app.db.models import TraderLeaderboard, TraderTrade
         from sqlalchemy import func, select, case
 
-        # 1. Fetch Active Markets from API (Limit 1000 to get a good chunk of liquidity)
-        # We use a large limit to approximate "Global" stats
+        # 1. All market-derived stats from Polymarket Gamma API (single source of truth)
         api_markets, pagination = await fetch_markets(status="active", limit=1000)
-        
+        total_results = pagination.get("total", 0)
+        total_markets = int(total_results) if total_results else len(api_markets)
+
         total_volume = 0.0
         tvl = 0.0
         open_interest = 0.0
-        total_markets = pagination.get("total", 0)
-        
         for m in api_markets:
             total_volume += float(m.get("volume", 0) or 0)
             tvl += float(m.get("liquidity", 0) or 0)
             open_interest += float(m.get("openInterest", 0) or 0)
-            
-        # 2. DB Stats for Counts (Traders, Trades)
-        # These are historical/scraped and safer to get from DB than trying to count all users via API
-        
-        # Total Traders
-        stmt = select(func.count(TraderLeaderboard.id))
-        result = await session.execute(stmt)
-        total_traders = result.scalar() or 0
-        
-        # Total Trades
+
+        # 2. Total traders: try Polymarket leaderboard API first; fallback to DB
+        total_traders = 0
+        total_traders_source = "db"
+        try:
+            api_traders = await fetch_leaderboard_total_count()
+            if api_traders is not None and api_traders >= 0:
+                total_traders = api_traders
+                total_traders_source = "api"
+        except Exception:
+            pass
+        if total_traders_source == "db":
+            stmt = select(func.count(TraderLeaderboard.id))
+            result = await session.execute(stmt)
+            total_traders = result.scalar() or 0
+
+        # 3. Total trades: no platform-wide API; use DB and label
         stmt = select(
             func.count(TraderTrade.id),
             func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
@@ -792,25 +799,25 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
         )
         result = await session.execute(stmt)
         trade_stats = result.first()
-        
         total_trades = trade_stats[0] or 0
         total_buys = trade_stats[1] or 0
         total_sells = trade_stats[2] or 0
-        
-        # LP Rewards - Mock or 0
+
         lp_rewards = 0
-        
+
         return {
             "total_volume": f"${total_volume:,.2f}",
             "tvl": f"${tvl:,.2f}",
             "open_interest": f"${open_interest:,.2f}",
-            "markets_volume": f"${total_volume:,.2f}", 
+            "markets_volume": f"${total_volume:,.2f}",
             "total_markets": str(total_markets),
             "total_traders": str(total_traders),
+            "total_traders_source": total_traders_source,
             "lp_rewards": f"${lp_rewards:,.2f}",
             "total_trades": str(total_trades),
+            "total_trades_source": "db",
             "total_buys": str(total_buys),
-            "total_sells": str(total_sells)
+            "total_sells": str(total_sells),
         }
         
     except Exception as e:
@@ -824,10 +831,12 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             "markets_volume": "Error",
             "total_markets": "0",
             "total_traders": "0",
+            "total_traders_source": "db",
             "lp_rewards": "0",
             "total_trades": "0",
+            "total_trades_source": "db",
             "total_buys": "0",
-            "total_sells": "0"
+            "total_sells": "0",
         }
 
 
@@ -1187,7 +1196,14 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
 
     scoring_metrics["total_trades"] = traded_count or scoring_metrics["total_trades"]
     scoring_metrics["total_trades"] = traded_count or scoring_metrics["total_trades"]
-    
+
+    # Tag rules: only when predictions < 30, by PnL tier (see user_tags.py)
+    num_predictions = scoring_metrics.get("total_trades", 0) or 0
+    total_pnl = scoring_metrics.get("total_pnl", 0.0) or 0.0
+    user_tag = calculate_user_tag(float(total_pnl), int(num_predictions))
+    if user_tag:
+        scoring_metrics["user_tag"] = user_tag
+
     # Update username and profile image from official userData API
     username = profile_v2.get("name") or profile_v2.get("pseudonym") or username
     profile_image = profile_v2.get("profileImage") or (profile_stats.get("profileImage") if profile_stats else None)

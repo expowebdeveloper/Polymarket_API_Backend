@@ -254,7 +254,7 @@ async def fetch_markets(
                     "status": "active" if event.get("active") else ("closed" if event.get("closed") else "archived"),
                     "volume": float(event.get("volume", 0)),
                     "liquidity": float(event.get("liquidity", 0)),
-                    "openInterest": float(event.get("openInterest", 0)),
+                    "openInterest": float(event.get("openInterest", 0) or event.get("open_interest", 0)),
                     "image": event.get("image"),
                     "icon": event.get("icon"),
                     "startDate": event.get("startDate"),
@@ -1430,6 +1430,35 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all",
     except Exception as e:
         print(f"Unexpected error fetching leaderboard stats: {str(e)}")
         return {"volume": 0.0, "pnl": 0.0}
+
+
+async def fetch_leaderboard_total_count() -> Optional[int]:
+    """
+    Fetch total number of traders from Polymarket leaderboard API if the API exposes it.
+    Returns None if the API only returns a list with no total count (then caller uses DB).
+    """
+    try:
+        url = "https://data-api.polymarket.com/v1/leaderboard"
+        params = {
+            "timePeriod": "all",
+            "orderBy": "VOL",
+            "limit": 1,
+            "offset": 0,
+            "category": "overall",
+        }
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, dict):
+            total = data.get("total") or data.get("totalCount") or data.get("count")
+            if total is not None:
+                return int(total)
+        total_header = response.headers.get("x-total-count") or response.headers.get("X-Total-Count")
+        if total_header is not None:
+            return int(total_header)
+        return None
+    except Exception:
+        return None
 
 
 def fetch_market_orders(market_slug: str, limit: int = 5000, offset: int = 0) -> Dict[str, Any]:
