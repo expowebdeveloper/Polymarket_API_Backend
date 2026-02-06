@@ -14,14 +14,17 @@ router = APIRouter(
 
 
 @router.get("/stats", response_model=Dict[str, Any])
-async def get_dashboard_stats(session: AsyncSession = Depends(get_db)):
+async def get_dashboard_stats(
+    session: AsyncSession = Depends(get_db),
+    period: str = "all",
+):
     """
-    Get global dashboard statistics.
-    Used by the main dashboard page.
+    Get global dashboard statistics, optionally filtered by time period.
+    period: "24h" | "7d" | "30d" | "all" — all metrics (volume, traders, trades) use this window where supported.
     """
     try:
         from app.services.dashboard_service import get_global_dashboard_stats
-        return await get_global_dashboard_stats(session)
+        return await get_global_dashboard_stats(session, period=period)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching dashboard stats: {str(e)}")
 
@@ -126,9 +129,9 @@ async def search_wallet_or_user(
     session: AsyncSession = Depends(get_db)
 ):
     """
-    Search for a wallet address or username.
+    Search for a wallet address, Polymarket username, or X username.
     - If query is 42-char hex, assumes wallet address.
-    - Else, assumes username/pseudonym and looks up local DB.
+    - Else, searches by username or X username (with or without @) in DB and fallbacks.
     """
     # 1. Check if valid wallet address
     if query.startswith("0x") and len(query) == 42:

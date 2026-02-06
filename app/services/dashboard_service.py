@@ -752,11 +752,11 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 _DASHBOARD_CACHE = {}
 CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
-async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
+async def get_global_dashboard_stats(session: AsyncSession, period: str = "all") -> Dict[str, Any]:
     """
-    Get global dashboard statistics.
-    Prefer Polymarket API for: volume, TVL, open interest, total markets.
-    Total traders and total trades have no platform-wide API; we use DB (scraped) and label source.
+    Get global dashboard statistics, optionally filtered by time period.
+    period: "24h" | "7d" | "30d" | "all" — applies to volume, total traders, and total trades.
+    TVL, open interest, total markets are always current snapshot.
     """
     try:
         from app.services.data_fetcher import (
@@ -766,36 +766,51 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             fetch_volume_and_tvl_from_gamma_events,
             fetch_total_markets_count,
             fetch_total_trades_count,
+            _get_cutoff_timestamp_for_period,
         )
         from app.db.models import TraderLeaderboard, TraderTrade
         from sqlalchemy import func, select, case
 
-        # 1. All market-derived stats from Polymarket Gamma API (single source of truth)
+        period = (period or "all").lower()
+        if period not in ("24h", "7d", "30d", "all"):
+            period = "all"
+
+        # 1. Market-derived stats from Polymarket Gamma API
         api_markets, pagination = await fetch_markets(status="active", limit=1000)
 
+        # Volume: by period (Gamma provides volume24hr, volume1wk, volume1mo per event)
         total_volume = 0.0
         tvl = 0.0
-        for m in api_markets:
-            total_volume += float(m.get("volume", 0) or 0)
-            tvl += float(m.get("liquidity", 0) or 0)
+        if period == "24h":
+            for m in api_markets:
+                total_volume += float(m.get("volume24hr", 0) or 0)
+                tvl += float(m.get("liquidity", 0) or 0)
+        elif period == "7d":
+            for m in api_markets:
+                total_volume += float(m.get("volume1wk", 0) or 0)
+                tvl += float(m.get("liquidity", 0) or 0)
+        elif period == "30d":
+            for m in api_markets:
+                total_volume += float(m.get("volume1mo", 0) or 0)
+                tvl += float(m.get("liquidity", 0) or 0)
+        else:
+            for m in api_markets:
+                total_volume += float(m.get("volume", 0) or 0)
+                tvl += float(m.get("liquidity", 0) or 0)
 
-        # Fallback: if Gamma pagination returned empty, try /events endpoint for volume
         if total_volume == 0 and len(api_markets) == 0:
             total_volume, tvl, _ = await fetch_volume_and_tvl_from_gamma_events(limit=1000)
 
-        # Total markets: always from dedicated Gamma API count (active markets)
         total_markets = await fetch_total_markets_count(include_resolved=False)
-
-        # Open interest: use dedicated Polymarket Data API (gamma events return 0)
         open_interest = await fetch_open_interest()
         if open_interest == 0:
             open_interest = sum(float(m.get("openInterest", 0) or 0) for m in api_markets)
 
-        # 2. Total traders: try Polymarket leaderboard API first; fallback to DB
+        # 2. Total traders: leaderboard API with time period
         total_traders = 0
         total_traders_source = "db"
         try:
-            api_traders = await fetch_leaderboard_total_count()
+            api_traders = await fetch_leaderboard_total_count(time_period=period)
             if api_traders is not None and api_traders >= 0:
                 total_traders = api_traders
                 total_traders_source = "api"
@@ -806,25 +821,32 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             result = await session.execute(stmt)
             total_traders = result.scalar() or 0
 
-        # 3. Total trades: from Polymarket Data API (/trades). API caps offset at 3000,
-        # so we get up to ~4k recent trades. Fallback to DB on API failure.
+        # 3. Total trades: API or DB, with optional period filter
         total_trades = 0
         total_buys = 0
         total_sells = 0
         total_trades_source = "db"
         try:
-            api_trades = await fetch_total_trades_count()
+            api_trades = await fetch_total_trades_count(period=period)
             if api_trades is not None:
                 total_trades, total_buys, total_sells = api_trades
                 total_trades_source = "api"
         except Exception:
             pass
         if total_trades_source == "db":
-            stmt = select(
-                func.count(TraderTrade.id),
-                func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
-                func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
-            )
+            cutoff = _get_cutoff_timestamp_for_period(period)
+            if cutoff:
+                stmt = select(
+                    func.count(TraderTrade.id),
+                    func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+                    func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+                ).where(TraderTrade.timestamp >= cutoff)
+            else:
+                stmt = select(
+                    func.count(TraderTrade.id),
+                    func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+                    func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+                )
             result = await session.execute(stmt)
             trade_stats = result.first()
             total_trades = trade_stats[0] or 0
@@ -834,6 +856,7 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
         lp_rewards = 0
 
         return {
+            "period": period,
             "total_volume": f"${total_volume:,.2f}",
             "tvl": f"${tvl:,.2f}",
             "open_interest": f"${open_interest:,.2f}",
@@ -853,6 +876,7 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
         print(f"Error fetching global dashboard stats: {e}")
         traceback.print_exc()
         return {
+            "period": "all",
             "total_volume": "Error",
             "tvl": "Error",
             "open_interest": "Error",
@@ -921,6 +945,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "traded_count": fetch_user_traded_count(wallet_address),
         "profile_v2": fetch_user_profile_data_v2(wallet_address)
     }
+    if not skip_trades:
+        tasks["trades"] = fetch_user_trades(wallet_address, limit=10)
     
 
 
@@ -1290,28 +1316,68 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "primary_edge": primary_edge
     }
 
+def _normalize_handle(s: str) -> str:
+    """Strip leading @ and return lowercased string for comparison."""
+    if not s or not isinstance(s, str):
+        return ""
+    return s.strip().lstrip("@").lower()
+
+
 async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dict[str, Any]]:
     """
-    Search for a user by name or pseudonym in the database.
-    Query is matched against TraderLeaderboard and Trader tables.
-    Returns a dict with wallet_address and name/pseudonym, or None if not found.
+    Search for a user by Polymarket name, X username (pseudonym), or wallet in the database.
+    Query is matched against TraderLeaderboard and Trader tables (name, pseudonym/xUsername, wallet).
+    With or without leading @ for X username. Returns a dict with wallet_address and name/pseudonym, or None if not found.
     """
     from app.db.models import TraderLeaderboard, Trader
     from sqlalchemy import select, or_
     
-    # Clean query
+    # Clean query and normalize for handle comparison
     search_term = query.strip()
     if not search_term:
         return None
-        
-    # Remove @ if present
     if search_term.startswith("@"):
         search_term = search_term[1:]
-        
+    search_norm = search_term.lower()
     pattern = f"%{search_term}%"
+    # Exact pattern for handle-like queries (no spaces, reasonable length)
+    looks_like_handle = " " not in search_term and 0 < len(search_term) <= 50
     
-    # 1. Search in TraderLeaderboard (Highest Priority)
-    # Check userName and xUsername
+    # 1. Search in TraderLeaderboard: prefer exact match on pseudonym (X username) then name, then partial
+    if looks_like_handle:
+        # Exact match on X username / pseudonym (with or without leading @)
+        stmt = select(TraderLeaderboard).where(
+            TraderLeaderboard.pseudonym.isnot(None),
+            or_(
+                func.lower(TraderLeaderboard.pseudonym) == search_norm,
+                func.lower(TraderLeaderboard.pseudonym) == f"@{search_norm}"
+            )
+        ).limit(1)
+        result = await session.execute(stmt)
+        leaderboard_entry = result.scalars().first()
+        if leaderboard_entry:
+            return {
+                "wallet_address": leaderboard_entry.wallet_address,
+                "name": leaderboard_entry.name,
+                "pseudonym": leaderboard_entry.pseudonym,
+                "profile_image": leaderboard_entry.profile_image
+            }
+        # Exact match on name
+        stmt = select(TraderLeaderboard).where(
+            TraderLeaderboard.name.isnot(None),
+            func.lower(TraderLeaderboard.name) == search_norm
+        ).limit(1)
+        result = await session.execute(stmt)
+        leaderboard_entry = result.scalars().first()
+        if leaderboard_entry:
+            return {
+                "wallet_address": leaderboard_entry.wallet_address,
+                "name": leaderboard_entry.name,
+                "pseudonym": leaderboard_entry.pseudonym,
+                "profile_image": leaderboard_entry.profile_image
+            }
+    
+    # Partial match in TraderLeaderboard (name, pseudonym, wallet)
     stmt = select(TraderLeaderboard).where(
         or_(
             TraderLeaderboard.name.ilike(pattern),
@@ -1319,10 +1385,8 @@ async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dic
             TraderLeaderboard.wallet_address.ilike(pattern)
         )
     ).limit(1)
-    
     result = await session.execute(stmt)
     leaderboard_entry = result.scalars().first()
-    
     if leaderboard_entry:
         return {
             "wallet_address": leaderboard_entry.wallet_address,
@@ -1331,17 +1395,32 @@ async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dic
             "profile_image": leaderboard_entry.profile_image
         }
         
-    # 2. Search in Trader table (Fallback)
+    # 2. Search in Trader table (Fallback): exact then partial
+    if looks_like_handle:
+        stmt = select(Trader).where(
+            Trader.pseudonym.isnot(None),
+            or_(
+                func.lower(Trader.pseudonym) == search_norm,
+                func.lower(Trader.pseudonym) == f"@{search_norm}"
+            )
+        ).limit(1)
+        result = await session.execute(stmt)
+        trader_entry = result.scalars().first()
+        if trader_entry:
+            return {
+                "wallet_address": trader_entry.wallet_address,
+                "name": trader_entry.name,
+                "pseudonym": trader_entry.pseudonym,
+                "profile_image": trader_entry.profile_image
+            }
     stmt = select(Trader).where(
         or_(
             Trader.name.ilike(pattern),
             Trader.pseudonym.ilike(pattern)
         )
     ).limit(1)
-    
     result = await session.execute(stmt)
     trader_entry = result.scalars().first()
-    
     if trader_entry:
         return {
             "wallet_address": trader_entry.wallet_address,
@@ -1351,36 +1430,32 @@ async def search_user_by_name(session: AsyncSession, query: str) -> Optional[Dic
         }
     
     
-    # 3. Fallback: Search in Remote Leaderboard via API
-    # If local DB is empty or user not found, try the live API (top 100)
+    # 3. Fallback: Search in Remote Leaderboard via API (normalize @ in API response too)
     try:
         from app.services.data_fetcher import (
             fetch_traders_from_leaderboard,
             fetch_wallet_address_from_profile_page
         )
         
-        # Check top 100 traders
-        traders, _ = await fetch_traders_from_leaderboard(limit=100, time_period="all")
+        # Fetch more traders so X username search has better coverage (top 500)
+        traders, _ = await fetch_traders_from_leaderboard(limit=500, time_period="all")
         
-        query_lower = search_term.lower()
+        query_norm = _normalize_handle(search_term)
         for t in traders:
-            # Check username
-            u_name = t.get("userName") or ""
-            if u_name.lower() == query_lower:
+            u_name = _normalize_handle(t.get("userName") or "")
+            if u_name and u_name == query_norm:
                 return {
-                    "wallet_address": t.get("wallet_address"),
+                    "wallet_address": t.get("wallet_address") or t.get("user") or "",
                     "name": t.get("userName"),
                     "pseudonym": t.get("xUsername"),
                     "profile_image": t.get("profileImage"),
                     "user_id": None
                 }
-            
-            # Check pseudonym (xUsername)
-            x_name = t.get("xUsername") or ""
-            if x_name.lower() == query_lower:
+            x_name = _normalize_handle(t.get("xUsername") or "")
+            if x_name and x_name == query_norm:
                 return {
-                    "wallet_address": t.get("wallet_address"),
-                    "name": t.get("userName"), 
+                    "wallet_address": t.get("wallet_address") or t.get("user") or "",
+                    "name": t.get("userName"),
                     "pseudonym": t.get("xUsername"),
                     "profile_image": t.get("profileImage"),
                     "user_id": None

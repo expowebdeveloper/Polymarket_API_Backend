@@ -57,16 +57,20 @@ async def startup_event():
     """Initialize database on application startup."""
     await init_db()
     
-    # Conditionally start Activity Broadcaster based on environment variable
+    # Activity broadcaster: fetches Polymarket live trades and pushes to /ws/activity.
+    # It runs either (1) on startup if ENABLE_ACTIVITY_BROADCASTER=true, or
+    # (2) when the first client connects to the WebSocket (e.g. Dashboard "Live Feed").
+    # Requires outbound internet (gamma-api + data-api + CLOB WS). If DNS/network fails,
+    # it backs off to avoid log spam (see activity_broadcaster backoff).
     enable_broadcaster = os.getenv("ENABLE_ACTIVITY_BROADCASTER", "false").lower() == "true"
-    
+
     if enable_broadcaster:
         from app.services.activity_broadcaster import broadcaster
         import asyncio
         asyncio.create_task(broadcaster.start())
         logger.info("🚀 Activity broadcaster auto-start enabled")
     else:
-        logger.info("⏸️  Activity broadcaster auto-start disabled (will start on WebSocket connection)")
+        logger.info("⏸️  Activity broadcaster auto-start disabled (will start on first WebSocket connection)")
 
 @app.on_event("shutdown")
 async def shutdown_event():

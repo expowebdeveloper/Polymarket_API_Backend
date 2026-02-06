@@ -1427,6 +1427,23 @@ def _get_cutoff_timestamp(time_period: str) -> int:
     return int(cutoff.timestamp())
 
 
+def _get_cutoff_timestamp_for_period(period: str) -> int:
+    """
+    Get cutoff timestamp for dashboard period filter.
+    period: "24h" -> last 1 day, "7d" -> last 7 days, "30d" -> last 30 days, "all" -> no cutoff.
+    """
+    if not period or period == "all":
+        return 0
+    now = datetime.utcnow()
+    if period == "24h":
+        return int((now - timedelta(days=1)).timestamp())
+    if period == "7d":
+        return int((now - timedelta(days=7)).timestamp())
+    if period == "30d":
+        return int((now - timedelta(days=30)).timestamp())
+    return 0
+
+
 async def fetch_portfolio_value(wallet_address: str) -> float:
     """
     Fetch current portfolio value for a wallet address from Polymarket Data API.
@@ -1505,19 +1522,32 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all",
         return {"volume": 0.0, "pnl": 0.0}
 
 
-async def fetch_leaderboard_total_count() -> Optional[int]:
+def _period_to_leaderboard_time(time_period: str) -> str:
+    """Map dashboard period to leaderboard API timePeriod. API: day, week, month, all."""
+    if time_period == "24h":
+        return "day"
+    if time_period == "7d":
+        return "week"
+    if time_period == "30d":
+        return "month"
+    return "all"
+
+
+async def fetch_leaderboard_total_count(time_period: str = "all") -> Optional[int]:
     """
     Fetch total number of traders from Polymarket leaderboard API.
     Paginates through the leaderboard until fewer than limit results; total = last_offset + len(last_batch).
     Uses parallel batch fetches for speed (checks offsets 0, 2k, 4k, ... to find boundary, then narrows).
+    time_period: "all", "24h", "7d", "30d" (maps to API day/week/month/all).
     """
     try:
         url = "https://data-api.polymarket.com/v1/leaderboard"
         limit = 50
+        api_time = _period_to_leaderboard_time(time_period)
 
         async def fetch_page(offset: int) -> tuple[int, int]:
             params = {
-                "timePeriod": "all",
+                "timePeriod": api_time,
                 "orderBy": "VOL",
                 "limit": limit,
                 "offset": offset,
@@ -1552,29 +1582,81 @@ async def fetch_leaderboard_total_count() -> Optional[int]:
         return None
 
 
-async def fetch_total_trades_count() -> Optional[tuple[int, int, int]]:
+def _trade_timestamp(t: Dict) -> Optional[int]:
+    """Extract Unix timestamp from a trade object. API may use 'timestamp', 't', or 'createdAt' (ISO)."""
+    ts = t.get("timestamp") or t.get("t")
+    if ts is not None:
+        try:
+            return int(ts)
+        except (TypeError, ValueError):
+            pass
+    created = t.get("createdAt") or t.get("created_at")
+    if created and isinstance(created, str):
+        try:
+            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            return int(dt.timestamp())
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+async def fetch_total_trades_count(period: str = "all") -> Optional[tuple[int, int, int]]:
     """
     Fetch total trades count from Polymarket Data API.
     Paginates through offsets 0-3000 (API max) with limit 1000 per request.
+    period: "all" -> count up to ~4k recent trades; "24h"/"7d"/"30d" -> count only trades in that window.
     Returns (total, buys, sells) or None on error.
     """
     try:
         url = "https://data-api.polymarket.com/trades"
+        cutoff = _get_cutoff_timestamp_for_period(period) if period else 0
+
+        if not cutoff:
+            # Original behavior: count all fetched (up to 4k)
+            total = 0
+            buys = 0
+            sells = 0
+            offset = 0
+            batch_size = 1000
+            max_offset = 3000
+            while offset <= max_offset:
+                response = await async_client.get(url, params={"limit": batch_size, "offset": offset})
+                response.raise_for_status()
+                data = response.json()
+                if not isinstance(data, list) or len(data) == 0:
+                    break
+                total += len(data)
+                buys += sum(1 for t in data if (t.get("side") or "").upper() == "BUY")
+                sells += sum(1 for t in data if (t.get("side") or "").upper() == "SELL")
+                if len(data) < batch_size:
+                    break
+                offset += batch_size
+            return (total, buys, sells) if total > 0 else None
+
+        # Period filter: fetch batches, count only trades with timestamp >= cutoff (newest first)
         total = 0
         buys = 0
         sells = 0
         offset = 0
         batch_size = 1000
-        max_offset = 3000  # API returns 400 for offset > 3000
+        max_offset = 3000
         while offset <= max_offset:
             response = await async_client.get(url, params={"limit": batch_size, "offset": offset})
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, list) or len(data) == 0:
                 break
-            total += len(data)
-            buys += sum(1 for t in data if (t.get("side") or "").upper() == "BUY")
-            sells += sum(1 for t in data if (t.get("side") or "").upper() == "SELL")
+            for t in data:
+                ts = _trade_timestamp(t)
+                if ts is not None and ts < cutoff:
+                    # Trades are newest-first; rest of batch and all further batches are older
+                    return (total, buys, sells) if total > 0 else None
+                if ts is None or ts >= cutoff:
+                    total += 1
+                    if (t.get("side") or "").upper() == "BUY":
+                        buys += 1
+                    else:
+                        sells += 1
             if len(data) < batch_size:
                 break
             offset += batch_size

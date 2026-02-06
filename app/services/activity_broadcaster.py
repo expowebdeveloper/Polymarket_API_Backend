@@ -11,6 +11,18 @@ from app.routers.websocket import manager
 logger = logging.getLogger(__name__)
 
 
+def _is_network_error(e: Exception) -> bool:
+    """True if error is DNS/network unreachable (no point retrying fast)."""
+    msg = str(e).lower()
+    return (
+        "name resolution" in msg
+        or "errno -3" in msg
+        or "network is unreachable" in msg
+        or "connection refused" in msg
+        or "nodename nor servname" in msg
+    )
+
+
 class ActivityBroadcaster:
     """Continuously fetches activities and broadcasts to WebSocket clients."""
     
@@ -20,7 +32,8 @@ class ActivityBroadcaster:
         self.fetch_interval = 2.0  # Polling every 2s is safer for API stability
         self.recent_activities: List[Dict] = []
         self.seen_trade_ids: set = set()
-        self.client = None # Lazy initialized in start()
+        self.client = None  # Lazy initialized in start()
+        self._network_error_count = 0  # For backoff when DNS/network fails
     
     def get_recent_activities(self) -> List[Dict]:
         """Get cached recent activities for new connections."""
@@ -67,6 +80,7 @@ class ActivityBroadcaster:
                      logger.warning("⚠️ No tokens found to subscribe to!")
 
                 async with websockets.connect(ws_url, ping_interval=20, ping_timeout=10) as ws:
+                    self._network_error_count = 0  # Reset backoff on success
                     # Subscribe to specific assets (Simulated Global Feed)
                     if tokens_to_sub:
                         subscribe_msg = {
@@ -119,9 +133,19 @@ class ActivityBroadcaster:
                             })
                                 
             except Exception as e:
-                if self.is_running:
-                    logger.error(f"❌ WS Bridge Error: {e}. Reconnecting in 5s...")
-                    await asyncio.sleep(5)
+                if not self.is_running:
+                    break
+                self._network_error_count += 1
+                # Back off on DNS/network errors so we don't spam logs when offline
+                delay = 60 if _is_network_error(e) else 5
+                if _is_network_error(e):
+                    logger.warning(
+                        f"⚠️ WS Bridge: network/DNS unreachable ({e}). "
+                        f"Retrying in {delay}s (backoff). Check internet / firewall."
+                    )
+                else:
+                    logger.error(f"❌ WS Bridge Error: {e}. Reconnecting in {delay}s...")
+                await asyncio.sleep(delay)
 
     async def run_polling_loop(self):
         """Fallback polling loop to ensure data consistency and initial cache."""
@@ -134,7 +158,8 @@ class ActivityBroadcaster:
                 # Deep Poll: Fetch last 500 trades to find those rare >$1000 whales
                 # (Standard poll of 60 might miss them if volume is high)
                 recent_activity = await self.fetcher.fetch_recent_activities(limit=500)
-                
+                self._network_error_count = 0  # Reset backoff on success
+
                 if not recent_activity:
                     await asyncio.sleep(2)
                     continue
@@ -175,8 +200,16 @@ class ActivityBroadcaster:
                 await asyncio.sleep(2.0) # Slower heartbeat as WS is active
                 
             except Exception as e:
-                logger.error(f"❌ Polling Error: {e}")
-                await asyncio.sleep(5.0)
+                self._network_error_count += 1
+                delay = 60 if _is_network_error(e) else 5.0
+                if _is_network_error(e):
+                    logger.warning(
+                        f"⚠️ Polling: network/DNS unreachable ({e}). "
+                        f"Retrying in {delay}s (backoff). Check internet / firewall."
+                    )
+                else:
+                    logger.error(f"❌ Polling Error: {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
     
     async def stop(self):
         """Stop the background activity broadcaster."""
