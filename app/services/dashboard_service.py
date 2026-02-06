@@ -759,22 +759,37 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
     Total traders and total trades have no platform-wide API; we use DB (scraped) and label source.
     """
     try:
-        from app.services.data_fetcher import fetch_markets, fetch_leaderboard_total_count
+        from app.services.data_fetcher import (
+            fetch_markets,
+            fetch_leaderboard_total_count,
+            fetch_open_interest,
+            fetch_volume_and_tvl_from_gamma_events,
+            fetch_total_markets_count,
+            fetch_total_trades_count,
+        )
         from app.db.models import TraderLeaderboard, TraderTrade
         from sqlalchemy import func, select, case
 
         # 1. All market-derived stats from Polymarket Gamma API (single source of truth)
         api_markets, pagination = await fetch_markets(status="active", limit=1000)
-        total_results = pagination.get("total", 0)
-        total_markets = int(total_results) if total_results else len(api_markets)
 
         total_volume = 0.0
         tvl = 0.0
-        open_interest = 0.0
         for m in api_markets:
             total_volume += float(m.get("volume", 0) or 0)
             tvl += float(m.get("liquidity", 0) or 0)
-            open_interest += float(m.get("openInterest", 0) or 0)
+
+        # Fallback: if Gamma pagination returned empty, try /events endpoint for volume
+        if total_volume == 0 and len(api_markets) == 0:
+            total_volume, tvl, _ = await fetch_volume_and_tvl_from_gamma_events(limit=1000)
+
+        # Total markets: always from dedicated Gamma API count (active markets)
+        total_markets = await fetch_total_markets_count(include_resolved=False)
+
+        # Open interest: use dedicated Polymarket Data API (gamma events return 0)
+        open_interest = await fetch_open_interest()
+        if open_interest == 0:
+            open_interest = sum(float(m.get("openInterest", 0) or 0) for m in api_markets)
 
         # 2. Total traders: try Polymarket leaderboard API first; fallback to DB
         total_traders = 0
@@ -791,17 +806,30 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             result = await session.execute(stmt)
             total_traders = result.scalar() or 0
 
-        # 3. Total trades: no platform-wide API; use DB and label
-        stmt = select(
-            func.count(TraderTrade.id),
-            func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
-            func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
-        )
-        result = await session.execute(stmt)
-        trade_stats = result.first()
-        total_trades = trade_stats[0] or 0
-        total_buys = trade_stats[1] or 0
-        total_sells = trade_stats[2] or 0
+        # 3. Total trades: from Polymarket Data API (/trades). API caps offset at 3000,
+        # so we get up to ~4k recent trades. Fallback to DB on API failure.
+        total_trades = 0
+        total_buys = 0
+        total_sells = 0
+        total_trades_source = "db"
+        try:
+            api_trades = await fetch_total_trades_count()
+            if api_trades is not None:
+                total_trades, total_buys, total_sells = api_trades
+                total_trades_source = "api"
+        except Exception:
+            pass
+        if total_trades_source == "db":
+            stmt = select(
+                func.count(TraderTrade.id),
+                func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+                func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+            )
+            result = await session.execute(stmt)
+            trade_stats = result.first()
+            total_trades = trade_stats[0] or 0
+            total_buys = trade_stats[1] or 0
+            total_sells = trade_stats[2] or 0
 
         lp_rewards = 0
 
@@ -815,7 +843,7 @@ async def get_global_dashboard_stats(session: AsyncSession) -> Dict[str, Any]:
             "total_traders_source": total_traders_source,
             "lp_rewards": f"${lp_rewards:,.2f}",
             "total_trades": str(total_trades),
-            "total_trades_source": "db",
+            "total_trades_source": total_trades_source,
             "total_buys": str(total_buys),
             "total_sells": str(total_sells),
         }

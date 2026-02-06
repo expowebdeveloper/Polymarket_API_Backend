@@ -413,6 +413,79 @@ async def fetch_resolved_markets(limit: Optional[int] = None) -> List[Dict]:
     return markets
 
 
+async def fetch_total_markets_count(include_resolved: bool = False) -> int:
+    """
+    Fetch total markets count from Gamma API (lightweight request).
+    Uses limit=1 to minimize payload; returns totalResults from pagination.
+    If include_resolved=True, returns active + closed (resolved) count.
+    """
+    try:
+        url = "https://gamma-api.polymarket.com/events/pagination"
+        base_params = {"limit": 1, "offset": 0, "order": "volume", "ascending": "false"}
+
+        # Active count
+        active_params = {**base_params, "active": "true", "closed": "false"}
+        resp = await async_client.get(url, params=active_params)
+        resp.raise_for_status()
+        active_total = int(resp.json().get("pagination", {}).get("totalResults", 0) or 0)
+
+        if not include_resolved:
+            return active_total
+
+        # Closed/resolved count
+        closed_params = {**base_params, "closed": "true"}
+        resp2 = await async_client.get(url, params=closed_params)
+        resp2.raise_for_status()
+        closed_total = int(resp2.json().get("pagination", {}).get("totalResults", 0) or 0)
+
+        return active_total + closed_total
+    except Exception as e:
+        print(f"Error fetching total markets count: {e}")
+        return 0
+
+
+async def fetch_volume_and_tvl_from_gamma_events(limit: int = 500) -> tuple[float, float, int]:
+    """
+    Fallback: Fetch volume and TVL from Gamma API /events endpoint (non-pagination).
+    Used when events/pagination returns empty (e.g. network/DNS issues).
+    Returns (total_volume, total_tvl, event_count).
+    """
+    try:
+        url = "https://gamma-api.polymarket.com/events"
+        params = {"limit": limit, "active": "true", "closed": "false"}
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list):
+            return 0.0, 0.0, 0
+        total_volume = sum(float(e.get("volume", 0) or 0) for e in data)
+        total_tvl = sum(float(e.get("liquidity", 0) or 0) for e in data)
+        return total_volume, total_tvl, len(data)
+    except Exception as e:
+        print(f"Error fetching volume/TVL from Gamma /events: {e}")
+        return 0.0, 0.0, 0
+
+
+async def fetch_open_interest() -> float:
+    """
+    Fetch total open interest from Polymarket Data API.
+    Uses https://data-api.polymarket.com/oi endpoint.
+    Returns the sum of all market open interest values in USDC.
+    """
+    try:
+        url = "https://data-api.polymarket.com/oi"
+        response = await async_client.get(url)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, list):
+            return 0.0
+        total = sum(float(item.get("value", 0) or 0) for item in data)
+        return total
+    except Exception as e:
+        print(f"Error fetching open interest from Data API: {e}")
+        return 0.0
+
+
 async def fetch_trades_for_wallet(wallet_address: str) -> List[Dict]:
     """
     Fetch trades (orders) for a given wallet address from Polymarket API (async version).
@@ -1434,30 +1507,80 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all",
 
 async def fetch_leaderboard_total_count() -> Optional[int]:
     """
-    Fetch total number of traders from Polymarket leaderboard API if the API exposes it.
-    Returns None if the API only returns a list with no total count (then caller uses DB).
+    Fetch total number of traders from Polymarket leaderboard API.
+    Paginates through the leaderboard until fewer than limit results; total = last_offset + len(last_batch).
+    Uses parallel batch fetches for speed (checks offsets 0, 2k, 4k, ... to find boundary, then narrows).
     """
     try:
         url = "https://data-api.polymarket.com/v1/leaderboard"
-        params = {
-            "timePeriod": "all",
-            "orderBy": "VOL",
-            "limit": 1,
-            "offset": 0,
-            "category": "overall",
-        }
-        response = await async_client.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if isinstance(data, dict):
-            total = data.get("total") or data.get("totalCount") or data.get("count")
-            if total is not None:
-                return int(total)
-        total_header = response.headers.get("x-total-count") or response.headers.get("X-Total-Count")
-        if total_header is not None:
-            return int(total_header)
+        limit = 50
+
+        async def fetch_page(offset: int) -> tuple[int, int]:
+            params = {
+                "timePeriod": "all",
+                "orderBy": "VOL",
+                "limit": limit,
+                "offset": offset,
+                "category": "overall",
+            }
+            resp = await async_client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            count = len(data) if isinstance(data, list) else 0
+            return offset, count
+
+        # Probe offsets in parallel to find boundary (first offset with < limit results)
+        probe_offsets = [0, 5000, 10000, 15000, 20000, 30000, 50000, 100000, 150000, 200000]
+        tasks = [fetch_page(off) for off in probe_offsets]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Sort by offset and find first where count < limit
+        valid = []
+        for r in results:
+            if isinstance(r, tuple) and len(r) == 2:
+                off, cnt = r
+                valid.append((off, cnt))
+        valid.sort(key=lambda x: x[0])
+        for off, cnt in valid:
+            if cnt < limit:
+                return off + cnt
+
+        # All probes returned full page; use last probe offset + limit as floor
+        return probe_offsets[-1] + limit
+    except Exception as e:
+        print(f"Error fetching leaderboard total count: {e}")
         return None
-    except Exception:
+
+
+async def fetch_total_trades_count() -> Optional[tuple[int, int, int]]:
+    """
+    Fetch total trades count from Polymarket Data API.
+    Paginates through offsets 0-3000 (API max) with limit 1000 per request.
+    Returns (total, buys, sells) or None on error.
+    """
+    try:
+        url = "https://data-api.polymarket.com/trades"
+        total = 0
+        buys = 0
+        sells = 0
+        offset = 0
+        batch_size = 1000
+        max_offset = 3000  # API returns 400 for offset > 3000
+        while offset <= max_offset:
+            response = await async_client.get(url, params={"limit": batch_size, "offset": offset})
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list) or len(data) == 0:
+                break
+            total += len(data)
+            buys += sum(1 for t in data if (t.get("side") or "").upper() == "BUY")
+            sells += sum(1 for t in data if (t.get("side") or "").upper() == "SELL")
+            if len(data) < batch_size:
+                break
+            offset += batch_size
+        return (total, buys, sells) if total > 0 else None
+    except Exception as e:
+        print(f"Error fetching total trades count: {e}")
         return None
 
 
