@@ -762,6 +762,7 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         from app.services.data_fetcher import (
             fetch_markets,
             fetch_leaderboard_total_count,
+            fetch_biggest_winners_of_month,
             fetch_open_interest,
             fetch_volume_and_tvl_from_gamma_events,
             fetch_total_markets_count,
@@ -855,8 +856,18 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
 
         lp_rewards = 0
 
+        # Biggest winners of the month (Polymarket API leaderboard, orderBy=PNL, timePeriod=month)
+        biggest_winners_month: List[Dict] = []
+        try:
+            biggest_winners_month = await fetch_biggest_winners_of_month(limit=20)
+        except Exception:
+            pass
+        biggest_winner_month = biggest_winners_month[0] if biggest_winners_month else None
+
         return {
             "period": period,
+            "biggest_winner_month": biggest_winner_month,
+            "biggest_winners_month": biggest_winners_month,
             "total_volume": f"${total_volume:,.2f}",
             "tvl": f"${tvl:,.2f}",
             "open_interest": f"${open_interest:,.2f}",
@@ -877,6 +888,8 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         traceback.print_exc()
         return {
             "period": "all",
+            "biggest_winner_month": None,
+            "biggest_winners_month": [],
             "total_volume": "Error",
             "tvl": "Error",
             "open_interest": "Error",
@@ -1143,6 +1156,15 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
 
         unrealized_pnl = sum(float(p.get("cashPnl") or p.get("cash_pnl") or 0) for p in (active_positions or []))
         realized_pnl = sum(float(cp.get("realizedPnl") or cp.get("realized_pnl") or 0) for cp in (closed_positions or []))
+        # Total gains (sum of positive realized PnL) and total losses (sum of absolute negative realized PnL) for dashboard
+        total_gains = 0.0
+        total_losses = 0.0
+        for cp in (closed_positions or []):
+            pnl = float(cp.get("realizedPnl") or cp.get("realized_pnl") or 0)
+            if pnl > 0:
+                total_gains += pnl
+            elif pnl < 0:
+                total_losses += abs(pnl)
         
         # Calculate Max Stake from active and closed
         max_stake = 0.0
@@ -1171,6 +1193,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         print(traceback.format_exc())
         unrealized_pnl = 0.0
         realized_pnl = 0.0
+        total_gains = 0.0
+        total_losses = 0.0
         max_stake = 0.0
         winning_stakes = 0.0
         losing_stakes = 0.0
@@ -1224,6 +1248,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "stake_weighted_win_rate": w_stake * 100.0,  # Convert to percentage
         "open_positions": len(active_positions),
         "closed_positions": len(closed_positions),
+        "total_gains": total_gains,
+        "total_losses": total_losses,
     }
 
     # CRITICAL: Override metrics with official values from Polymarket Data API

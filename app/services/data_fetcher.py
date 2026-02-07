@@ -1522,6 +1522,56 @@ async def fetch_leaderboard_stats(wallet_address: str, time_period: str = "all",
         return {"volume": 0.0, "pnl": 0.0}
 
 
+def _leaderboard_item_to_winner(item: Dict) -> Dict:
+    """Convert a leaderboard API item to biggest-winner dict."""
+    return {
+        "user": item.get("user") or item.get("proxyWallet") or "",
+        "userName": item.get("userName"),
+        "xUsername": item.get("xUsername"),
+        "profileImage": item.get("profileImage"),
+        "pnl": float(item.get("pnl", 0.0)),
+        "vol": float(item.get("vol", 0.0)),
+        "rank": item.get("rank"),
+        "roi": float(item.get("roi", 0.0)) if item.get("roi") is not None else None,
+        "winRate": float(item.get("winRate", 0.0)) if item.get("winRate") is not None else None,
+        "totalTrades": int(item.get("totalTrades", 0)) if item.get("totalTrades") is not None else 0,
+    }
+
+
+async def fetch_biggest_winner_of_month() -> Optional[Dict]:
+    """
+    Fetch the biggest winner of the month from Polymarket Data API leaderboard.
+    Returns the top trader by PnL for timePeriod=month, or None if unavailable.
+    """
+    winners = await fetch_biggest_winners_of_month(limit=1)
+    return winners[0] if winners else None
+
+
+async def fetch_biggest_winners_of_month(limit: int = 10) -> List[Dict]:
+    """
+    Fetch the list of biggest winners of the month from Polymarket Data API leaderboard.
+    Returns top N traders by PnL for timePeriod=month (default 10).
+    """
+    try:
+        url = "https://data-api.polymarket.com/v1/leaderboard"
+        params = {
+            "timePeriod": "month",
+            "orderBy": "PNL",
+            "limit": min(limit, 100),
+            "offset": 0,
+            "category": "overall",
+        }
+        response = await async_client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            return [_leaderboard_item_to_winner(item) for item in data]
+        return []
+    except Exception as e:
+        print(f"Error fetching biggest winners of month from Polymarket API: {str(e)}")
+        return []
+
+
 def _period_to_leaderboard_time(time_period: str) -> str:
     """Map dashboard period to leaderboard API timePeriod. API: day, week, month, all."""
     if time_period == "24h":

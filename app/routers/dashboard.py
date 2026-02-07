@@ -106,12 +106,12 @@ async def get_profile_stat_trades(
     
     Args:
         wallet_address: Wallet address
-        filter: Filter type - "recent10", "7days", "30days", "1year", "all"
+        filter: Filter type - "recent10", "7days", "30days", "all" (all return full trade history)
     """
     if not wallet_address.startswith("0x") or len(wallet_address) != 42:
         raise HTTPException(status_code=400, detail="Invalid wallet address")
     
-    valid_filters = ["recent10", "7days", "30days", "1year", "all"]
+    valid_filters = ["recent10", "7days", "30days", "all"]
     if filter not in valid_filters:
         raise HTTPException(status_code=400, detail=f"Invalid filter. Must be one of: {', '.join(valid_filters)}")
         
