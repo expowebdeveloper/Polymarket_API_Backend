@@ -63,15 +63,7 @@ async def activity_websocket(websocket: WebSocket):
     """
     await manager.connect(websocket)
     
-    # Lazy start broadcaster if not already running (when auto-start is disabled)
     from app.services.activity_broadcaster import broadcaster
-    import asyncio
-    
-    if not broadcaster.is_running:
-        logger.info("🚀 Starting activity broadcaster (triggered by WebSocket connection)")
-        asyncio.create_task(broadcaster.start())
-        # Give it a moment to initialize
-        await asyncio.sleep(0.5)
     
     try:
         # Send welcome message

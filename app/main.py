@@ -70,7 +70,7 @@ async def startup_event():
         asyncio.create_task(broadcaster.start())
         logger.info("🚀 Activity broadcaster auto-start enabled")
     else:
-        logger.info("⏸️  Activity broadcaster auto-start disabled (will start on first WebSocket connection)")
+        logger.info("⏸️  Activity broadcaster disabled (set ENABLE_ACTIVITY_BROADCASTER=true to enable)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
