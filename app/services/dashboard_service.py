@@ -926,7 +926,10 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
             ts, cached_data = _DASHBOARD_CACHE[wallet_address]
             if now - ts < CACHE_TTL:
                 print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
-                return cached_data
+                out = dict(cached_data)
+                if "data_origin" in out and isinstance(out["data_origin"], dict):
+                    out["data_origin"] = {**out["data_origin"], "cached_seconds_ago": round(now - ts)}
+                return out
             else:
                 print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
     
@@ -1303,6 +1306,18 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
     # Calculate market distribution for Live Dashboard logic
     market_distribution, primary_edge = calculate_market_distribution(active_positions, closed_positions)
 
+    # Data origin: all profile-stat data is from Polymarket APIs (no placeholder/mock)
+    data_origin = {
+        "live": True,
+        "sources": [
+            "Polymarket Data API (positions, closed positions)",
+            "Polymarket User PnL API (portfolio performance graph)",
+            "Polymarket Profile API",
+            "Polymarket Portfolio Value API",
+        ],
+        "cached_seconds_ago": 0,
+    }
+
     return {
         "profile": {
             "username": username,
@@ -1339,7 +1354,8 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "total_volume": scoring_metrics["total_volume"],
         "portfolio_value": portfolio_value,
         "market_distribution": market_distribution,
-        "primary_edge": primary_edge
+        "primary_edge": primary_edge,
+        "data_origin": data_origin,
     }
 
 def _normalize_handle(s: str) -> str:

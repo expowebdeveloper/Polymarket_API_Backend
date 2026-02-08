@@ -18,11 +18,15 @@ async def get_filtered_trades(wallet_address: str, filter_type: str = "all") -> 
     trades_data = await fetch_user_trades(wallet_address, limit=None)
     user_pnl = await fetch_user_pnl(wallet_address)
 
-    # Use full PnL series for chart/history
+    # Use full PnL series for chart/history (from Polymarket User PnL API — real data only)
     pnl_data = list(user_pnl) if user_pnl else []
 
     return {
         "trades": pnl_data,
         "count": len(pnl_data),
-        "filter": filter_type
+        "filter": filter_type,
+        "data_origin": {
+            "live": True,
+            "source": "Polymarket User PnL API",
+        },
     }

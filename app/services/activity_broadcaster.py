@@ -144,7 +144,8 @@ class ActivityBroadcaster:
                         f"Retrying in {delay}s (backoff). Check internet / firewall."
                     )
                 else:
-                    logger.error(f"❌ WS Bridge Error: {e}. Reconnecting in {delay}s...")
+                    msg = str(e).strip() or f"{type(e).__name__}"
+                    logger.error(f"❌ WS Bridge Error: {msg}. Reconnecting in {delay}s...")
                 await asyncio.sleep(delay)
 
     async def run_polling_loop(self):

@@ -92,7 +92,8 @@ class PolymarketActivityFetcher:
                     logger.warning(f"Failed to fetch markets: {response.status_code}")
                     
         except Exception as e:
-            logger.error(f"Error fetching markets: {e}")
+            msg = str(e).strip() or f"{type(e).__name__}"
+            logger.error(f"Error fetching markets: {msg}")
         
         return self.active_markets or []
     
@@ -186,7 +187,8 @@ class PolymarketActivityFetcher:
             return unique
 
         except Exception as e:
-            logger.error(f"❌ Error in hybrid fetch: {e}")
+            msg = str(e).strip() or f"{type(e).__name__}"
+            logger.error(f"❌ Error in hybrid fetch: {msg}")
             return []
     
     async def get_all_current_activities(self) -> List[Dict]:
