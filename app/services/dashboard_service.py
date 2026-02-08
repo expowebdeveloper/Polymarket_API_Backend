@@ -762,13 +762,13 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         from app.services.data_fetcher import (
             fetch_markets,
             fetch_leaderboard_total_count,
-            fetch_biggest_winners_of_month,
             fetch_open_interest,
             fetch_volume_and_tvl_from_gamma_events,
             fetch_total_markets_count,
             fetch_total_trades_count,
             _get_cutoff_timestamp_for_period,
         )
+        from app.services.leaderboard_storage_service import get_leaderboard_from_db
         from app.db.models import TraderLeaderboard, TraderTrade
         from sqlalchemy import func, select, case
 
@@ -776,8 +776,26 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         if period not in ("24h", "7d", "30d", "all"):
             period = "all"
 
-        # 1. Market-derived stats from Polymarket Gamma API
-        api_markets, pagination = await fetch_markets(status="active", limit=1000)
+        # Run independent API calls in parallel for faster load (markets limit=300 to reduce Gamma requests)
+        import asyncio
+        DASHBOARD_MARKETS_LIMIT = 300
+        markets_res, total_markets, open_interest, api_traders_result = await asyncio.gather(
+            fetch_markets(status="active", limit=DASHBOARD_MARKETS_LIMIT),
+            fetch_total_markets_count(include_resolved=False),
+            fetch_open_interest(),
+            fetch_leaderboard_total_count(time_period=period),
+            return_exceptions=True,
+        )
+        if isinstance(markets_res, Exception):
+            api_markets, pagination = [], {}
+        else:
+            api_markets, pagination = markets_res
+        if isinstance(total_markets, Exception):
+            total_markets = 0
+        if isinstance(open_interest, Exception):
+            open_interest = 0
+        if isinstance(api_traders_result, Exception):
+            api_traders_result = None
 
         # Volume: by period (Gamma provides volume24hr, volume1wk, volume1mo per event)
         total_volume = 0.0
@@ -800,42 +818,31 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
                 tvl += float(m.get("liquidity", 0) or 0)
 
         if total_volume == 0 and len(api_markets) == 0:
-            total_volume, tvl, _ = await fetch_volume_and_tvl_from_gamma_events(limit=1000)
+            total_volume, tvl, _ = await fetch_volume_and_tvl_from_gamma_events(limit=500)
 
-        total_markets = await fetch_total_markets_count(include_resolved=False)
-        open_interest = await fetch_open_interest()
         if open_interest == 0:
             open_interest = sum(float(m.get("openInterest", 0) or 0) for m in api_markets)
 
-        # 2. Total traders: leaderboard API with time period
+        # Total traders
         total_traders = 0
         total_traders_source = "db"
-        try:
-            api_traders = await fetch_leaderboard_total_count(time_period=period)
-            if api_traders is not None and api_traders >= 0:
-                total_traders = api_traders
-                total_traders_source = "api"
-        except Exception:
-            pass
+        if api_traders_result is not None and api_traders_result >= 0:
+            total_traders = api_traders_result
+            total_traders_source = "api"
         if total_traders_source == "db":
             stmt = select(func.count(TraderLeaderboard.id))
             result = await session.execute(stmt)
             total_traders = result.scalar() or 0
 
-        # 3. Total trades: API or DB, with optional period filter
+        # 3. Total trades: for "all" prefer DB so count is not capped by API (~4k); for 24h/7d/30d try API then DB
         total_trades = 0
         total_buys = 0
         total_sells = 0
         total_trades_source = "db"
-        try:
-            api_trades = await fetch_total_trades_count(period=period)
-            if api_trades is not None:
-                total_trades, total_buys, total_sells = api_trades
-                total_trades_source = "api"
-        except Exception:
-            pass
-        if total_trades_source == "db":
-            cutoff = _get_cutoff_timestamp_for_period(period)
+        cutoff = _get_cutoff_timestamp_for_period(period)
+
+        if period == "all":
+            # All-time: use DB count (uncapped). Only call API if DB has no trades.
             if cutoff:
                 stmt = select(
                     func.count(TraderTrade.id),
@@ -853,13 +860,72 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
             total_trades = trade_stats[0] or 0
             total_buys = trade_stats[1] or 0
             total_sells = trade_stats[2] or 0
+            if total_trades == 0:
+                try:
+                    api_trades = await fetch_total_trades_count(period=period)
+                    if api_trades is not None:
+                        total_trades, total_buys, total_sells = api_trades
+                        total_trades_source = "api"
+                except Exception:
+                    pass
+        else:
+            try:
+                api_trades = await fetch_total_trades_count(period=period)
+                if api_trades is not None:
+                    total_trades, total_buys, total_sells = api_trades
+                    total_trades_source = "api"
+            except Exception:
+                pass
+            if total_trades_source == "db":
+                if cutoff:
+                    stmt = select(
+                        func.count(TraderTrade.id),
+                        func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+                        func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+                    ).where(TraderTrade.timestamp >= cutoff)
+                else:
+                    stmt = select(
+                        func.count(TraderTrade.id),
+                        func.sum(case((TraderTrade.side == 'BUY', 1), else_=0)),
+                        func.sum(case((TraderTrade.side == 'SELL', 1), else_=0))
+                    )
+                result = await session.execute(stmt)
+                trade_stats = result.first()
+                total_trades = trade_stats[0] or 0
+                total_buys = trade_stats[1] or 0
+                total_sells = trade_stats[2] or 0
 
         lp_rewards = 0
 
-        # Biggest winners of the month (Polymarket API leaderboard, orderBy=PNL, timePeriod=month)
+        # First 10 from DB leaderboard (by PnL + by final_score for top performers), single DB round
         biggest_winners_month: List[Dict] = []
+        top_performers: List[Dict] = []
         try:
-            biggest_winners_month = await fetch_biggest_winners_of_month(limit=20)
+            db_winners = await get_leaderboard_from_db(
+                session, limit=10, offset=0, sort_by="total_pnl", sort_desc=True
+            )
+            for e in db_winners:
+                biggest_winners_month.append({
+                    "user": e.get("wallet_address", ""),
+                    "userName": e.get("name"),
+                    "xUsername": e.get("pseudonym"),
+                    "profileImage": e.get("profile_image"),
+                    "pnl": e.get("total_pnl", 0.0),
+                    "vol": e.get("total_stakes", 0.0),
+                    "rank": e.get("rank"),
+                })
+            db_performers = await get_leaderboard_from_db(
+                session, limit=10, offset=0, sort_by="final_score", sort_desc=True
+            )
+            for e in db_performers:
+                top_performers.append({
+                    "proxyAddress": e.get("wallet_address", ""),
+                    "name": e.get("name"),
+                    "pseudonym": e.get("pseudonym"),
+                    "profileImage": e.get("profile_image"),
+                    "finalScore": e.get("final_score", 0.0),
+                    "rankingTag": "By final score",
+                })
         except Exception:
             pass
         biggest_winner_month = biggest_winners_month[0] if biggest_winners_month else None
@@ -868,6 +934,7 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
             "period": period,
             "biggest_winner_month": biggest_winner_month,
             "biggest_winners_month": biggest_winners_month,
+            "top_performers": top_performers,
             "total_volume": f"${total_volume:,.2f}",
             "tvl": f"${tvl:,.2f}",
             "open_interest": f"${open_interest:,.2f}",
@@ -890,6 +957,7 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
             "period": "all",
             "biggest_winner_month": None,
             "biggest_winners_month": [],
+            "top_performers": [],
             "total_volume": "Error",
             "tvl": "Error",
             "open_interest": "Error",

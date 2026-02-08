@@ -639,6 +639,8 @@ def calculate_scores_and_rank(
         all_losses = t.get('all_losses', [])
         total_stakes = t.get('total_stakes', 0.0)
         total_trades = t.get('total_trades', 0)
+        S = total_stakes
+        N_eff = float(total_trades)
         
         # --- Formula 1: Win Rate ---
         s_w = t.get('winning_stakes', 0.0)

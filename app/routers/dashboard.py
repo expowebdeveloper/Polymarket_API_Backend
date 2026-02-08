@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 from app.db.session import get_db
 from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name, get_market_distribution_api
-from app.services.dashboard_service_trades import get_filtered_trades
+from app.services.dashboard_service_trades import get_filtered_trades, get_activities_only
 from app.services.sync_service import sync_trader_full_data
 
 router = APIRouter(
@@ -122,6 +122,23 @@ async def get_profile_stat_trades(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/profile-stat/{wallet_address}/activities", response_model=Dict[str, Any])
+async def get_profile_stat_activities(wallet_address: str):
+    """
+    Lightweight fetch for Activity tab: only trades mapped to activities.
+    Avoids full profile-stat refetch so the Activity tab loads quickly.
+    """
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        raise HTTPException(status_code=400, detail="Invalid wallet address")
+    try:
+        return await get_activities_only(wallet_address)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/search/{query}", response_model=Dict[str, Any])
 async def search_wallet_or_user(

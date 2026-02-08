@@ -1650,11 +1650,15 @@ def _trade_timestamp(t: Dict) -> Optional[int]:
     return None
 
 
+# Safety cap for total trades pagination (avoids runaway requests if API always returns full pages)
+TRADES_COUNT_MAX_OFFSET = 500_000  # e.g. 500k trades = 500 requests of 1000
+
+
 async def fetch_total_trades_count(period: str = "all") -> Optional[tuple[int, int, int]]:
     """
     Fetch total trades count from Polymarket Data API.
-    Paginates through offsets 0-3000 (API max) with limit 1000 per request.
-    period: "all" -> count up to ~4k recent trades; "24h"/"7d"/"30d" -> count only trades in that window.
+    Paginates until the API returns fewer than limit (no more data) or we hit TRADES_COUNT_MAX_OFFSET.
+    period: "all" -> count all trades the API returns (paginated); "24h"/"7d"/"30d" -> count only in that window.
     Returns (total, buys, sells) or None on error.
     """
     try:
@@ -1662,14 +1666,13 @@ async def fetch_total_trades_count(period: str = "all") -> Optional[tuple[int, i
         cutoff = _get_cutoff_timestamp_for_period(period) if period else 0
 
         if not cutoff:
-            # Original behavior: count all fetched (up to 4k)
+            # All-time: paginate until API returns less than batch_size or we hit safety cap
             total = 0
             buys = 0
             sells = 0
             offset = 0
             batch_size = 1000
-            max_offset = 3000
-            while offset <= max_offset:
+            while offset < TRADES_COUNT_MAX_OFFSET:
                 response = await async_client.get(url, params={"limit": batch_size, "offset": offset})
                 response.raise_for_status()
                 data = response.json()
@@ -1689,8 +1692,7 @@ async def fetch_total_trades_count(period: str = "all") -> Optional[tuple[int, i
         sells = 0
         offset = 0
         batch_size = 1000
-        max_offset = 3000
-        while offset <= max_offset:
+        while offset < TRADES_COUNT_MAX_OFFSET:
             response = await async_client.get(url, params={"limit": batch_size, "offset": offset})
             response.raise_for_status()
             data = response.json()
