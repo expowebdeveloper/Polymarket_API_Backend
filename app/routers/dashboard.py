@@ -140,6 +140,14 @@ async def get_profile_stat_activities(wallet_address: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _normalize_wallet(s: str) -> str:
+    """Lowercase Ethereum address (0x + 40 hex) for consistent lookup."""
+    s = (s or "").strip()
+    if s.startswith("0x") and len(s) == 42:
+        return s[:2] + s[2:].lower()
+    return s
+
+
 @router.get("/search/{query}", response_model=Dict[str, Any])
 async def search_wallet_or_user(
     query: str,
@@ -147,29 +155,37 @@ async def search_wallet_or_user(
 ):
     """
     Search for a wallet address, Polymarket username, or X username.
-    - If query is 42-char hex, assumes wallet address.
+    - If query is 42-char hex (after trim), assumes wallet address.
     - Else, searches by username or X username (with or without @) in DB and fallbacks.
     """
-    # 1. Check if valid wallet address
+    query = (query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Search query cannot be empty.")
+
+    # 1. Check if valid wallet address (trim and normalize length check)
     if query.startswith("0x") and len(query) == 42:
+        wallet = _normalize_wallet(query)
         return {
-            "wallet_address": query,
+            "wallet_address": wallet,
             "type": "address",
             "name": None,
             "pseudonym": None
         }
-    
-    # 2. Lookup username in DB
+
+    # 2. Lookup username in DB (return_source so we know which API resolved the X user)
     try:
-        user_info = await search_user_by_name(session, query)
+        user_info = await search_user_by_name(session, query, return_source=True)
         if user_info:
-            return {
+            out = {
                 "wallet_address": user_info["wallet_address"],
                 "type": "username",
                 "name": user_info["name"],
                 "pseudonym": user_info["pseudonym"],
                 "profile_image": user_info["profile_image"]
             }
+            if "resolved_via" in user_info:
+                out["resolved_via"] = user_info["resolved_via"]
+            return out
         
         # Not found
         raise HTTPException(status_code=404, detail=f"User '{query}' not found")

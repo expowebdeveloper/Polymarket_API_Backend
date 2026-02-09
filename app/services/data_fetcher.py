@@ -2226,62 +2226,92 @@ async def fetch_live_trending_markets() -> List[Dict[str, Any]]:
         return []
 
 
+def _extract_wallet_from_html(html: str) -> Optional[str]:
+    """Extract first valid wallet address (0x + 40 hex) from HTML/JSON."""
+    import re
+    patterns = [
+        r'"userAddress":"(0x[a-fA-F0-9]{40})"',
+        r'"proxyWallet":"(0x[a-fA-F0-9]{40})"',
+        r'"address":"(0x[a-fA-F0-9]{40})"',
+        r'"user":"(0x[a-fA-F0-9]{40})"',
+        r'"wallet":"(0x[a-fA-F0-9]{40})"',
+    ]
+    for p in patterns:
+        match = re.search(p, html)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _extract_wallet_from_next_data(html: str) -> Optional[str]:
+    """Extract wallet from Next.js __NEXT_DATA__ JSON."""
+    import re
+    import json
+    match = re.search(
+        r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+        html,
+        re.DOTALL,
+    )
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+        page_props = data.get("pageProps", {})
+        if "dehydratedState" in page_props:
+            queries = page_props["dehydratedState"].get("queries", [])
+            for q in queries:
+                if "profile" in str(q.get("queryKey", "")):
+                    user_data = q.get("state", {}).get("data", {})
+                    addr = user_data.get("proxyWallet") or user_data.get("userAddress")
+                    if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                        return addr
+        # Fallback: any proxyWallet/userAddress in pageProps
+        for key in ("proxyWallet", "userAddress", "address"):
+            addr = page_props.get(key)
+            if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                return addr
+    except Exception:
+        pass
+    return None
+
+
 async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]:
     """
     Fallback method: Fetch user profile page HTML and regex search for wallet address.
     Used when username is not found in DB or Leaderboard API.
+    Tries both @username and username for URLs (handles 0x-prefix usernames).
     """
-    try:
-        url = f"https://polymarket.com/@{username}"
-        print(f"Fetching profile HTML: {url}")
-        
-        # Use a real browser-like user agent to avoid bot detection
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        
-        resp = await async_client.get(url, headers=headers, follow_redirects=True)
-        
-        if resp.status_code == 200:
+    import re
+    # Normalize: no leading @ for URL path
+    slug = username.lstrip("@").strip() if username else ""
+    if not slug:
+        return None
+    urls_to_try = [f"https://polymarket.com/@{slug}"]
+    # If username looks like a handle (not a wallet), also try without @ in path (some routers use both)
+    if not (slug.startswith("0x") and len(slug) == 42 and re.match(r"^0x[a-fA-F0-9]{40}$", slug)):
+        urls_to_try.append(f"https://polymarket.com/{slug}")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    for url in urls_to_try:
+        try:
+            print(f"Fetching profile HTML: {url}")
+            resp = await async_client.get(url, headers=headers, follow_redirects=True)
+            if resp.status_code != 200:
+                continue
             html = resp.text
-            
-            # Patterns to find address in JSON blobs or JS variables in the HTML
-            patterns = [
-                r'"userAddress":"(0x[a-fA-F0-9]{40})"',
-                r'"proxyWallet":"(0x[a-fA-F0-9]{40})"',
-                r'"address":"(0x[a-fA-F0-9]{40})"'
-            ]
-            
-            import re
-            for p in patterns:
-                match = re.search(p, html)
-                if match:
-                    print(f"✓ Found address via profile scrape: {match.group(1)}")
-                    return match.group(1)
-            
-            # Check __NEXT_DATA__ as secondary robust check
-            match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>', html)
-            if match:
-                import json
-                try:
-                    data = json.loads(match.group(1))
-                    page_props = data.get("pageProps", {})
-                    if "dehydratedState" in page_props:
-                        queries = page_props["dehydratedState"].get("queries", [])
-                        for q in queries:
-                             # Look for profile query key usually containing the username
-                             if "profile" in str(q.get("queryKey")):
-                                  user_data = q.get("state", {}).get("data", {})
-                                  addr = user_data.get('proxyWallet') or user_data.get('userAddress')
-                                  if addr:
-                                      print(f"✓ Found address via __NEXT_DATA__: {addr}")
-                                      return addr
-                except:
-                    pass
-
-    except Exception as e:
-        print(f"Error scraping profile page: {e}")
-        
+            addr = _extract_wallet_from_html(html)
+            if addr:
+                print(f"✓ Found address via profile scrape: {addr}")
+                return addr
+            addr = _extract_wallet_from_next_data(html)
+            if addr:
+                print(f"✓ Found address via __NEXT_DATA__: {addr}")
+                return addr
+        except Exception as e:
+            print(f"Error scraping profile page {url}: {e}")
+            continue
     return None
 
 
