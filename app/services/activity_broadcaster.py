@@ -178,11 +178,14 @@ class ActivityBroadcaster:
                 ][:100]
                 
                 # Identify NEW trades from polling (backup if WS missed any)
+                # Only broadcast trades from last 5 min to avoid showing stale "2d ago" data
                 new_trades = []
                 for activity in recent_activity:
-                    if activity["id"] not in self.seen_trade_ids:
+                    if activity["id"] not in self.seen_trade_ids and activity.get("timestamp", 0) >= fresh_limit:
                         self.seen_trade_ids.add(activity["id"])
                         new_trades.append(activity)
+                    elif activity["id"] not in self.seen_trade_ids:
+                        self.seen_trade_ids.add(activity["id"])  # Track to avoid re-broadcasting later
                 
                 if new_trades:
                     max_val = max([t.get("amount_usd", 0) for t in new_trades])

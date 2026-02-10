@@ -34,13 +34,20 @@ RATE_LIMIT_DELAY = 2.5  # seconds between starting each wallet (avoid Polymarket
 
 async def get_scoring_for_wallet(wallet: str, index: int, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
     """
-    Get all-time scoring and all-time PnL for a wallet (full fetch, no limit).
-    Rate-limited: staggered start + semaphore 2.
+    Get all-time scoring, all-time PnL, and monthly PnL for a wallet.
+    Monthly PnL from leaderboard timePeriod=month (list endpoint can return wrong value).
     """
     await asyncio.sleep(index * RATE_LIMIT_DELAY)
     async with semaphore:
         try:
+            from app.services.data_fetcher import fetch_leaderboard_stats
             from app.services.dashboard_service import get_profile_stat_data
+
+            monthly_stats = await fetch_leaderboard_stats(wallet, time_period="month", order_by="PNL")
+            monthly_pnl = monthly_stats.get("pnl")
+            if monthly_pnl is not None:
+                monthly_pnl = float(monthly_pnl)
+
             data = await asyncio.wait_for(
                 get_profile_stat_data(wallet, force_refresh=True, skip_trades=True),
                 timeout=90.0,
@@ -56,12 +63,13 @@ async def get_scoring_for_wallet(wallet: str, index: int, semaphore: asyncio.Sem
                 "stake_yield": metrics.get("roi"),
                 "total_trades": metrics.get("total_trades"),
                 "all_time_pnl": all_time_pnl,
+                "monthly_pnl": monthly_pnl,
             }
         except asyncio.TimeoutError:
-            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None}
+            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None, "monthly_pnl": None}
         except Exception as e:
             print(f"  [skip] {wallet[:10]}…: {e}", file=sys.stderr)
-            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None}
+            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None, "monthly_pnl": None}
 
 
 async def main() -> List[Dict[str, Any]]:
@@ -83,13 +91,16 @@ async def main() -> List[Dict[str, Any]]:
         sc = scoring_list[i] if not isinstance(scoring_list[i], BaseException) else {}
         if isinstance(scoring_list[i], BaseException):
             sc = {}
+        pnl_month = sc.get("monthly_pnl")
+        if pnl_month is None:
+            pnl_month = w.get("pnl")
         record = {
             "rank": w.get("rank") or (i + 1),
             "user": wallet,
             "userName": w.get("userName"),
             "xUsername": w.get("xUsername"),
             "profileImage": w.get("profileImage"),
-            "pnl": w.get("pnl"),
+            "pnl": pnl_month,
             "all_time_pnl": sc.get("all_time_pnl"),
             "vol": w.get("vol"),
             "final_score": sc.get("final_score"),
@@ -123,7 +134,7 @@ async def main() -> List[Dict[str, Any]]:
             f"{(f'{sy:+.1f}%' if sy is not None else '—'):>12}"
         )
     print("-" * 118)
-    print("PnL(month)=leaderboard API. All-time PnL & scoring from full profile-stat (all positions).")
+    print("PnL(month)=leaderboard timePeriod=month per wallet. All-time PnL & scoring from profile-stat.")
     print()
 
     # Write JSON to backend/data/ (same path the 12h scheduler uses)

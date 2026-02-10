@@ -21,12 +21,13 @@ app = FastAPI(
 )
 
 # Configure CORS
-# Allow requests from frontend domains
+# Production: Frontend https://polyrating.com | Backend https://backend.polyrating.com
+# Allow requests from frontend domains (must match browser Origin exactly for credentialed requests)
 allowed_origins = [
-    "https://polymarket-ui-one.vercel.app",  # Current frontend domain
-    "https://polymarket-uimain.vercel.app",   # Alternative frontend domain
     "https://polyrating.com",
     "https://www.polyrating.com",
+    "https://polymarket-ui-one.vercel.app",
+    "https://polymarket-uimain.vercel.app",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
@@ -36,15 +37,18 @@ allowed_origins = [
     "http://127.0.0.1:3000",
 ]
 
-# Add production origins from env
-import os
+# Add production origins from env (e.g. ALLOW_ORIGINS=https://www.polyrating.com,https://polyrating.com)
 env_origins = os.getenv("ALLOW_ORIGINS", "")
 if env_origins:
-    allowed_origins.extend([origin.strip() for origin in env_origins.split(",")])
+    allowed_origins.extend([origin.strip() for origin in env_origins.split(",") if origin.strip()])
+
+# Regex fallback: allow any polyrating.com (http/https, with or without www)
+allow_origin_regex = r"https?://(www\.)?polyrating\.com"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
@@ -72,20 +76,11 @@ async def startup_event():
     else:
         logger.info("⏸️  Activity broadcaster disabled (set ENABLE_ACTIVITY_BROADCASTER=true to enable)")
 
-    # Biggest winners of the month: refresh every 12h, load from file on startup
+    # Biggest winners of the month: load from file on startup; refresh only at 12 AM daily
     try:
         from app.services.biggest_winners_scheduler import start_biggest_winners_scheduler
         start_biggest_winners_scheduler()
-        # Optionally run one refresh shortly after startup if no cache file (so data appears without waiting 12h)
-        run_refresh_on_startup = os.getenv("RUN_BIGGEST_WINNERS_REFRESH_ON_STARTUP", "true").lower() == "true"
-        if run_refresh_on_startup:
-            from app.services.biggest_winners_scheduler import is_cache_file_fresh, refresh_biggest_winners_job
-            if not is_cache_file_fresh():
-                async def run_once():
-                    await asyncio.sleep(15)  # Let server settle
-                    await refresh_biggest_winners_job()
-                asyncio.create_task(run_once())
-                logger.info("📅 Biggest winners: one refresh scheduled 15s after startup (then every 12h)")
+        logger.info("📅 Biggest winners: data from file; refresh runs at 12 AM only.")
     except Exception as e:
         logger.warning("Biggest winners scheduler not started: %s", e)
 
@@ -102,7 +97,7 @@ async def shutdown_event():
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(dashboard.router)
 app.include_router(general.router)
 app.include_router(markets.router)
 app.include_router(traders.router)
@@ -116,7 +111,6 @@ app.include_router(leaderboard.router)
 app.include_router(closed_positions.router)
 app.include_router(scoring.router)
 app.include_router(trade_history.router)
-app.include_router(dashboard.router)
 app.include_router(websocket.router)  # WebSocket for real-time activity feed
 app.include_router(marketing.router)
 

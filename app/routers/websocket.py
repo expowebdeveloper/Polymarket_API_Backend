@@ -4,10 +4,14 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List, Dict
 import json
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["WebSocket"])
+
+# Track if broadcaster has been started (for lazy start on first connection)
+_broadcaster_started = False
 
 
 class ConnectionManager:
@@ -60,10 +64,18 @@ async def activity_websocket(websocket: WebSocket):
     WebSocket endpoint for real-time activity feed.
     
     Clients connect here to receive live Polymarket activities >$1000.
+    Starts the activity broadcaster on first connection (lazy start) if not already running.
     """
+    global _broadcaster_started
     await manager.connect(websocket)
-    
+
     from app.services.activity_broadcaster import broadcaster
+
+    # Lazy start: begin fetching & broadcasting when first client connects
+    if not _broadcaster_started and not broadcaster.is_running:
+        _broadcaster_started = True
+        asyncio.create_task(broadcaster.start())
+        logger.info("🚀 Activity broadcaster started on first WebSocket connection")
     
     try:
         # Send welcome message

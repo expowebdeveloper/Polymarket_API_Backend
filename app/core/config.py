@@ -1,5 +1,6 @@
 """
 Application configuration settings.
+Production: Frontend https://polyrating.com | Backend https://backend.polyrating.com
 """
 
 import os
@@ -32,6 +33,10 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     RELOAD: bool = os.getenv("RELOAD", "false").lower() == "true"
     
+    # Production domains
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://polyrating.com")
+    BACKEND_URL: str = os.getenv("BACKEND_URL", "https://backend.polyrating.com")
+
     # Polymarket API Credentials
     POLYMARKET_API_KEY: str = os.getenv(
         "POLYMARKET_API_KEY",

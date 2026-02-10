@@ -827,10 +827,18 @@ async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refres
     semaphore = asyncio.Semaphore(2)
     RATE_LIMIT_DELAY = 2.5  # seconds between starting each wallet fetch
 
+    from app.services.data_fetcher import fetch_leaderboard_stats
+
     async def scoring_for_wallet(wallet: str, index: int) -> Dict[str, Any]:
         await asyncio.sleep(index * RATE_LIMIT_DELAY)  # Stagger start to avoid burst
         async with semaphore:
             try:
+                # Fetch monthly PnL explicitly (leaderboard list can return wrong/all-time pnl for month column)
+                monthly_stats = await fetch_leaderboard_stats(wallet, time_period="month", order_by="PNL")
+                monthly_pnl = monthly_stats.get("pnl")
+                if monthly_pnl is not None:
+                    monthly_pnl = float(monthly_pnl)
+
                 data = await asyncio.wait_for(
                     get_profile_stat_data(wallet, force_refresh=True, skip_trades=True),
                     timeout=90.0,  # Allow full fetch of all positions (no limit)
@@ -849,9 +857,10 @@ async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refres
                     "roi": metrics.get("roi"),
                     "profileImage": profile_image,
                     "all_time_pnl": all_time_pnl,
+                    "monthly_pnl": monthly_pnl,
                 }
             except Exception:
-                return {"final_score": None, "win_rate": None, "roi": None, "profileImage": None, "all_time_pnl": None}
+                return {"final_score": None, "win_rate": None, "roi": None, "profileImage": None, "all_time_pnl": None, "monthly_pnl": None}
 
     tasks = [scoring_for_wallet(w.get("user") or "", i) for i, w in enumerate(winners)]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -861,16 +870,20 @@ async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refres
         sc = results[i] if not isinstance(results[i], BaseException) else {}
         if isinstance(results[i], BaseException):
             sc = {}
-        # Prefer profileImage from userData API; all_time_pnl from profile stat (leaderboard all-time)
+        # Prefer profileImage from userData API; monthly PnL from explicit leaderboard timePeriod=month
         profile_image = sc.get("profileImage") or w.get("profileImage")
-        pnl_month = float(w.get("pnl", 0.0))
+        monthly_pnl = sc.get("monthly_pnl")
+        if monthly_pnl is None:
+            monthly_pnl = float(w.get("pnl", 0.0))
+        else:
+            monthly_pnl = float(monthly_pnl)
         all_time_pnl = sc.get("all_time_pnl")
         enriched.append({
             "user": w.get("user") or "",
             "userName": w.get("userName"),
             "xUsername": w.get("xUsername"),
             "profileImage": profile_image,
-            "pnl": pnl_month,
+            "pnl": monthly_pnl,
             "all_time_pnl": all_time_pnl,
             "vol": float(w.get("vol", 0.0)),
             "rank": w.get("rank") or (i + 1),
@@ -909,8 +922,7 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         if period not in ("24h", "7d", "30d", "all"):
             period = "all"
 
-        # Start biggest winners (API + scoring) early so it runs in parallel with other fetches
-        task_biggest_winners = asyncio.create_task(fetch_biggest_winners_month_with_scoring(20))
+        # Biggest winners: only from file (populated by 12 AM job). No live API calls on dashboard.
 
         # Run independent API calls in parallel for faster load (markets limit=300 to reduce Gamma requests)
         DASHBOARD_MARKETS_LIMIT = 300
@@ -1032,13 +1044,14 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
 
         lp_rewards = 0
 
-        # Biggest winners: API only (top 20 from Polymarket + all-time scoring), no DB fallback
+        # Biggest winners: stored data only (from scheduler file / in-memory cache). No Polymarket API.
         biggest_winners_month: List[Dict] = []
         try:
-            api_winners = await asyncio.wait_for(task_biggest_winners, timeout=42.0)
-            if api_winners:
-                biggest_winners_month = api_winners
-        except (asyncio.TimeoutError, Exception):
+            from app.services.biggest_winners_scheduler import get_stored_biggest_winners
+            biggest_winners_month = get_stored_biggest_winners(limit=20)
+            if not biggest_winners_month and _BIGGEST_WINNERS_CACHE.get("data"):
+                biggest_winners_month = (_BIGGEST_WINNERS_CACHE["data"] or [])[:20]
+        except Exception:
             pass
 
         top_performers: List[Dict] = []

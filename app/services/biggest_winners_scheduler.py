@@ -1,6 +1,6 @@
 """
-Background scheduler: refresh biggest winners of the month (API + scoring) every 12 hours.
-Persists result to JSON so the dashboard can load it on startup and stay accurate/live.
+Background scheduler: refresh biggest winners of the month (API + scoring) once daily at 12 AM (midnight).
+Persists result to JSON so the dashboard can load it from file. No refresh on server startup.
 """
 
 import asyncio
@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,8 @@ def _cache_dir() -> str:
     return d
 
 BIGGEST_WINNERS_FILENAME = "biggest_winners_with_scoring.json"
-CACHE_FILE_MAX_AGE_SECONDS = 12 * 3600 + 600  # 12h + 10min grace
-INTERVAL_SECONDS = 12 * 3600  # 12 hours
+CACHE_FILE_MAX_AGE_SECONDS = 24 * 3600 + 600  # 24h + 10min grace (daily job)
+# Run only at 12 AM (midnight) in server local time
 _scheduler_task: asyncio.Task | None = None
 _running = False
 
@@ -30,20 +31,34 @@ def _cache_path() -> str:
     return os.path.join(_cache_dir(), BIGGEST_WINNERS_FILENAME)
 
 
+def _fallback_cache_path() -> str:
+    """Path when file lives in backend/ root (e.g. script run from backend with data/ missing)."""
+    base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(base, BIGGEST_WINNERS_FILENAME)
+
+
 def load_biggest_winners_from_file() -> List[Dict[str, Any]]:
     """Load persisted biggest winners from file. Return [] if missing or invalid."""
-    path = _cache_path()
-    if not os.path.isfile(path):
-        return []
-    try:
-        with open(path, "r") as f:
-            data = json.load(f)
-        if isinstance(data, list) and data:
-            return data
-        return []
-    except Exception as e:
-        logger.warning("Could not load biggest winners cache file %s: %s", path, e)
-        return []
+    for path in (_cache_path(), _fallback_cache_path()):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            if isinstance(data, list) and data:
+                return data
+            return []
+        except Exception as e:
+            logger.warning("Could not load biggest winners cache file %s: %s", path, e)
+    return []
+
+
+def get_stored_biggest_winners(limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Return biggest winners from storage only (file written by 12 AM job).
+    No Polymarket API calls. Use this for dashboard so only stored data is shown.
+    """
+    return load_biggest_winners_from_file()[:limit]
 
 
 def save_biggest_winners_to_file(records: List[Dict[str, Any]]) -> None:
@@ -58,7 +73,7 @@ def save_biggest_winners_to_file(records: List[Dict[str, Any]]) -> None:
 
 
 def is_cache_file_fresh() -> bool:
-    """True if cache file exists and is newer than 12 hours."""
+    """True if cache file exists and is newer than 24 hours (daily refresh)."""
     path = _cache_path()
     if not os.path.isfile(path):
         return False
@@ -67,6 +82,13 @@ def is_cache_file_fresh() -> bool:
         return age < CACHE_FILE_MAX_AGE_SECONDS
     except Exception:
         return False
+
+
+def _seconds_until_midnight_local() -> float:
+    """Seconds until next 12 AM (midnight) in server local time."""
+    now = datetime.now()
+    next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (next_midnight - now).total_seconds()
 
 
 async def refresh_biggest_winners_job() -> List[Dict[str, Any]]:
@@ -101,11 +123,13 @@ async def refresh_biggest_winners_job() -> List[Dict[str, Any]]:
         _running = False
 
 
-async def _periodic_loop():
-    """Run refresh every 12 hours."""
+async def _daily_at_midnight_loop():
+    """Run refresh only at 12 AM (midnight) local time. No run on startup."""
     while True:
         try:
-            await asyncio.sleep(INTERVAL_SECONDS)
+            secs = _seconds_until_midnight_local()
+            logger.info("Biggest winners next refresh at 12 AM (in %.0f seconds)", secs)
+            await asyncio.sleep(secs)
             await refresh_biggest_winners_job()
         except asyncio.CancelledError:
             logger.info("Biggest winners scheduler stopped.")
@@ -116,27 +140,26 @@ async def _periodic_loop():
 
 def start_biggest_winners_scheduler() -> None:
     """
-    Start the 12-hour periodic refresh.
-    Does not run immediately; first run is after 12 hours.
-    Load from file into cache on startup so dashboard has data immediately.
+    Start the daily scheduler: run only at 12 AM (midnight) local time.
+    Does not run on startup; only loads from file so dashboard has data.
     """
     from app.services.dashboard_service import _BIGGEST_WINNERS_CACHE
 
-    # Load from file into cache so dashboard has data without waiting 12h
+    # Load from file into cache so dashboard has data (no fetch on startup)
     loaded = load_biggest_winners_from_file()
     if loaded:
         _BIGGEST_WINNERS_CACHE["ts"] = time.time()
         _BIGGEST_WINNERS_CACHE["data"] = loaded
-        logger.info("Loaded %s biggest winners from cache file (12h refresh scheduled)", len(loaded))
+        logger.info("Loaded %s biggest winners from cache file (next refresh at 12 AM)", len(loaded))
     else:
-        logger.info("No biggest winners cache file; first refresh in 12 hours.")
+        logger.info("No biggest winners cache file; next refresh at 12 AM.")
 
     global _scheduler_task
     if _scheduler_task is not None:
         return
     loop = asyncio.get_event_loop()
-    _scheduler_task = loop.create_task(_periodic_loop())
-    logger.info("Biggest winners scheduler started (every 12 hours).")
+    _scheduler_task = loop.create_task(_daily_at_midnight_loop())
+    logger.info("Biggest winners scheduler started (runs daily at 12 AM only).")
 
 
 def stop_biggest_winners_scheduler() -> None:
