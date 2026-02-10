@@ -823,29 +823,37 @@ async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refres
     if not winners:
         return []
 
-    semaphore = asyncio.Semaphore(4)
+    # Rate limit: 2 concurrent wallets, 2.5s delay between starting each to avoid Polymarket block
+    semaphore = asyncio.Semaphore(2)
+    RATE_LIMIT_DELAY = 2.5  # seconds between starting each wallet fetch
 
-    async def scoring_for_wallet(wallet: str) -> Dict[str, Any]:
+    async def scoring_for_wallet(wallet: str, index: int) -> Dict[str, Any]:
+        await asyncio.sleep(index * RATE_LIMIT_DELAY)  # Stagger start to avoid burst
         async with semaphore:
             try:
                 data = await asyncio.wait_for(
                     get_profile_stat_data(wallet, force_refresh=True, skip_trades=True),
-                    timeout=30.0,
+                    timeout=90.0,  # Allow full fetch of all positions (no limit)
                 )
                 metrics = data.get("scoring_metrics") or data.get("metrics") or {}
-                # Profile image from Polymarket userData API (profile_v2) via get_profile_stat_data
                 profile = data.get("profile") or {}
                 profile_image = profile.get("profileImage")
+                # All-time PnL from leaderboard (official) when available
+                leaderboard = data.get("leaderboard") or {}
+                all_time_pnl = metrics.get("total_pnl") or leaderboard.get("pnl")
+                if all_time_pnl is not None:
+                    all_time_pnl = float(all_time_pnl)
                 return {
                     "final_score": metrics.get("final_score"),
                     "win_rate": metrics.get("win_rate"),
                     "roi": metrics.get("roi"),
                     "profileImage": profile_image,
+                    "all_time_pnl": all_time_pnl,
                 }
             except Exception:
-                return {"final_score": None, "win_rate": None, "roi": None, "profileImage": None}
+                return {"final_score": None, "win_rate": None, "roi": None, "profileImage": None, "all_time_pnl": None}
 
-    tasks = [scoring_for_wallet(w.get("user") or "") for w in winners]
+    tasks = [scoring_for_wallet(w.get("user") or "", i) for i, w in enumerate(winners)]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     enriched: List[Dict] = []
@@ -853,14 +861,17 @@ async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refres
         sc = results[i] if not isinstance(results[i], BaseException) else {}
         if isinstance(results[i], BaseException):
             sc = {}
-        # Prefer profileImage from userData API (via get_profile_stat_data); fallback to leaderboard
+        # Prefer profileImage from userData API; all_time_pnl from profile stat (leaderboard all-time)
         profile_image = sc.get("profileImage") or w.get("profileImage")
+        pnl_month = float(w.get("pnl", 0.0))
+        all_time_pnl = sc.get("all_time_pnl")
         enriched.append({
             "user": w.get("user") or "",
             "userName": w.get("userName"),
             "xUsername": w.get("xUsername"),
             "profileImage": profile_image,
-            "pnl": float(w.get("pnl", 0.0)),
+            "pnl": pnl_month,
+            "all_time_pnl": all_time_pnl,
             "vol": float(w.get("vol", 0.0)),
             "rank": w.get("rank") or (i + 1),
             "final_score": sc.get("final_score"),
@@ -1177,14 +1188,14 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
 
     import time
     t0 = time.time()
-    # Add overall timeout of 45 seconds for all API calls
+    # Timeout: 90s for full fetch (all positions) so we get complete PnL; caller can use shorter
     try:
         results = await asyncio.wait_for(
             asyncio.gather(*tasks.values(), return_exceptions=True),
-            timeout=45.0
+            timeout=90.0
         )
     except asyncio.TimeoutError:
-        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 45s timeout for {wallet_address}")
+        print(f"⚠️ [TIMEOUT] Dashboard fetch exceeded 90s timeout for {wallet_address}")
         # Return partial results with defaults
         results = [Exception("Timeout")] * len(tasks)
     t1 = time.time()

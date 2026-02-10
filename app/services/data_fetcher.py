@@ -65,14 +65,21 @@ def resolve_domain_securely(domain: str) -> str:
     
     return domain
 
+def _skip_dns_bypass() -> bool:
+    """When True, do not replace hostnames with IP (use for server to avoid 403 from Polymarket)."""
+    import os
+    return os.getenv("DISABLE_DNS_BYPASS", "").lower() in ("1", "true", "yes")
+
+
 class DNSAwareAsyncClient(httpx.AsyncClient):
     """
     HTTPX AsyncClient that automatically resolves problematic domains 
     via secure DNS to bypass local hijacking.
+    Set DISABLE_DNS_BYPASS=true on server to use hostnames (avoids 403 from Polymarket/Cloudflare).
     """
     async def request(self, method: str, url: httpx.URL | str, **kwargs) -> httpx.Response:
         url_obj = httpx.URL(url)
-        if url_obj.host in HIJACKED_DOMAINS:
+        if not _skip_dns_bypass() and url_obj.host in HIJACKED_DOMAINS:
             resolved_ip = resolve_domain_securely(url_obj.host)
             if resolved_ip != url_obj.host:
                 # Store original host for the 'Host' header
@@ -118,10 +125,11 @@ class DNSAwareClient(httpx.Client):
     """
     HTTPX Sync Client that automatically resolves problematic domains 
     via secure DNS to bypass local hijacking.
+    Set DISABLE_DNS_BYPASS=true on server to use hostnames (avoids 403).
     """
     def request(self, method: str, url: httpx.URL | str, **kwargs) -> httpx.Response:
         url_obj = httpx.URL(url)
-        if url_obj.host in HIJACKED_DOMAINS:
+        if not _skip_dns_bypass() and url_obj.host in HIJACKED_DOMAINS:
             resolved_ip = resolve_domain_securely(url_obj.host)
             if resolved_ip != url_obj.host:
                 original_host = url_obj.host
@@ -790,12 +798,11 @@ async def fetch_positions_for_wallet(
         if len(first_page_data) < fetch_limit:
             return all_positions
             
-        # Step 2: Parallel fetch (similar to closed positions)
-        # Use moderate batch size to avoid rate limits
-        PARALLEL_BATCH_SIZE = 10
+        # Step 2: Parallel fetch (rate-limited to avoid 403)
+        PARALLEL_BATCH_SIZE = 6
+        BATCH_DELAY = 0.4
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
-        # Safety cap
         MAX_POSITIONS = 1000000
         
         print(f"DEBUG: Starting parallel fetch for active positions. Initial count: {len(all_positions)}")
@@ -843,6 +850,7 @@ async def fetch_positions_for_wallet(
                 more_data_available = False
             else:
                 batch_offset += (PARALLEL_BATCH_SIZE * fetch_limit)
+                await asyncio.sleep(BATCH_DELAY)
                 
         t_end = time.time()
         print(f"✓ fetched {len(all_positions)} active positions in {round(t_end - t_start, 2)}s")
@@ -933,7 +941,10 @@ async def fetch_profile_stats(proxy_address: str, username: Optional[str] = None
             return data
         return None
     except httpx.HTTPStatusError as e:
-        print(f"Error fetching profile stats from Polymarket API: {str(e)}")
+        if e.response.status_code == 403 and not _skip_dns_bypass():
+            print("Profile stats 403 (on server run with: DISABLE_DNS_BYPASS=true)")
+        else:
+            print(f"Error fetching profile stats from Polymarket API: {str(e)}")
         return None
     except Exception as e:
         print(f"Unexpected error fetching profile stats: {str(e)}")
@@ -1303,10 +1314,10 @@ async def fetch_closed_positions(
             # Done in one page
             return _filter_by_time_period(all_positions, time_period)
             
-        # Step 2: Parallel fetch for remaining
-        # Aggressive parallel fetching to speed up "Full History" download
-        MAX_BATCH_SIZE = 20  # Max parallel requests (Increased from 15)
-        current_batch_size = 10  # Start higher (Increased from 5)
+        # Step 2: Parallel fetch for remaining (rate-limited to avoid 403 / block)
+        MAX_BATCH_SIZE = 6  # Keep low to avoid Polymarket rate limit
+        BATCH_DELAY_SECONDS = 0.6  # Delay between batches to stay under rate limit
+        current_batch_size = 4
 
         batch_offset = initial_offset + fetch_limit
         more_data_available = True
@@ -1315,7 +1326,6 @@ async def fetch_closed_positions(
             tasks = []
             for i in range(current_batch_size):
                 current_req_offset = batch_offset + (i * fetch_limit)
-                # Create a specific params dict for this request
                 task_params = params.copy()
                 task_params["offset"] = current_req_offset
                 tasks.append(async_client.get(url, params=task_params))
@@ -1356,15 +1366,8 @@ async def fetch_closed_positions(
                 more_data_available = False
             else:
                 batch_offset += (current_batch_size * fetch_limit)
-                
-                # If we filled this batch, ramp up to max speed
-                current_batch_size = MAX_BATCH_SIZE
-                
-                # Safety break
-                # Safety break removed as per user request to fetch ALL positions
-                # if len(all_positions) > 10000:
-                #    print("⚠️ Reached safety limit of 10k closed positions")
-                #    break
+                current_batch_size = min(current_batch_size + 1, MAX_BATCH_SIZE)
+                await asyncio.sleep(BATCH_DELAY_SECONDS)
         
         print(f"✓ Successfully fetched {len(all_positions)} closed positions (Parallel)")
         return _filter_by_time_period(all_positions, time_period)

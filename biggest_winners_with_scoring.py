@@ -29,30 +29,39 @@ async def fetch_biggest_winners_of_month(limit: int = 20) -> List[Dict[str, Any]
     return await _fetch(limit=limit)
 
 
-async def get_scoring_for_wallet(wallet: str, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
+RATE_LIMIT_DELAY = 2.5  # seconds between starting each wallet (avoid Polymarket block)
+
+
+async def get_scoring_for_wallet(wallet: str, index: int, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
     """
-    Get all-time scoring (final_score, win_rate, stake_yield/roi) for a wallet
-    using the same profile-stat logic (positions → scoring).
+    Get all-time scoring and all-time PnL for a wallet (full fetch, no limit).
+    Rate-limited: staggered start + semaphore 2.
     """
+    await asyncio.sleep(index * RATE_LIMIT_DELAY)
     async with semaphore:
         try:
             from app.services.dashboard_service import get_profile_stat_data
             data = await asyncio.wait_for(
                 get_profile_stat_data(wallet, force_refresh=True, skip_trades=True),
-                timeout=35.0,
+                timeout=90.0,
             )
             metrics = data.get("scoring_metrics") or data.get("metrics") or {}
+            leaderboard = data.get("leaderboard") or {}
+            all_time_pnl = metrics.get("total_pnl") or leaderboard.get("pnl")
+            if all_time_pnl is not None:
+                all_time_pnl = float(all_time_pnl)
             return {
                 "final_score": metrics.get("final_score"),
                 "win_rate": metrics.get("win_rate"),
-                "stake_yield": metrics.get("roi"),  # ROI = stake yield (all-time)
+                "stake_yield": metrics.get("roi"),
                 "total_trades": metrics.get("total_trades"),
+                "all_time_pnl": all_time_pnl,
             }
         except asyncio.TimeoutError:
-            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None}
+            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None}
         except Exception as e:
             print(f"  [skip] {wallet[:10]}…: {e}", file=sys.stderr)
-            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None}
+            return {"final_score": None, "win_rate": None, "stake_yield": None, "total_trades": None, "all_time_pnl": None}
 
 
 async def main() -> List[Dict[str, Any]]:
@@ -63,9 +72,9 @@ async def main() -> List[Dict[str, Any]]:
         print("No winners returned from API.")
         return []
 
-    # Enrich with scoring in parallel (max 5 concurrent profile-stat fetches to avoid rate limits)
-    semaphore = asyncio.Semaphore(5)
-    tasks = [get_scoring_for_wallet(w.get("user") or "", semaphore) for w in winners]
+    # Rate limit: 2 concurrent, 2.5s stagger between each (get full data without block)
+    semaphore = asyncio.Semaphore(2)
+    tasks = [get_scoring_for_wallet(w.get("user") or "", i, semaphore) for i, w in enumerate(winners)]
     scoring_list = await asyncio.gather(*tasks, return_exceptions=True)
 
     records: List[Dict[str, Any]] = []
@@ -81,10 +90,11 @@ async def main() -> List[Dict[str, Any]]:
             "xUsername": w.get("xUsername"),
             "profileImage": w.get("profileImage"),
             "pnl": w.get("pnl"),
+            "all_time_pnl": sc.get("all_time_pnl"),
             "vol": w.get("vol"),
             "final_score": sc.get("final_score"),
             "win_rate": sc.get("win_rate"),
-            "stake_yield": sc.get("stake_yield"),  # ROI all-time
+            "stake_yield": sc.get("stake_yield"),
             "total_trades": sc.get("total_trades"),
         }
         records.append(record)
@@ -92,26 +102,28 @@ async def main() -> List[Dict[str, Any]]:
     # Print table
     print()
     print("Top 20 Biggest Winners of the Month (with all-time scoring)")
-    print("-" * 100)
-    print(f"{'Rank':<5} {'Handle':<22} {'PnL':>14} {'Final':>8} {'Win%':>8} {'Stake yield':>12}")
-    print("-" * 100)
+    print("-" * 118)
+    print(f"{'Rank':<5} {'Handle':<20} {'PnL(month)':>12} {'All-time PnL':>14} {'Final':>8} {'Win%':>8} {'Stake yield':>12}")
+    print("-" * 118)
     for r in records:
         handle = (r.get("xUsername") or r.get("userName") or r.get("user") or "")[:20]
         if not handle and r.get("user"):
             handle = f"{r['user'][:6]}…{r['user'][-4:]}"
         pnl = r.get("pnl")
         pnl_str = f"+${pnl:,.0f}" if pnl is not None and pnl >= 0 else f"${pnl:,.0f}" if pnl is not None else "—"
+        atp = r.get("all_time_pnl")
+        atp_str = f"+${atp:,.0f}" if atp is not None and atp >= 0 else f"${atp:,.0f}" if atp is not None else "—"
         fs = r.get("final_score")
         wr = r.get("win_rate")
         sy = r.get("stake_yield")
         print(
-            f"{r.get('rank', 0):<5} {handle:<22} {pnl_str:>14} "
+            f"{r.get('rank', 0):<5} {handle:<20} {pnl_str:>12} {atp_str:>14} "
             f"{(f'{fs:.1f}' if fs is not None else '—'):>8} "
             f"{(f'{wr:.1f}%' if wr is not None else '—'):>8} "
             f"{(f'{sy:+.1f}%' if sy is not None else '—'):>12}"
         )
-    print("-" * 100)
-    print("Scoring: final score (0–100), win rate %, stake yield (ROI) all-time from profile-stat.")
+    print("-" * 118)
+    print("PnL(month)=leaderboard API. All-time PnL & scoring from full profile-stat (all positions).")
     print()
 
     # Write JSON to backend/data/ (same path the 12h scheduler uses)
