@@ -752,6 +752,127 @@ def _normalize_closed_position(pos: Dict[str, Any]) -> Dict[str, Any]:
 _DASHBOARD_CACHE = {}
 CACHE_TTL = 120  # Seconds - Increased from 30 to 120 for better performance
 
+# Per-wallet raw data for incremental updates: avoid refetching all positions/closed/activities every time.
+# When cache is fresh we fetch only the first page (newest) and merge with this.
+_WALLET_RAW_CACHE: Dict[str, Dict[str, Any]] = {}
+_WALLET_RAW_CACHE_TTL = 12 * 3600  # 12 hours
+_MAX_POSITIONS_CACHED = 500
+_MAX_CLOSED_CACHED = 2000
+
+
+def _position_id(item: Dict) -> str:
+    return str(item.get("conditionId") or item.get("condition_id") or item.get("asset") or id(item))
+
+
+def _closed_position_id(item: Dict) -> str:
+    return str(item.get("asset") or item.get("id") or item.get("conditionId") or id(item))
+
+
+def _merge_by_id(
+    new_page: List[Dict],
+    cached: List[Dict],
+    id_fn,
+    max_size: int,
+) -> List[Dict]:
+    """Merge new page (newest) with cached; by id, new wins. Cap total size."""
+    by_id: Dict[str, Dict] = {}
+    for item in new_page:
+        if isinstance(item, dict):
+            by_id[id_fn(item)] = item
+    for item in (cached or []):
+        if not isinstance(item, dict):
+            continue
+        k = id_fn(item)
+        if k not in by_id:
+            by_id[k] = item
+    out = list(by_id.values())
+    # Keep newest first (new_page order is newest first; then append cached)
+    if len(out) > max_size:
+        out = out[:max_size]
+    return out
+
+# Cache for biggest winners of month (API + scoring enrichment)
+_BIGGEST_WINNERS_CACHE: Dict[str, Any] = {}
+_BIGGEST_WINNERS_CACHE_TTL = 12 * 3600  # 12 hours when populated by scheduler or file
+
+async def fetch_biggest_winners_month_with_scoring(limit: int = 20, force_refresh: bool = False) -> List[Dict]:
+    """
+    Fetch top N biggest winners of the month from Polymarket API, then enrich each
+    with all-time scoring (final_score, win_rate, stake_yield/roi) from profile-stat.
+    Uses in-memory cache (12h TTL). Scheduler refreshes every 12h and persists to file.
+    """
+    import time
+    import asyncio
+    now = time.time()
+    if not force_refresh and _BIGGEST_WINNERS_CACHE and (now - _BIGGEST_WINNERS_CACHE.get("ts", 0)) < _BIGGEST_WINNERS_CACHE_TTL:
+        return _BIGGEST_WINNERS_CACHE.get("data", [])[:limit]
+    # On first request with empty cache, try loading from scheduler's persisted file
+    if not force_refresh and not _BIGGEST_WINNERS_CACHE.get("data"):
+        try:
+            from app.services.biggest_winners_scheduler import load_biggest_winners_from_file
+            loaded = load_biggest_winners_from_file()
+            if loaded:
+                _BIGGEST_WINNERS_CACHE["ts"] = now
+                _BIGGEST_WINNERS_CACHE["data"] = loaded
+                return loaded[:limit]
+        except Exception:
+            pass
+
+    from app.services.data_fetcher import fetch_biggest_winners_of_month
+    winners = await fetch_biggest_winners_of_month(limit=limit)
+    if not winners:
+        return []
+
+    semaphore = asyncio.Semaphore(4)
+
+    async def scoring_for_wallet(wallet: str) -> Dict[str, Any]:
+        async with semaphore:
+            try:
+                data = await asyncio.wait_for(
+                    get_profile_stat_data(wallet, force_refresh=True, skip_trades=True),
+                    timeout=30.0,
+                )
+                metrics = data.get("scoring_metrics") or data.get("metrics") or {}
+                # Profile image from Polymarket userData API (profile_v2) via get_profile_stat_data
+                profile = data.get("profile") or {}
+                profile_image = profile.get("profileImage")
+                return {
+                    "final_score": metrics.get("final_score"),
+                    "win_rate": metrics.get("win_rate"),
+                    "roi": metrics.get("roi"),
+                    "profileImage": profile_image,
+                }
+            except Exception:
+                return {"final_score": None, "win_rate": None, "roi": None, "profileImage": None}
+
+    tasks = [scoring_for_wallet(w.get("user") or "") for w in winners]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    enriched: List[Dict] = []
+    for i, w in enumerate(winners):
+        sc = results[i] if not isinstance(results[i], BaseException) else {}
+        if isinstance(results[i], BaseException):
+            sc = {}
+        # Prefer profileImage from userData API (via get_profile_stat_data); fallback to leaderboard
+        profile_image = sc.get("profileImage") or w.get("profileImage")
+        enriched.append({
+            "user": w.get("user") or "",
+            "userName": w.get("userName"),
+            "xUsername": w.get("xUsername"),
+            "profileImage": profile_image,
+            "pnl": float(w.get("pnl", 0.0)),
+            "vol": float(w.get("vol", 0.0)),
+            "rank": w.get("rank") or (i + 1),
+            "final_score": sc.get("final_score"),
+            "finalScore": sc.get("final_score"),
+            "win_rate": sc.get("win_rate"),
+            "stake_yield": sc.get("roi"),
+        })
+    _BIGGEST_WINNERS_CACHE["ts"] = now
+    _BIGGEST_WINNERS_CACHE["data"] = enriched
+    return enriched
+
+
 async def get_global_dashboard_stats(session: AsyncSession, period: str = "all") -> Dict[str, Any]:
     """
     Get global dashboard statistics, optionally filtered by time period.
@@ -772,12 +893,15 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
         from app.db.models import TraderLeaderboard, TraderTrade
         from sqlalchemy import func, select, case
 
+        import asyncio
         period = (period or "all").lower()
         if period not in ("24h", "7d", "30d", "all"):
             period = "all"
 
+        # Start biggest winners (API + scoring) early so it runs in parallel with other fetches
+        task_biggest_winners = asyncio.create_task(fetch_biggest_winners_month_with_scoring(20))
+
         # Run independent API calls in parallel for faster load (markets limit=300 to reduce Gamma requests)
-        import asyncio
         DASHBOARD_MARKETS_LIMIT = 300
         markets_res, total_markets, open_interest, api_traders_result = await asyncio.gather(
             fetch_markets(status="active", limit=DASHBOARD_MARKETS_LIMIT),
@@ -897,23 +1021,17 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
 
         lp_rewards = 0
 
-        # First 10 from DB leaderboard (by PnL + by final_score for top performers), single DB round
+        # Biggest winners: API only (top 20 from Polymarket + all-time scoring), no DB fallback
         biggest_winners_month: List[Dict] = []
+        try:
+            api_winners = await asyncio.wait_for(task_biggest_winners, timeout=42.0)
+            if api_winners:
+                biggest_winners_month = api_winners
+        except (asyncio.TimeoutError, Exception):
+            pass
+
         top_performers: List[Dict] = []
         try:
-            db_winners = await get_leaderboard_from_db(
-                session, limit=10, offset=0, sort_by="total_pnl", sort_desc=True
-            )
-            for e in db_winners:
-                biggest_winners_month.append({
-                    "user": e.get("wallet_address", ""),
-                    "userName": e.get("name"),
-                    "xUsername": e.get("pseudonym"),
-                    "profileImage": e.get("profile_image"),
-                    "pnl": e.get("total_pnl", 0.0),
-                    "vol": e.get("total_stakes", 0.0),
-                    "rank": e.get("rank"),
-                })
             db_performers = await get_leaderboard_from_db(
                 session, limit=10, offset=0, sort_by="final_score", sort_desc=True
             )
@@ -1017,18 +1135,40 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         fetch_wallet_address_from_profile_page # Added import
     )
 
-    # 1. Fetch everything concurrently with timeout
-    tasks = {
-        "positions": fetch_positions_for_wallet(wallet_address), # limit=None (Fetch ALL)
-        "closed_positions": fetch_closed_positions(wallet_address, limit=None), # limit=None (Fetch ALL)
-        "user_pnl": fetch_user_pnl(wallet_address),
-        "profile": fetch_profile_stats(wallet_address),
-        "portfolio_value": fetch_portfolio_value(wallet_address),
-        "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
-        "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
-        "traded_count": fetch_user_traded_count(wallet_address),
-        "profile_v2": fetch_user_profile_data_v2(wallet_address)
-    }
+    # Prefer incremental: if we have recent raw data for this wallet, fetch only first page and merge
+    use_incremental = (
+        not force_refresh
+        and wallet_address in _WALLET_RAW_CACHE
+        and (time.time() - _WALLET_RAW_CACHE[wallet_address].get("updated_at", 0)) < _WALLET_RAW_CACHE_TTL
+    )
+    cached_raw = _WALLET_RAW_CACHE.get(wallet_address, {}) if use_incremental else {}
+
+    if use_incremental:
+        # Fetch only newest page (50) for positions and closed_positions; merge with cached
+        print(f"📥 [INCREMENTAL] Refreshing {wallet_address[:10]}… from first page + cache")
+        tasks = {
+            "positions": fetch_positions_for_wallet(wallet_address, limit=50, offset=0),
+            "closed_positions": fetch_closed_positions(wallet_address, limit=50, offset=0),
+            "user_pnl": fetch_user_pnl(wallet_address),
+            "profile": fetch_profile_stats(wallet_address),
+            "portfolio_value": fetch_portfolio_value(wallet_address),
+            "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
+            "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
+            "traded_count": fetch_user_traded_count(wallet_address),
+            "profile_v2": fetch_user_profile_data_v2(wallet_address)
+        }
+    else:
+        tasks = {
+            "positions": fetch_positions_for_wallet(wallet_address),  # Fetch ALL
+            "closed_positions": fetch_closed_positions(wallet_address, limit=None),  # Fetch ALL
+            "user_pnl": fetch_user_pnl(wallet_address),
+            "profile": fetch_profile_stats(wallet_address),
+            "portfolio_value": fetch_portfolio_value(wallet_address),
+            "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
+            "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
+            "traded_count": fetch_user_traded_count(wallet_address),
+            "profile_v2": fetch_user_profile_data_v2(wallet_address)
+        }
     if not skip_trades:
         tasks["trades"] = fetch_user_trades(wallet_address, limit=10)
     
@@ -1073,6 +1213,23 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
                 f[key] = {}
             elif key in ["portfolio_value", "traded_count"]:
                 f[key] = 0
+
+    # Incremental merge: combine first page with cached data so we don't refetch everything
+    if use_incremental and cached_raw:
+        pos_page = f.get("positions") if isinstance(f.get("positions"), list) else []
+        closed_page = f.get("closed_positions") if isinstance(f.get("closed_positions"), list) else []
+        f["positions"] = _merge_by_id(
+            pos_page,
+            cached_raw.get("positions") or [],
+            _position_id,
+            _MAX_POSITIONS_CACHED,
+        )
+        f["closed_positions"] = _merge_by_id(
+            closed_page,
+            cached_raw.get("closed_positions") or [],
+            _closed_position_id,
+            _MAX_CLOSED_CACHED,
+        )
             
     # Optimization: Reconstruct "activities" for Trade History using "trades" data
     # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
@@ -1386,7 +1543,7 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "cached_seconds_ago": 0,
     }
 
-    return {
+    out = {
         "profile": {
             "username": username,
             "trades": scoring_metrics["total_trades"],
@@ -1425,6 +1582,15 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "primary_edge": primary_edge,
         "data_origin": data_origin,
     }
+
+    # Update raw cache for incremental fetches next time (only newest data will be fetched and merged)
+    _WALLET_RAW_CACHE[wallet_address] = {
+        "positions": (active_positions or [])[: _MAX_POSITIONS_CACHED],
+        "closed_positions": (closed_positions or [])[: _MAX_CLOSED_CACHED],
+        "updated_at": time.time(),
+    }
+
+    return out
 
 def _normalize_handle(s: str) -> str:
     """Strip leading @ and return lowercased string for comparison."""

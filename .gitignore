@@ -33,6 +33,7 @@ MANIFEST
 .coverage
 .coverage.*
 .cache
+data/
 nosetests.xml
 coverage.xml
 *.cover

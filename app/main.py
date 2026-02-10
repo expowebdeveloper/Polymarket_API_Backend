@@ -72,11 +72,33 @@ async def startup_event():
     else:
         logger.info("⏸️  Activity broadcaster disabled (set ENABLE_ACTIVITY_BROADCASTER=true to enable)")
 
+    # Biggest winners of the month: refresh every 12h, load from file on startup
+    try:
+        from app.services.biggest_winners_scheduler import start_biggest_winners_scheduler
+        start_biggest_winners_scheduler()
+        # Optionally run one refresh shortly after startup if no cache file (so data appears without waiting 12h)
+        run_refresh_on_startup = os.getenv("RUN_BIGGEST_WINNERS_REFRESH_ON_STARTUP", "true").lower() == "true"
+        if run_refresh_on_startup:
+            from app.services.biggest_winners_scheduler import is_cache_file_fresh, refresh_biggest_winners_job
+            if not is_cache_file_fresh():
+                async def run_once():
+                    await asyncio.sleep(15)  # Let server settle
+                    await refresh_biggest_winners_job()
+                asyncio.create_task(run_once())
+                logger.info("📅 Biggest winners: one refresh scheduled 15s after startup (then every 12h)")
+    except Exception as e:
+        logger.warning("Biggest winners scheduler not started: %s", e)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup tasks on application shutdown."""
     from app.services.activity_broadcaster import broadcaster
     await broadcaster.stop()
+    try:
+        from app.services.biggest_winners_scheduler import stop_biggest_winners_scheduler
+        stop_biggest_winners_scheduler()
+    except Exception:
+        pass
 
 # Include routers
 app.include_router(auth.router)
