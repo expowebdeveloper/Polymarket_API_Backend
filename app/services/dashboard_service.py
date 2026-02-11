@@ -1748,12 +1748,29 @@ async def search_user_by_name(
         }, RESOLVE_SOURCE_DB, return_source)
     
     
-    # 3. Fallback: Search in Remote Leaderboard via API (normalize @ in API response too)
+    # 3. Try direct profile page lookup FIRST (faster than iterating leaderboard)
     try:
         from app.services.data_fetcher import (
             fetch_traders_from_leaderboard,
             fetch_wallet_address_from_profile_page
         )
+        
+        print(f"Trying direct profile lookup for: {search_term}")
+        scraped_address = await fetch_wallet_address_from_profile_page(search_term)
+        if scraped_address:
+            return _with_source({
+                "wallet_address": scraped_address,
+                "name": search_term,
+                "pseudonym": None,
+                "profile_image": None,
+                "user_id": None
+            }, RESOLVE_SOURCE_PROFILE_PAGE, return_source)
+    except Exception as e:
+        print(f"Error in direct profile lookup: {e}")
+    
+    # 4. Fallback: Search in Remote Leaderboard via API (normalize @ in API response too)
+    try:
+        from app.services.data_fetcher import fetch_traders_from_leaderboard
         
         # Fetch multiple pages so username/X search has better coverage (e.g. top 1500)
         query_norm = _normalize_handle(search_term)
@@ -1789,22 +1806,8 @@ async def search_user_by_name(
     except Exception as e:
         print(f"Error in fallback search API: {e}")
 
-    # 4. Final Fallback: Scraping Profile Page
-    # If not in top 100, try direct profile lookup (e.g. for users like BetOnHope)
-    try:
-        print(f"Checking profile page fallback for: {search_term}")
-        scraped_address = await fetch_wallet_address_from_profile_page(search_term)
-        if scraped_address:
-            return _with_source({
-                "wallet_address": scraped_address,
-                "name": search_term, # Best effort name
-                "pseudonym": None,
-                "profile_image": None,
-                "user_id": None
-            }, RESOLVE_SOURCE_PROFILE_PAGE, return_source)
-    except Exception as e:
-        print(f"Error in final fallback scraping: {e}")
-
+    # No match found anywhere
+    print(f"Could not resolve user: {search_term}")
     return None
 
 async def enrich_positions_with_categories(positions: List[Dict], closed_positions: List[Dict]) -> None:

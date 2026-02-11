@@ -166,6 +166,14 @@ sync_client = DNSAwareClient(
     headers=get_standard_headers("polymarket.com")
 )
 
+# Plain async client WITHOUT DNS bypass for profile scraping
+# Cloudflare blocks direct IP connections, so we need hostname-based requests
+plain_async_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(30.0, connect=10.0),
+    limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+    follow_redirects=True,
+)
+
 # Shared async client instance for extreme performance
 # We use a single instance to reuse connection pools and SSL handshakes
 async_client = DNSAwareAsyncClient(
@@ -2280,41 +2288,101 @@ def _extract_wallet_from_next_data(html: str) -> Optional[str]:
 
 async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]:
     """
-    Fallback method: Fetch user profile page HTML and regex search for wallet address.
+    Fallback method: Fetch user wallet address via Polymarket APIs or profile page scraping.
     Used when username is not found in DB or Leaderboard API.
-    Tries both @username and username for URLs (handles 0x-prefix usernames).
+    
+    Uses plain_async_client (no DNS bypass) because Cloudflare blocks direct IP connections.
+    
+    Tries in order:
+    1. Profile page HTML scraping (most reliable - same method browser uses)
+    2. Polymarket Data API
     """
     import re
+    import json
+    
     # Normalize: no leading @ for URL path
     slug = username.lstrip("@").strip() if username else ""
     if not slug:
         return None
+    
+    # Use the plain client without DNS bypass (Cloudflare blocks IP connections)
+    client = plain_async_client
+    
+    # === Method 1: HTML scraping (most reliable - same as browser) ===
     urls_to_try = [f"https://polymarket.com/@{slug}"]
-    # If username looks like a handle (not a wallet), also try without @ in path (some routers use both)
+    # If username looks like a handle (not a wallet), also try without @ in path
     if not (slug.startswith("0x") and len(slug) == 42 and re.match(r"^0x[a-fA-F0-9]{40}$", slug)):
         urls_to_try.append(f"https://polymarket.com/{slug}")
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
+    
     for url in urls_to_try:
         try:
             print(f"Fetching profile HTML: {url}")
-            resp = await async_client.get(url, headers=headers, follow_redirects=True)
+            resp = await client.get(url, headers=headers, timeout=15.0)
+            print(f"  Response status: {resp.status_code}")
+            
             if resp.status_code != 200:
+                print(f"  Profile page returned {resp.status_code}")
                 continue
+            
             html = resp.text
+            print(f"  Got HTML response ({len(html)} bytes)")
+            
+            # Try multiple extraction methods
             addr = _extract_wallet_from_html(html)
             if addr:
                 print(f"✓ Found address via profile scrape: {addr}")
                 return addr
+            
             addr = _extract_wallet_from_next_data(html)
             if addr:
                 print(f"✓ Found address via __NEXT_DATA__: {addr}")
                 return addr
+            
+            # Additional pattern: Look for wallet in script tags or data attributes
+            patterns = [
+                r'"proxyWallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                r'"userAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                r'"wallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                r'"address"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                r'data-wallet="(0x[a-fA-F0-9]{40})"',
+                r'/portfolio/(0x[a-fA-F0-9]{40})',
+                r'href="/@[^"]*/(0x[a-fA-F0-9]{40})"',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, html)
+                if match:
+                    addr = match.group(1)
+                    print(f"✓ Found address via pattern match: {addr}")
+                    return addr
+                    
         except Exception as e:
             print(f"Error scraping profile page {url}: {e}")
             continue
+    
+    # === Method 2: Try Data API as fallback ===
+    try:
+        data_api_url = f"https://data-api.polymarket.com/users/{slug}"
+        print(f"Trying Data API: {data_api_url}")
+        resp = await client.get(data_api_url, timeout=10.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            addr = data.get("proxyWallet") or data.get("address") or data.get("userAddress") or data.get("wallet")
+            if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                print(f"✓ Found address via Data API: {addr}")
+                return addr
+    except Exception as e:
+        print(f"Data API error: {e}")
+    
+    print(f"✗ Could not resolve username '{slug}' via any method")
     return None
 
 
