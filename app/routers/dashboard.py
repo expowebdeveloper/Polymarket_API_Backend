@@ -197,6 +197,64 @@ async def search_wallet_or_user(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/add-user", response_model=Dict[str, Any])
+async def add_user_mapping(
+    username: str,
+    wallet_address: str,
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    Manually add a username -> wallet address mapping to the database.
+    Useful for adding users that can't be found via API due to Cloudflare blocking.
+    
+    Example: POST /dashboard/add-user?username=weflyhigh&wallet_address=0x03e8a544e97eeff5753bc1e90d46e5ef22af1697
+    """
+    import re
+    from app.db.models import Trader
+    
+    username = (username or "").strip()
+    wallet_address = (wallet_address or "").strip().lower()
+    
+    if not username:
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+    
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
+        raise HTTPException(status_code=400, detail="Invalid wallet address format")
+    
+    if not re.match(r"^0x[a-fA-F0-9]{40}$", wallet_address):
+        raise HTTPException(status_code=400, detail="Invalid wallet address")
+    
+    try:
+        # Check if already exists
+        from sqlalchemy import select
+        stmt = select(Trader).where(Trader.wallet_address == wallet_address)
+        result = await session.execute(stmt)
+        existing = result.scalars().first()
+        
+        if existing:
+            # Update the name if different
+            if existing.name != username:
+                existing.name = username
+                await session.commit()
+                return {"message": "User updated", "username": username, "wallet_address": wallet_address}
+            return {"message": "User already exists", "username": existing.name, "wallet_address": wallet_address}
+        
+        # Add new user
+        new_trader = Trader(
+            wallet_address=wallet_address,
+            name=username,
+            pseudonym=None,
+            profile_image=None
+        )
+        session.add(new_trader)
+        await session.commit()
+        return {"message": "User added successfully", "username": username, "wallet_address": wallet_address}
+        
+    except Exception as e:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to add user: {str(e)}")
+
+
 @router.get("/market-distribution/{wallet_address}", response_model=Dict[str, Any])
 async def get_market_distribution(
     wallet_address: str
