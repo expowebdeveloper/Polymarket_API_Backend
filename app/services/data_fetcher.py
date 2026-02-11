@@ -2240,22 +2240,63 @@ async def fetch_live_trending_markets() -> List[Dict[str, Any]]:
 def _extract_wallet_from_html(html: str) -> Optional[str]:
     """Extract first valid wallet address (0x + 40 hex) from HTML/JSON."""
     import re
+    wallet_pattern = r"(0x[a-fA-F0-9]{40})"
+    # Prefer structured patterns (key: value) to avoid false positives
     patterns = [
+        r'"userAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+        r'"proxyWallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+        r'"address"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+        r'"user"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+        r'"wallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+        # Escaped quotes (e.g. in JSON embedded in HTML)
+        r'\\"userAddress\\"\s*:\s*\\"(0x[a-fA-F0-9]{40})\\"',
+        r'\\"proxyWallet\\"\s*:\s*\\"(0x[a-fA-F0-9]{40})\\"',
+        r'\\"address\\"\s*:\s*\\"(0x[a-fA-F0-9]{40})\\"',
+        # Portfolio path (profile pages often link to /portfolio/0x...)
+        r'/portfolio/(0x[a-fA-F0-9]{40})',
+        r'"/portfolio/(0x[a-fA-F0-9]{40})"',
+        # Legacy exact patterns
         r'"userAddress":"(0x[a-fA-F0-9]{40})"',
         r'"proxyWallet":"(0x[a-fA-F0-9]{40})"',
-        r'"address":"(0x[a-fA-F0-9]{40})"',
-        r'"user":"(0x[a-fA-F0-9]{40})"',
-        r'"wallet":"(0x[a-fA-F0-9]{40})"',
     ]
     for p in patterns:
         match = re.search(p, html)
         if match:
             return match.group(1)
+    # Fallback: unambiguous keys then wallet soon after (minified/escaped JSON)
+    for key in ("proxyWallet", "userAddress"):
+        key_match = re.search(
+            re.escape(key) + r".{0,120}?(0x[a-fA-F0-9]{40})",
+            html,
+            re.IGNORECASE,
+        )
+        if key_match:
+            return key_match.group(1)
+    return None
+
+
+def _find_wallet_in_json(obj: Any) -> Optional[str]:
+    """Recursively find a value that looks like a wallet (0x + 40 hex) under known keys."""
+    import re
+    if isinstance(obj, dict):
+        for key in ("proxyWallet", "userAddress", "address", "wallet", "user"):
+            val = obj.get(key)
+            if isinstance(val, str) and re.match(r"^0x[a-fA-F0-9]{40}$", val):
+                return val
+        for v in obj.values():
+            found = _find_wallet_in_json(v)
+            if found:
+                return found
+    elif isinstance(obj, list):
+        for item in obj:
+            found = _find_wallet_in_json(item)
+            if found:
+                return found
     return None
 
 
 def _extract_wallet_from_next_data(html: str) -> Optional[str]:
-    """Extract wallet from Next.js __NEXT_DATA__ JSON."""
+    """Extract wallet from Next.js __NEXT_DATA__ JSON (incl. deep search)."""
     import re
     import json
     match = re.search(
@@ -2267,7 +2308,13 @@ def _extract_wallet_from_next_data(html: str) -> Optional[str]:
         return None
     try:
         data = json.loads(match.group(1))
-        page_props = data.get("pageProps", {})
+        # Direct pageProps keys
+        page_props = data.get("pageProps", {}) or {}
+        for key in ("proxyWallet", "userAddress", "address", "wallet", "user"):
+            addr = page_props.get(key)
+            if isinstance(addr, str) and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                return addr
+        # React Query dehydrated state (profile in queryKey)
         if "dehydratedState" in page_props:
             queries = page_props["dehydratedState"].get("queries", [])
             for q in queries:
@@ -2276,11 +2323,10 @@ def _extract_wallet_from_next_data(html: str) -> Optional[str]:
                     addr = user_data.get("proxyWallet") or user_data.get("userAddress")
                     if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
                         return addr
-        # Fallback: any proxyWallet/userAddress in pageProps
-        for key in ("proxyWallet", "userAddress", "address"):
-            addr = page_props.get(key)
-            if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
-                return addr
+        # Deep search entire __NEXT_DATA__ for any known wallet key
+        found = _find_wallet_in_json(data)
+        if found:
+            return found
     except Exception:
         pass
     return None
@@ -2331,20 +2377,27 @@ async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]
                     x_name = (user.get("xUsername") or "").lower()
                     
                     if user_name == slug_lower or x_name == slug_lower or x_name == slug_lower.lstrip("@"):
-                        wallet = user.get("user") or user.get("wallet_address")
+                        # data-api returns "user"; some responses use "wallet_address" or "proxyWallet"
+                        wallet = (
+                            user.get("user")
+                            or user.get("wallet_address")
+                            or user.get("proxyWallet")
+                            or user.get("wallet")
+                        )
                         if wallet and re.match(r"^0x[a-fA-F0-9]{40}$", wallet):
                             return wallet
                 return None
             except Exception:
                 return None
         
-        # Search by PNL first (most likely to find profitable traders quickly)
-        tasks = [check_leaderboard_page("PNL", page * page_size) for page in range(max_pages)]
-        results = await asyncio.gather(*tasks)
+        # Search by PNL and by VOL (different order = different top 500, better coverage)
+        pnl_tasks = [check_leaderboard_page("PNL", page * page_size) for page in range(max_pages)]
+        vol_tasks = [check_leaderboard_page("VOL", page * page_size) for page in range(max_pages)]
+        results = await asyncio.gather(*(pnl_tasks + vol_tasks))
         
         for wallet in results:
             if wallet:
-                print(f"✓ Found address via leaderboard search (PNL): {wallet}")
+                print(f"✓ Found address via leaderboard search: {wallet}")
                 return wallet
                 
     except Exception as e:
