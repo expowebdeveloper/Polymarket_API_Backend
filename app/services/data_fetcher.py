@@ -2291,11 +2291,9 @@ async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]
     Fallback method: Fetch user wallet address via Polymarket APIs or profile page scraping.
     Used when username is not found in DB or Leaderboard API.
     
-    Uses plain_async_client (no DNS bypass) because Cloudflare blocks direct IP connections.
-    
     Tries in order:
-    1. Profile page HTML scraping (most reliable - same method browser uses)
-    2. Polymarket Data API
+    1. Data API leaderboard search (works on production servers)
+    2. Profile page HTML scraping (works locally, may be blocked on production)
     """
     import re
     import json
@@ -2305,82 +2303,168 @@ async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]
     if not slug:
         return None
     
-    # Use the plain client without DNS bypass (Cloudflare blocks IP connections)
+    slug_lower = slug.lower()
+    
+    # === Method 1: Search via Leaderboard API (works on production servers) ===
+    # The leaderboard API is not blocked by Cloudflare
+    # Only search top 500 users by PNL (most profitable traders)
+    import asyncio
+    
+    try:
+        print(f"Searching leaderboard for username: {slug}")
+        page_size = 50
+        max_pages = 10  # Only search top 500 users (faster)
+        
+        # Create all leaderboard fetch tasks for parallel execution
+        async def check_leaderboard_page(order_by: str, offset: int):
+            url = f"https://data-api.polymarket.com/v1/leaderboard?timePeriod=all&orderBy={order_by}&limit={page_size}&offset={offset}&category=overall"
+            try:
+                resp = await async_client.get(url, timeout=10.0)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                if not data or not isinstance(data, list):
+                    return None
+                
+                for user in data:
+                    user_name = (user.get("userName") or "").lower()
+                    x_name = (user.get("xUsername") or "").lower()
+                    
+                    if user_name == slug_lower or x_name == slug_lower or x_name == slug_lower.lstrip("@"):
+                        wallet = user.get("user") or user.get("wallet_address")
+                        if wallet and re.match(r"^0x[a-fA-F0-9]{40}$", wallet):
+                            return wallet
+                return None
+            except Exception:
+                return None
+        
+        # Search by PNL first (most likely to find profitable traders quickly)
+        tasks = [check_leaderboard_page("PNL", page * page_size) for page in range(max_pages)]
+        results = await asyncio.gather(*tasks)
+        
+        for wallet in results:
+            if wallet:
+                print(f"✓ Found address via leaderboard search (PNL): {wallet}")
+                return wallet
+                
+    except Exception as e:
+        print(f"Leaderboard search failed: {e}")
+    
+    # === Method 2: Try multiple API endpoints ===
+    # These APIs are less likely to be blocked on production servers
+    api_endpoints = [
+        f"https://gamma-api.polymarket.com/profiles/{slug}",
+        f"https://gamma-api.polymarket.com/users?username={slug}",
+        f"https://gamma-api.polymarket.com/users?name={slug}",
+        f"https://data-api.polymarket.com/users/{slug}",
+        f"https://data-api.polymarket.com/profile?username={slug}",
+        f"https://data-api.polymarket.com/profile?name={slug}",
+    ]
+    
+    for api_url in api_endpoints:
+        try:
+            print(f"Trying API: {api_url}")
+            resp = await async_client.get(api_url, timeout=8.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Handle both single object and list responses
+                users = data if isinstance(data, list) else [data] if data else []
+                for user in users:
+                    if not user or not isinstance(user, dict):
+                        continue
+                    # Check if username matches (case-insensitive)
+                    u_name = (user.get("name") or user.get("userName") or user.get("username") or "").lower()
+                    if u_name == slug_lower or not u_name:  # Accept if username matches or if no username filter applied
+                        addr = (user.get("proxyWallet") or user.get("address") or 
+                               user.get("userAddress") or user.get("wallet") or user.get("user"))
+                        if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                            print(f"✓ Found address via API ({api_url}): {addr}")
+                            return addr
+        except Exception as e:
+            print(f"API error ({api_url}): {e}")
+            continue
+    
+    # === Method 3: HTML scraping (works locally, may be blocked on production by Cloudflare) ===
+    # Use plain client without DNS bypass
     client = plain_async_client
     
-    # === Method 1: HTML scraping (most reliable - same as browser) ===
     urls_to_try = [f"https://polymarket.com/@{slug}"]
-    # If username looks like a handle (not a wallet), also try without @ in path
     if not (slug.startswith("0x") and len(slug) == 42 and re.match(r"^0x[a-fA-F0-9]{40}$", slug)):
         urls_to_try.append(f"https://polymarket.com/{slug}")
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    }
+    # Try multiple User-Agents in case one is blocked
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    ]
     
     for url in urls_to_try:
-        try:
-            print(f"Fetching profile HTML: {url}")
-            resp = await client.get(url, headers=headers, timeout=15.0)
-            print(f"  Response status: {resp.status_code}")
-            
-            if resp.status_code != 200:
-                print(f"  Profile page returned {resp.status_code}")
-                continue
-            
-            html = resp.text
-            print(f"  Got HTML response ({len(html)} bytes)")
-            
-            # Try multiple extraction methods
-            addr = _extract_wallet_from_html(html)
-            if addr:
-                print(f"✓ Found address via profile scrape: {addr}")
-                return addr
-            
-            addr = _extract_wallet_from_next_data(html)
-            if addr:
-                print(f"✓ Found address via __NEXT_DATA__: {addr}")
-                return addr
-            
-            # Additional pattern: Look for wallet in script tags or data attributes
-            patterns = [
-                r'"proxyWallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
-                r'"userAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"',
-                r'"wallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
-                r'"address"\s*:\s*"(0x[a-fA-F0-9]{40})"',
-                r'data-wallet="(0x[a-fA-F0-9]{40})"',
-                r'/portfolio/(0x[a-fA-F0-9]{40})',
-                r'href="/@[^"]*/(0x[a-fA-F0-9]{40})"',
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, html)
-                if match:
-                    addr = match.group(1)
-                    print(f"✓ Found address via pattern match: {addr}")
+        for ua in user_agents:
+            try:
+                headers = {
+                    "User-Agent": ua,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Cache-Control": "max-age=0",
+                }
+                
+                print(f"Fetching profile HTML: {url}")
+                resp = await client.get(url, headers=headers, timeout=15.0)
+                print(f"  Response status: {resp.status_code}")
+                
+                if resp.status_code == 403:
+                    print(f"  Cloudflare blocked request (trying next UA)")
+                    continue
+                
+                if resp.status_code != 200:
+                    print(f"  Profile page returned {resp.status_code}")
+                    continue
+                
+                html = resp.text
+                print(f"  Got HTML response ({len(html)} bytes)")
+                
+                # Try multiple extraction methods
+                addr = _extract_wallet_from_html(html)
+                if addr:
+                    print(f"✓ Found address via profile scrape: {addr}")
                     return addr
-                    
-        except Exception as e:
-            print(f"Error scraping profile page {url}: {e}")
-            continue
-    
-    # === Method 2: Try Data API as fallback ===
-    try:
-        data_api_url = f"https://data-api.polymarket.com/users/{slug}"
-        print(f"Trying Data API: {data_api_url}")
-        resp = await client.get(data_api_url, timeout=10.0)
-        if resp.status_code == 200:
-            data = resp.json()
-            addr = data.get("proxyWallet") or data.get("address") or data.get("userAddress") or data.get("wallet")
-            if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
-                print(f"✓ Found address via Data API: {addr}")
-                return addr
-    except Exception as e:
-        print(f"Data API error: {e}")
+                
+                addr = _extract_wallet_from_next_data(html)
+                if addr:
+                    print(f"✓ Found address via __NEXT_DATA__: {addr}")
+                    return addr
+                
+                # Additional pattern: Look for wallet in script tags or data attributes
+                patterns = [
+                    r'"proxyWallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                    r'"userAddress"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                    r'"wallet"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                    r'"address"\s*:\s*"(0x[a-fA-F0-9]{40})"',
+                    r'data-wallet="(0x[a-fA-F0-9]{40})"',
+                    r'/portfolio/(0x[a-fA-F0-9]{40})',
+                    r'href="/@[^"]*/(0x[a-fA-F0-9]{40})"',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, html)
+                    if match:
+                        addr = match.group(1)
+                        print(f"✓ Found address via pattern match: {addr}")
+                        return addr
+                
+                # If we got a 200 response but no wallet found, no need to try other UAs
+                break
+                        
+            except Exception as e:
+                print(f"Error scraping profile page {url}: {e}")
+                continue
     
     print(f"✗ Could not resolve username '{slug}' via any method")
     return None
