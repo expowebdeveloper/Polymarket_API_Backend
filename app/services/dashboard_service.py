@@ -1758,6 +1758,21 @@ async def search_user_by_name(
         print(f"Trying direct profile lookup for: {search_term}")
         scraped_address = await fetch_wallet_address_from_profile_page(search_term)
         if scraped_address:
+            # Cache the result in database for future lookups (helps production servers)
+            try:
+                new_trader = Trader(
+                    wallet_address=scraped_address,
+                    name=search_term,
+                    pseudonym=None,
+                    profile_image=None
+                )
+                session.add(new_trader)
+                await session.commit()
+                print(f"✓ Cached trader '{search_term}' -> {scraped_address} in database")
+            except Exception as cache_err:
+                await session.rollback()
+                print(f"Could not cache trader (may already exist): {cache_err}")
+            
             return _with_source({
                 "wallet_address": scraped_address,
                 "name": search_term,
