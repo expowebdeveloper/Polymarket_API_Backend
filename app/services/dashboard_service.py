@@ -1653,7 +1653,7 @@ async def search_user_by_name(
     if search_term.startswith("@"):
         search_term = search_term[1:]
     
-    # API-only resolution (no DB, no HTML scrape)
+    # Step 1: API-only resolution (gamma-api, data-api, leaderboard top 500)
     try:
         from app.services.data_fetcher import resolve_username_via_api_only
         
@@ -1668,6 +1668,23 @@ async def search_user_by_name(
             }, RESOLVE_SOURCE_LEADERBOARD, return_source)
     except Exception as e:
         print(f"Error in API-only user lookup: {e}")
+
+    # Step 2: Fallback – scrape Polymarket profile page (finds users outside the top leaderboard)
+    try:
+        from app.services.data_fetcher import fetch_wallet_address_from_profile_page
+        
+        print(f"API-only lookup failed for '{search_term}', trying profile page fallback...")
+        wallet_address = await fetch_wallet_address_from_profile_page(search_term)
+        if wallet_address:
+            return _with_source({
+                "wallet_address": wallet_address,
+                "name": search_term,
+                "pseudonym": None,
+                "profile_image": None,
+                "user_id": None
+            }, RESOLVE_SOURCE_PROFILE_PAGE, return_source)
+    except Exception as e:
+        print(f"Error in profile page fallback: {e}")
 
     print(f"Could not resolve user: {search_term}")
     return None
