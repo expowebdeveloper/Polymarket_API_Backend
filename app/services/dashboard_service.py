@@ -1642,186 +1642,33 @@ async def search_user_by_name(
     session: AsyncSession, query: str, *, return_source: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
-    Search for a user by Polymarket name, X username (pseudonym), or wallet in the database.
-    Query is matched against TraderLeaderboard and Trader tables (name, pseudonym/xUsername, wallet).
-    With or without leading @ for X username. Returns a dict with wallet_address and name/pseudonym, or None if not found.
-    When return_source=True, the dict includes "resolved_via": "db" | "leaderboard" | "profile_page".
+    Search for a user by Polymarket name or X username (API only, no DB lookup, no HTML scraping).
+    Uses gamma-api, data-api, and leaderboard API. With or without leading @.
+    Returns a dict with wallet_address and name/pseudonym, or None if not found.
+    When return_source=True, the dict includes "resolved_via": "leaderboard".
     """
-    from app.db.models import TraderLeaderboard, Trader
-    from sqlalchemy import select, or_
-    
-    # Clean query and normalize for handle comparison
-    search_term = query.strip()
+    search_term = (query or "").strip()
     if not search_term:
         return None
     if search_term.startswith("@"):
         search_term = search_term[1:]
-    search_norm = search_term.lower()
-    pattern = f"%{search_term}%"
-    # Exact pattern for handle-like queries (no spaces, reasonable length)
-    looks_like_handle = " " not in search_term and 0 < len(search_term) <= 50
     
-    # 1. Search in TraderLeaderboard: prefer exact match on pseudonym (X username) then name, then partial
-    if looks_like_handle:
-        # Exact match on X username / pseudonym (with or without leading @)
-        stmt = select(TraderLeaderboard).where(
-            TraderLeaderboard.pseudonym.isnot(None),
-            or_(
-                func.lower(TraderLeaderboard.pseudonym) == search_norm,
-                func.lower(TraderLeaderboard.pseudonym) == f"@{search_norm}"
-            )
-        ).limit(1)
-        result = await session.execute(stmt)
-        leaderboard_entry = result.scalars().first()
-        if leaderboard_entry:
-            return _with_source({
-                "wallet_address": leaderboard_entry.wallet_address,
-                "name": leaderboard_entry.name,
-                "pseudonym": leaderboard_entry.pseudonym,
-                "profile_image": leaderboard_entry.profile_image
-            }, RESOLVE_SOURCE_DB, return_source)
-        # Exact match on name
-        stmt = select(TraderLeaderboard).where(
-            TraderLeaderboard.name.isnot(None),
-            func.lower(TraderLeaderboard.name) == search_norm
-        ).limit(1)
-        result = await session.execute(stmt)
-        leaderboard_entry = result.scalars().first()
-        if leaderboard_entry:
-            return _with_source({
-                "wallet_address": leaderboard_entry.wallet_address,
-                "name": leaderboard_entry.name,
-                "pseudonym": leaderboard_entry.pseudonym,
-                "profile_image": leaderboard_entry.profile_image
-            }, RESOLVE_SOURCE_DB, return_source)
-    
-    # Partial match in TraderLeaderboard (name, pseudonym, wallet)
-    stmt = select(TraderLeaderboard).where(
-        or_(
-            TraderLeaderboard.name.ilike(pattern),
-            TraderLeaderboard.pseudonym.ilike(pattern),
-            TraderLeaderboard.wallet_address.ilike(pattern)
-        )
-    ).limit(1)
-    result = await session.execute(stmt)
-    leaderboard_entry = result.scalars().first()
-    if leaderboard_entry:
-        return _with_source({
-            "wallet_address": leaderboard_entry.wallet_address,
-            "name": leaderboard_entry.name,
-            "pseudonym": leaderboard_entry.pseudonym,
-            "profile_image": leaderboard_entry.profile_image
-        }, RESOLVE_SOURCE_DB, return_source)
-        
-    # 2. Search in Trader table (Fallback): exact then partial
-    if looks_like_handle:
-        stmt = select(Trader).where(
-            Trader.pseudonym.isnot(None),
-            or_(
-                func.lower(Trader.pseudonym) == search_norm,
-                func.lower(Trader.pseudonym) == f"@{search_norm}"
-            )
-        ).limit(1)
-        result = await session.execute(stmt)
-        trader_entry = result.scalars().first()
-        if trader_entry:
-            return _with_source({
-                "wallet_address": trader_entry.wallet_address,
-                "name": trader_entry.name,
-                "pseudonym": trader_entry.pseudonym,
-                "profile_image": trader_entry.profile_image
-            }, RESOLVE_SOURCE_DB, return_source)
-    stmt = select(Trader).where(
-        or_(
-            Trader.name.ilike(pattern),
-            Trader.pseudonym.ilike(pattern)
-        )
-    ).limit(1)
-    result = await session.execute(stmt)
-    trader_entry = result.scalars().first()
-    if trader_entry:
-        return _with_source({
-            "wallet_address": trader_entry.wallet_address,
-            "name": trader_entry.name,
-            "pseudonym": trader_entry.pseudonym,
-            "profile_image": trader_entry.profile_image
-        }, RESOLVE_SOURCE_DB, return_source)
-    
-    
-    # 3. Try direct profile page lookup FIRST (faster than iterating leaderboard)
+    # API-only resolution (no DB, no HTML scrape)
     try:
-        from app.services.data_fetcher import (
-            fetch_traders_from_leaderboard,
-            fetch_wallet_address_from_profile_page
-        )
+        from app.services.data_fetcher import resolve_username_via_api_only
         
-        print(f"Trying direct profile lookup for: {search_term}")
-        scraped_address = await fetch_wallet_address_from_profile_page(search_term)
-        if scraped_address:
-            # Cache the result in database for future lookups (helps production servers)
-            try:
-                new_trader = Trader(
-                    wallet_address=scraped_address,
-                    name=search_term,
-                    pseudonym=None,
-                    profile_image=None
-                )
-                session.add(new_trader)
-                await session.commit()
-                print(f"✓ Cached trader '{search_term}' -> {scraped_address} in database")
-            except Exception as cache_err:
-                await session.rollback()
-                print(f"Could not cache trader (may already exist): {cache_err}")
-            
+        wallet_address = await resolve_username_via_api_only(search_term)
+        if wallet_address:
             return _with_source({
-                "wallet_address": scraped_address,
+                "wallet_address": wallet_address,
                 "name": search_term,
                 "pseudonym": None,
                 "profile_image": None,
                 "user_id": None
-            }, RESOLVE_SOURCE_PROFILE_PAGE, return_source)
+            }, RESOLVE_SOURCE_LEADERBOARD, return_source)
     except Exception as e:
-        print(f"Error in direct profile lookup: {e}")
-    
-    # 4. Fallback: Search in Remote Leaderboard via API (normalize @ in API response too)
-    try:
-        from app.services.data_fetcher import fetch_traders_from_leaderboard
-        
-        # Fetch multiple pages so username/X search has better coverage (e.g. top 1500)
-        query_norm = _normalize_handle(search_term)
-        page_size = 500
-        for offset in (0, page_size, page_size * 2):
-            traders, pagination = await fetch_traders_from_leaderboard(
-                limit=page_size, offset=offset, time_period="all"
-            )
-            if not traders:
-                break
-            for t in traders:
-                u_name = _normalize_handle(t.get("userName") or "")
-                if u_name and u_name == query_norm:
-                    return _with_source({
-                        "wallet_address": t.get("wallet_address") or t.get("user") or "",
-                        "name": t.get("userName"),
-                        "pseudonym": t.get("xUsername"),
-                        "profile_image": t.get("profileImage"),
-                        "user_id": None
-                    }, RESOLVE_SOURCE_LEADERBOARD, return_source)
-                x_name = _normalize_handle(t.get("xUsername") or "")
-                if x_name and x_name == query_norm:
-                    return _with_source({
-                        "wallet_address": t.get("wallet_address") or t.get("user") or "",
-                        "name": t.get("userName"),
-                        "pseudonym": t.get("xUsername"),
-                        "profile_image": t.get("profileImage"),
-                        "user_id": None
-                    }, RESOLVE_SOURCE_LEADERBOARD, return_source)
-            if not pagination.get("has_more"):
-                break
-                
-    except Exception as e:
-        print(f"Error in fallback search API: {e}")
+        print(f"Error in API-only user lookup: {e}")
 
-    # No match found anywhere
     print(f"Could not resolve user: {search_term}")
     return None
 

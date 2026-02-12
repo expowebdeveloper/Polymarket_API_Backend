@@ -2332,6 +2332,94 @@ def _extract_wallet_from_next_data(html: str) -> Optional[str]:
     return None
 
 
+async def resolve_username_via_api_only(username: str) -> Optional[str]:
+    """
+    Resolve username to wallet address using ONLY Polymarket APIs.
+    No DB lookup, no HTML scraping.
+    
+    Tries in order:
+    1. Direct API endpoints (gamma-api, data-api)
+    2. Leaderboard API search
+    """
+    import re
+    import asyncio
+    
+    slug = username.lstrip("@").strip() if username else ""
+    if not slug:
+        return None
+    
+    slug_lower = slug.lower()
+    
+    # === Method 1: Direct API endpoints ===
+    api_endpoints = [
+        f"https://gamma-api.polymarket.com/profiles/{slug}",
+        f"https://gamma-api.polymarket.com/users?username={slug}",
+        f"https://gamma-api.polymarket.com/users?name={slug}",
+        f"https://data-api.polymarket.com/users/{slug}",
+        f"https://data-api.polymarket.com/profile?username={slug}",
+        f"https://data-api.polymarket.com/profile?name={slug}",
+    ]
+    
+    for api_url in api_endpoints:
+        try:
+            resp = await async_client.get(api_url, timeout=8.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                users = data if isinstance(data, list) else [data] if data else []
+                for user in users:
+                    if not user or not isinstance(user, dict):
+                        continue
+                    u_name = (user.get("name") or user.get("userName") or user.get("username") or "").lower()
+                    if u_name == slug_lower or not u_name:
+                        addr = (user.get("proxyWallet") or user.get("address") or 
+                               user.get("userAddress") or user.get("wallet") or user.get("user"))
+                        if addr and re.match(r"^0x[a-fA-F0-9]{40}$", addr):
+                            return addr
+        except Exception:
+            continue
+    
+    # === Method 2: Leaderboard API search ===
+    try:
+        page_size = 50
+        max_pages = 10
+
+        async def check_leaderboard_page(order_by: str, offset: int):
+            url = f"https://data-api.polymarket.com/v1/leaderboard?timePeriod=all&orderBy={order_by}&limit={page_size}&offset={offset}&category=overall"
+            try:
+                resp = await async_client.get(url, timeout=10.0)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                if not data or not isinstance(data, list):
+                    return None
+                for user in data:
+                    user_name = (user.get("userName") or "").lower()
+                    x_name = (user.get("xUsername") or "").lower()
+                    if user_name == slug_lower or x_name == slug_lower or x_name == slug_lower.lstrip("@"):
+                        wallet = (
+                            user.get("user")
+                            or user.get("wallet_address")
+                            or user.get("proxyWallet")
+                            or user.get("wallet")
+                        )
+                        if wallet and re.match(r"^0x[a-fA-F0-9]{40}$", wallet):
+                            return wallet
+                return None
+            except Exception:
+                return None
+
+        pnl_tasks = [check_leaderboard_page("PNL", page * page_size) for page in range(max_pages)]
+        vol_tasks = [check_leaderboard_page("VOL", page * page_size) for page in range(max_pages)]
+        results = await asyncio.gather(*(pnl_tasks + vol_tasks))
+        for wallet in results:
+            if wallet:
+                return wallet
+    except Exception:
+        pass
+    
+    return None
+
+
 async def fetch_wallet_address_from_profile_page(username: str) -> Optional[str]:
     """
     Fallback method: Fetch user wallet address via Polymarket APIs or profile page scraping.
