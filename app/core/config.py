@@ -21,6 +21,7 @@ class Settings:
         "postgresql+asyncpg://digamber:user_123@localhost:5432/polymarket"
     )
 
+
     class Config:
         env_file = ".env"
         

@@ -60,19 +60,19 @@ def calculate_pnl_score(pnl: float) -> float:
             return 0.15 + (0.25 - 0.15) * (pnl / 100.0) 
             
         if pnl < 100:
-            return log_interpolate(pnl, 1, 100, 0.15, 0.25)
+            return log_interpolate(pnl, 1, 100, 0.15, 0.3)
         elif pnl < 1000:
-            return log_interpolate(pnl, 100, 1000, 0.25, 0.40)
+            return log_interpolate(pnl, 100, 1000, 0.3, 0.45)
         elif pnl < 5000:
-            return log_interpolate(pnl, 1000, 5000, 0.40, 0.60)
+            return log_interpolate(pnl, 1000, 5000, 0.45, 0.65)
         elif pnl < 10000:
-            return log_interpolate(pnl, 5000, 10000, 0.60, 0.75)
+            return log_interpolate(pnl, 5000, 10000, 0.65, 0.85)
         elif pnl < 50000:
-            return log_interpolate(pnl, 10000, 50000, 0.75, 0.85)
+            return log_interpolate(pnl, 10000, 50000, 0.85, 0.9)
         elif pnl < 100000:
-            return log_interpolate(pnl, 50000, 100000, 0.85, 0.92)
+            return log_interpolate(pnl, 50000, 100000, 0.9, 0.95)
         elif pnl < 500000:
-            return log_interpolate(pnl, 100000, 500000, 0.92, 0.98)
+            return log_interpolate(pnl, 100000, 500000, 0.95, 0.98)
         elif pnl < 1000000:
             return log_interpolate(pnl, 500000, 1000000, 0.98, 0.999)
         else:
