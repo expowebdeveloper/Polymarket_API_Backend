@@ -1,6 +1,7 @@
+import time
 from typing import Dict, Any, List, Optional
 from sqlalchemy.future import select
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from decimal import Decimal
@@ -1118,31 +1119,13 @@ async def get_global_dashboard_stats(session: AsyncSession, period: str = "all")
 async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False, skip_trades: bool = False) -> Dict[str, Any]:
     """
     Aggregate ALL necessary data for the wallet profile stats by fetching directly from Polymarket APIs.
-    Bypasses the local database entirely.
+    Bypasses the local database entirely. No in-memory or Redis cache; every request fetches live.
     
     Args:
         wallet_address: Wallet address to fetch data for
-        force_refresh: Force refresh cache
+        force_refresh: Unused (kept for API compatibility)
         skip_trades: Skip fetching trade history (for initial load performance)
-    
-    Includes a 120-second in-memory cache to prevent API rate limiting and speed up reloads.
     """
-    import time
-    
-    # Check Cache
-    if not force_refresh:
-        now = time.time()
-        if wallet_address in _DASHBOARD_CACHE:
-            ts, cached_data = _DASHBOARD_CACHE[wallet_address]
-            if now - ts < CACHE_TTL:
-                print(f"⚡ [CACHE HIT] Serving dashboard data for {wallet_address} from memory ({round(now - ts, 1)}s old)")
-                out = dict(cached_data)
-                if "data_origin" in out and isinstance(out["data_origin"], dict):
-                    out["data_origin"] = {**out["data_origin"], "cached_seconds_ago": round(now - ts)}
-                return out
-            else:
-                print(f"⌛ [CACHE EXPIRED] Refetching dashboard data for {wallet_address}")
-    
     import asyncio
     from app.services.data_fetcher import (
         fetch_positions_for_wallet,
@@ -1155,44 +1138,21 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         fetch_leaderboard_stats,
         fetch_user_traded_count,
         fetch_user_profile_data_v2,
-        fetch_traders_from_leaderboard, # Added this based on the provided snippet context
-        fetch_wallet_address_from_profile_page # Added import
+        fetch_traders_from_leaderboard,
+        fetch_wallet_address_from_profile_page,
     )
 
-    # Prefer incremental: if we have recent raw data for this wallet, fetch only first page and merge
-    use_incremental = (
-        not force_refresh
-        and wallet_address in _WALLET_RAW_CACHE
-        and (time.time() - _WALLET_RAW_CACHE[wallet_address].get("updated_at", 0)) < _WALLET_RAW_CACHE_TTL
-    )
-    cached_raw = _WALLET_RAW_CACHE.get(wallet_address, {}) if use_incremental else {}
-
-    if use_incremental:
-        # Fetch only newest page (50) for positions and closed_positions; merge with cached
-        print(f"📥 [INCREMENTAL] Refreshing {wallet_address[:10]}… from first page + cache")
-        tasks = {
-            "positions": fetch_positions_for_wallet(wallet_address, limit=50, offset=0),
-            "closed_positions": fetch_closed_positions(wallet_address, limit=50, offset=0),
-            "user_pnl": fetch_user_pnl(wallet_address),
-            "profile": fetch_profile_stats(wallet_address),
-            "portfolio_value": fetch_portfolio_value(wallet_address),
-            "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
-            "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
-            "traded_count": fetch_user_traded_count(wallet_address),
-            "profile_v2": fetch_user_profile_data_v2(wallet_address)
-        }
-    else:
-        tasks = {
-            "positions": fetch_positions_for_wallet(wallet_address),  # Fetch ALL
-            "closed_positions": fetch_closed_positions(wallet_address, limit=None),  # Fetch ALL
-            "user_pnl": fetch_user_pnl(wallet_address),
-            "profile": fetch_profile_stats(wallet_address),
-            "portfolio_value": fetch_portfolio_value(wallet_address),
-            "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
-            "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
-            "traded_count": fetch_user_traded_count(wallet_address),
-            "profile_v2": fetch_user_profile_data_v2(wallet_address)
-        }
+    tasks = {
+        "positions": fetch_positions_for_wallet(wallet_address),
+        "closed_positions": fetch_closed_positions(wallet_address, limit=None),
+        "user_pnl": fetch_user_pnl(wallet_address),
+        "profile": fetch_profile_stats(wallet_address),
+        "portfolio_value": fetch_portfolio_value(wallet_address),
+        "leaderboard": fetch_leaderboard_stats(wallet_address, order_by="VOL"),
+        "leaderboard_pnl": fetch_leaderboard_stats(wallet_address, order_by="PNL"),
+        "traded_count": fetch_user_traded_count(wallet_address),
+        "profile_v2": fetch_user_profile_data_v2(wallet_address),
+    }
     if not skip_trades:
         tasks["trades"] = fetch_user_trades(wallet_address, limit=10)
     
@@ -1238,23 +1198,6 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
             elif key in ["portfolio_value", "traded_count"]:
                 f[key] = 0
 
-    # Incremental merge: combine first page with cached data so we don't refetch everything
-    if use_incremental and cached_raw:
-        pos_page = f.get("positions") if isinstance(f.get("positions"), list) else []
-        closed_page = f.get("closed_positions") if isinstance(f.get("closed_positions"), list) else []
-        f["positions"] = _merge_by_id(
-            pos_page,
-            cached_raw.get("positions") or [],
-            _position_id,
-            _MAX_POSITIONS_CACHED,
-        )
-        f["closed_positions"] = _merge_by_id(
-            closed_page,
-            cached_raw.get("closed_positions") or [],
-            _closed_position_id,
-            _MAX_CLOSED_CACHED,
-        )
-            
     # Optimization: Reconstruct "activities" for Trade History using "trades" data
     # This avoids the heavy fetch_user_activity call while keeping the Trade History tab functional.
     # The "Activity" tab will only show Trades (no rewards/redeems) which is acceptable for speed.
@@ -1564,7 +1507,6 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
             "Polymarket Profile API",
             "Polymarket Portfolio Value API",
         ],
-        "cached_seconds_ago": 0,
     }
 
     out = {
@@ -1607,13 +1549,6 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         "data_origin": data_origin,
     }
 
-    # Update raw cache for incremental fetches next time (only newest data will be fetched and merged)
-    _WALLET_RAW_CACHE[wallet_address] = {
-        "positions": (active_positions or [])[: _MAX_POSITIONS_CACHED],
-        "closed_positions": (closed_positions or [])[: _MAX_CLOSED_CACHED],
-        "updated_at": time.time(),
-    }
-
     return out
 
 def _normalize_handle(s: str) -> str:
@@ -1638,12 +1573,116 @@ def _with_source(info: Dict[str, Any], source: str, return_source: bool) -> Dict
     return out
 
 
+async def search_user_by_name_in_db(
+    session: AsyncSession, search_term: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Look up a user by exact username or pseudonym in polymarket_traders, ProfileStats, or Trade.
+    Returns dict with wallet_address, name, pseudonym, profile_image or None.
+    """
+    if not search_term:
+        return None
+    # polymarket_traders (from fetch_trader_list.py leaderboard data)
+    try:
+        stmt = text("""
+            SELECT wallet_address, username, pseudonym, profile_image
+            FROM polymarket_traders
+            WHERE LOWER(TRIM(username)) = :q OR LOWER(TRIM(pseudonym)) = :q
+            LIMIT 1
+        """)
+        result = await session.execute(stmt, {"q": search_term.lower()})
+        row = result.first()
+        if row:
+            return {
+                "wallet_address": row[0],
+                "name": row[1],
+                "pseudonym": row[2],
+                "profile_image": row[3],
+            }
+    except Exception as e:
+        print(f"polymarket_traders lookup error: {e}")
+    # ProfileStats
+    stmt = select(ProfileStats.proxy_address).where(
+        ProfileStats.username.isnot(None),
+        func.lower(ProfileStats.username) == search_term.lower(),
+    ).limit(1)
+    result = await session.execute(stmt)
+    row = result.first()
+    if row:
+        return {
+            "wallet_address": row[0],
+            "name": search_term,
+            "pseudonym": None,
+            "profile_image": None,
+        }
+    # Trade.pseudonym
+    stmt = select(Trade.proxy_wallet).where(
+        func.lower(Trade.pseudonym) == search_term.lower(),
+    ).limit(1)
+    result = await session.execute(stmt)
+    row = result.first()
+    if row:
+        return {
+            "wallet_address": row[0],
+            "name": search_term,
+            "pseudonym": search_term,
+            "profile_image": None,
+        }
+    return None
+
+
+async def autocomplete_traders(
+    session: AsyncSession, q: str, limit: int = 15
+) -> List[Dict[str, Any]]:
+    """
+    Return matching traders from polymarket_traders for autocomplete.
+    Matches username or pseudonym (case-insensitive prefix/substring).
+    """
+    q = (q or "").strip()
+    if len(q) < 2:
+        return []
+    search = f"%{q}%"
+    try:
+        stmt = text("""
+            SELECT wallet_address, username, pseudonym, profile_image
+            FROM polymarket_traders
+            WHERE (username IS NOT NULL AND username ILIKE :search)
+               OR (pseudonym IS NOT NULL AND pseudonym ILIKE :search)
+            ORDER BY
+                CASE WHEN username ILIKE :prefix THEN 0 ELSE 1 END,
+                username NULLS LAST
+            LIMIT :limit
+        """)
+        result = await session.execute(
+            stmt,
+            {"search": search, "prefix": f"{q}%", "limit": limit},
+        )
+        rows = result.fetchall()
+        seen = set()
+        out = []
+        for row in rows:
+            addr = row[0]
+            if addr in seen:
+                continue
+            seen.add(addr)
+            out.append({
+                "wallet_address": addr,
+                "username": row[1],
+                "pseudonym": row[2],
+                "profile_image": row[3],
+            })
+        return out
+    except Exception as e:
+        print(f"autocomplete_traders error: {e}")
+        return []
+
+
 async def search_user_by_name(
     session: AsyncSession, query: str, *, return_source: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
-    Search for a user by Polymarket name or X username (API only, no DB lookup, no HTML scraping).
-    Uses gamma-api, data-api, and leaderboard API. With or without leading @.
+    Search for a user by Polymarket name or X username.
+    First checks DB (polymarket_traders, ProfileStats, Trade), then API/leaderboard, then profile page.
     Returns a dict with wallet_address and name/pseudonym, or None if not found.
     When return_source=True, the dict includes "resolved_via": "leaderboard".
     """
@@ -1652,6 +1691,11 @@ async def search_user_by_name(
         return None
     if search_term.startswith("@"):
         search_term = search_term[1:]
+    
+    # Step 0: DB lookup (polymarket_traders, ProfileStats, Trade)
+    db_user = await search_user_by_name_in_db(session, search_term)
+    if db_user:
+        return _with_source(db_user, "database", return_source)
     
     # Step 1: API-only resolution (gamma-api, data-api, leaderboard top 500)
     try:

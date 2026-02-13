@@ -1,18 +1,49 @@
+import { BigDecimal } from "@graphprotocol/graph-ts"
 import { OrderFilled as OrderFilledEvent } from "../generated/CTFExchange/CTFExchange"
-import { OrderFilled } from "../generated/schema"
+import { User, Trade } from "../generated/schema"
 
 export function handleOrderFilled(event: OrderFilledEvent): void {
-  // Unique ID: Transaction Hash + Log Index
-  let entity = new OrderFilled(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
+
+  // =============================
+  // 1️⃣ Handle Maker
+  // =============================
+
+  let makerAddress = event.params.maker.toHex()
+  let maker = User.load(makerAddress)
+
+  if (maker == null) {
+    maker = new User(makerAddress)
+    maker.username = makerAddress
+    maker.totalTrades = 0
+    maker.totalVolume = BigDecimal.fromString("0")
+    maker.createdAt = event.block.timestamp
+  }
+
+  maker.totalTrades = maker.totalTrades + 1
+
+  // Convert uint256 → BigDecimal (18 decimals assumed)
+  let decimals = BigDecimal.fromString("1000000000000000000")
+
+  let makerVolume = event.params.makerAmountFilled
+    .toBigDecimal()
+    .div(decimals)
+
+  maker.totalVolume = maker.totalVolume.plus(makerVolume)
+
+  maker.save()
+
+
+  // =============================
+  // 2️⃣ Create Trade Entity
+  // =============================
+
+  let trade = new Trade(
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString()
   )
 
-  // Save the data
-  entity.maker = event.params.maker
-  entity.taker = event.params.taker
-  entity.makerAmount = event.params.makerAmount
-  entity.takerAmount = event.params.takerAmount
-  entity.timestamp = event.block.timestamp
+  trade.user = maker.id
+  trade.amount = makerVolume
+  trade.timestamp = event.block.timestamp
 
-  entity.save()
+  trade.save()
 }

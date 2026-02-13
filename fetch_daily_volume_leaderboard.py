@@ -30,7 +30,7 @@ ORDER_BY = "VOL"
 LIMIT = 50  # Records per page (API maximum is 50)
 MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
-SCORING_LIMIT = 200  # Calculate scores for top 200 traders
+# SCORING_LIMIT = 200  # Calculate scores for top 200 traders
 CONCURRENCY_LIMIT = 5
 
 

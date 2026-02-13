@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from app.db.session import get_db
-from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name, get_market_distribution_api
+from app.services.dashboard_service import get_db_dashboard_data, get_profile_stat_data, search_user_by_name, get_market_distribution_api, autocomplete_traders
 from app.services.dashboard_service_trades import get_filtered_trades, get_activities_only
 from app.services.sync_service import sync_trader_full_data
 
@@ -196,6 +196,25 @@ async def search_wallet_or_user(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/autocomplete", response_model=List[Dict[str, Any]])
+async def autocomplete_traders_endpoint(
+    q: str = Query(..., min_length=1, description="Search prefix for username or X handle"),
+    limit: int = Query(15, ge=1, le=30, description="Max number of suggestions"),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Autocomplete traders by username or pseudonym (X handle).
+    Uses the polymarket_traders table populated by fetch_trader_list (leaderboard data).
+    """
+    try:
+        return await autocomplete_traders(session, q.strip(), limit=limit)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/add-user", response_model=Dict[str, Any])
 async def add_user_mapping(

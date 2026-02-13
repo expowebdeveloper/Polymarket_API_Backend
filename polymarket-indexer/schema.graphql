@@ -1,8 +1,24 @@
+type User @entity(immutable: false) {
+  id: ID!
+  username: String!
+  totalTrades: Int!
+  totalVolume: BigDecimal!
+  createdAt: BigInt!
+  trades: [Trade!]! @derivedFrom(field: "user")
+}
+
+type Trade @entity(immutable: true) {
+  id: ID!
+  user: User!
+  amount: BigDecimal!
+  timestamp: BigInt!
+}
+
 type OrderFilled @entity(immutable: true) {
-  id: Bytes!
-  maker: Bytes!        # The User (Trader)
+  id: ID!
+  maker: Bytes!
   taker: Bytes!
-  makerAmount: BigInt! # Volume of the trade
+  makerAmount: BigInt!
   takerAmount: BigInt!
   timestamp: BigInt!
 }

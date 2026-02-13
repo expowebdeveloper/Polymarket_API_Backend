@@ -25,7 +25,7 @@ ORDER_BY = "VOL"
 LIMIT = 50  # Records per page
 MAX_RETRIES = 3
 RETRY_DELAY = 2
-SCORING_LIMIT = 1000000  # Practically unlimited - score all fetched traders
+# SCORING_LIMIT = 1000000  # Practically unlimited - score all fetched traders
 CONCURRENCY_LIMIT = 10  # Increased concurrency for large batches
 
 
