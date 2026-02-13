@@ -1142,9 +1142,11 @@ async def get_profile_stat_data(wallet_address: str, force_refresh: bool = False
         fetch_wallet_address_from_profile_page,
     )
 
+    # Cap closed positions to avoid slow fetches (e.g. 2467 positions → ~16s). Stats use this set.
+    PROFILE_STAT_CLOSED_POSITIONS_LIMIT = 1000
     tasks = {
         "positions": fetch_positions_for_wallet(wallet_address),
-        "closed_positions": fetch_closed_positions(wallet_address, limit=None),
+        "closed_positions": fetch_closed_positions(wallet_address, limit=PROFILE_STAT_CLOSED_POSITIONS_LIMIT),
         "user_pnl": fetch_user_pnl(wallet_address),
         "profile": fetch_profile_stats(wallet_address),
         "portfolio_value": fetch_portfolio_value(wallet_address),
